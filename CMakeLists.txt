@@ -7,6 +7,8 @@ project(free-api
 
 include(GNUInstallDirs)
 
+find_package(SDL3 REQUIRED)
+
 add_library(free-api)
 add_library(free-api::free-api ALIAS free-api)
 
@@ -18,6 +20,7 @@ set_target_properties(free-api PROPERTIES
     SOVERSION ${PROJECT_VERSION_MAJOR})
 
 target_include_directories(free-api PUBLIC include)
+target_link_libraries(free-api PRIVATE SDL3::SDL3)
 
 target_sources(free-api PRIVATE src/winapi.cpp)
 
