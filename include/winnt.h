@@ -14,6 +14,7 @@ typedef WCHAR *PWCHAR, *LPWCH, *PWCH, *NWPSTR, *LPWSTR, *PWSTR;
 typedef const WCHAR *LPCWSTR, *PCWSTR;
 
 typedef int32_t LONG;
+typedef LONG HRESULT;
 typedef uint32_t ULONG;
 typedef uint32_t *PULONG;
 typedef uint16_t USHORT;
@@ -23,6 +24,8 @@ typedef uint8_t *PUCHAR;
 typedef char *PSZ;
 
 typedef void *PVOID;
+
+typedef struct IUnknown IUnknown;
 
 #ifdef UNICODE
 typedef WCHAR TCHAR, *PTCHAR;
@@ -39,6 +42,14 @@ typedef struct _GUID {
     unsigned short Data2;
     unsigned short Data3;
     unsigned char  Data4[ 8 ];
-} GUID;
+} GUID, *LPGUID;
+
+typedef const GUID *LPCGUID;
+typedef GUID IID;
+typedef IID *LPIID;
+typedef const IID *REFIID;
+typedef GUID CLSID;
+typedef CLSID *LPCLSID;
+typedef const CLSID *REFCLSID;
 
 #endif // FREE_API_WINNT_H

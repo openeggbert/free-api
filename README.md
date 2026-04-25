@@ -11,33 +11,27 @@ The goal is to provide a **small, self-contained compatibility layer** that allo
 
 ## Overview
 
-Free API is a **platform-agnostic abstraction of WinAPI**, not tied to any specific backend:
+Free API provides a **WinAPI-compatible subset** implemented using **SDL3**:
 
 ```
-
 WinAPI (subset ~1998)
-↓
-Free API
-↓
-(platform-specific implementations)
-
+        ↓
+    Free API
+        ↓
+      SDL 3
 ```
 
-Key idea:
-
-* **Free API defines behavior**
-* **Backends implement it**
+* **Free API** → defines WinAPI-like headers and behavior
+* **SDL 3** → internal implementation detail for windowing, events, and timing
 
 ---
 
 ## Design Principles
 
-* **No dependency on SDL, CNA, or any specific framework**
-* Clean separation between:
-  * API (interface)
-  * Implementation (backend)
+* **WinAPI-like public headers** (windows.h, windef.h, etc.)
+* **SDL3 used internally** as a portable backend
 * Minimalism: only what is needed is implemented
-* Focus on **real-world use cases**, not completeness
+* Focus on **real-world use cases** (legacy games support)
 
 ---
 
@@ -47,126 +41,29 @@ Key idea:
 * Allow running legacy Win32 applications without Windows
 * Provide a **portable runtime layer**
 * Keep code **simple, readable, and hackable**
-* Enable integration with different backends (SDL, native, etc.)
+* Maintain **cross-platform support** via SDL3
 
 ---
 
-## Non-Goals
-
-* ❌ Full WinAPI compatibility  
-* ❌ Kernel-level behavior emulation  
-* ❌ Binary compatibility guarantees  
-* ❌ Perfect behavior matching  
-
----
-
-## Scope
-
-Free API targets only selected parts of WinAPI:
+## Features
 
 ### Application Entry
+* `WinMain` abstraction (mapping to `main`)
 
-* `WinMain` abstraction
-* Basic application lifecycle
-
-### Windowing (minimal)
-
-* Window creation (CreateWindow-like behavior)
-* Message loop (GetMessage / DispatchMessage style)
-* Basic event handling
+### Windowing
+* Window creation (`CreateWindowEx`)
+* Message loop (`PeekMessage`, `DispatchMessage`)
+* Window procedures (`WNDPROC`)
 
 ### System Utilities
-
-* Timing (GetTickCount-like)
-* Basic types and structures
-* Minimal memory helpers (if needed)
-
----
-
-## Architecture
-
-Free API is split into two layers:
-
-### 1. API Layer (this project)
-
-Defines WinAPI-like interface:
-
-```
-
-FreeAPI::WinMain
-FreeAPI::CreateWindow
-FreeAPI::MessageLoop
-
-```
-
-### 2. Backend Layer (external / optional)
-
-Implements behavior using a platform:
-
-Examples:
-
-* SDL backend (optional)
-* Native OS backend
-* CNA-based backend
-* Testing/mock backend
-
----
-
-## Example Backend Mapping
-
-Example (not part of core Free API):
-
-```
-
-Free API → SDL backend → SDL 3
-Free API → CNA backend → CNA → SDL 3
-Free API → Native backend → OS APIs
-
-```
-
-Free API itself **does not depend on any of these**.
-
----
-
-## Example Use Case
-
-Free API is designed for:
-
-* Running legacy **Win32 applications/games**
-* Supporting projects like **Free Direct**
-* Reverse engineering and reimplementation
-* Studying WinAPI behavior in isolation
-
----
-
-## Relationship to Other Projects
-
-* **Free API** → WinAPI subset (~1998)
-* **Free Direct** → DirectX 3 (2D subset)
-* **CNA** → XNA-like framework (independent)
-
-These projects are **separate but composable**.
-
-Example stack:
-
-```
-
-Game
-↓
-Free Direct
-↓
-Free API
-↓
-Backend (SDL / CNA / native)
-
-```
+* Timing (`GetTickCount`, `Sleep`)
+* Debugging (`OutputDebugString`)
 
 ---
 
 ## Project Structure
 
 ```
-
 free-api/
 ├── include/
 │    ├── windows.h
@@ -176,7 +73,6 @@ free-api/
 ├── src/
 │    └── winapi.cpp
 └── CMakeLists.txt
-
 ```
 
 ---
@@ -187,11 +83,9 @@ free-api/
 git clone https://github.com/openeggbert/free-api.git
 cd free-api
 
-mkdir build
-cd build
-cmake ..
-make
-````
+cmake -B build
+cmake --build build
+```
 
 ---
 
@@ -200,21 +94,9 @@ make
 **Work in progress**
 
 Current focus:
-
-* Defining minimal WinAPI subset
-* Designing clean API/backend separation
-* Supporting basic application lifecycle
-
----
-
-## Long-Term Vision
-
-* Stable minimal WinAPI runtime
-* Usable as a foundation for:
-
-  * Free Direct
-  * Legacy game ports
-* Multiple interchangeable backends
+* Supporting `free-direct` requirements
+* Basic windowing and message pump
+* Cross-platform compatibility
 
 ---
 
