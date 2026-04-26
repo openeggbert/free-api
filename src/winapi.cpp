@@ -166,9 +166,6 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
                             LPVOID lpParam)
 {
     (void)dwExStyle;
-    (void)dwStyle;
-    (void)X;
-    (void)Y;
     (void)hWndParent;
     (void)hMenu;
     (void)hInstance;
@@ -189,12 +186,24 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
 
     const int width = nWidth > 0 ? nWidth : 640;
     const int height = nHeight > 0 ? nHeight : 480;
-    const Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+    Uint32 flags = SDL_WINDOW_RESIZABLE;
+
+    if ((dwStyle & WS_VISIBLE) == 0) {
+        flags |= SDL_WINDOW_HIDDEN;
+    }
+
+    if ((dwStyle & WS_POPUP) != 0 && (dwStyle & WS_CAPTION) == 0) {
+        flags |= SDL_WINDOW_BORDERLESS;
+    }
 
     auto* sdlWindow = SDL_CreateWindow(lpWindowName ? lpWindowName : lpClassName, width, height, flags);
     if (!sdlWindow) {
         return NULL;
     }
+
+    const int posX = (X < 0) ? SDL_WINDOWPOS_CENTERED : X;
+    const int posY = (Y < 0) ? SDL_WINDOWPOS_CENTERED : Y;
+    SDL_SetWindowPosition(sdlWindow, posX, posY);
 
     HWND hwnd = reinterpret_cast<HWND>(sdlWindow);
     g_windowProcedures[hwnd] = classIt->second;
@@ -263,8 +272,36 @@ BOOL WINAPI DestroyWindow(HWND hWnd)
 
 BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
 {
-    (void)nCmdShow;
-    return hWnd ? TRUE : FALSE;
+    if (!hWnd) {
+        return FALSE;
+    }
+
+    auto* sdlWindow = reinterpret_cast<SDL_Window*>(hWnd);
+    switch (nCmdShow) {
+        case SW_HIDE:
+            SDL_HideWindow(sdlWindow);
+            break;
+        case 2: // SW_SHOWMINIMIZED
+        case 6: // SW_MINIMIZE
+            SDL_MinimizeWindow(sdlWindow);
+            break;
+        case 3: // SW_SHOWMAXIMIZED
+            SDL_MaximizeWindow(sdlWindow);
+            SDL_ShowWindow(sdlWindow);
+            SDL_RaiseWindow(sdlWindow);
+            break;
+        case 9: // SW_RESTORE
+            SDL_RestoreWindow(sdlWindow);
+            SDL_ShowWindow(sdlWindow);
+            SDL_RaiseWindow(sdlWindow);
+            break;
+        default:
+            SDL_ShowWindow(sdlWindow);
+            SDL_RaiseWindow(sdlWindow);
+            break;
+    }
+
+    return TRUE;
 }
 
 BOOL WINAPI MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint)
@@ -290,7 +327,12 @@ BOOL WINAPI InvalidateRect(HWND hWnd, const RECT* lpRect, BOOL bErase)
 
 BOOL WINAPI UpdateWindow(HWND hWnd)
 {
-    return hWnd ? TRUE : FALSE;
+    if (!hWnd) {
+        return FALSE;
+    }
+
+    SDL_RaiseWindow(reinterpret_cast<SDL_Window*>(hWnd));
+    return TRUE;
 }
 
 BOOL WINAPI SetWindowTextA(HWND hWnd, LPCSTR lpString)
@@ -703,6 +745,9 @@ HWND WINAPI SetFocus(HWND hWnd)
 {
     HWND oldFocus = g_focusWindow;
     g_focusWindow = hWnd;
+    if (hWnd) {
+        SDL_RaiseWindow(reinterpret_cast<SDL_Window*>(hWnd));
+    }
     return oldFocus;
 }
 
