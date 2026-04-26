@@ -1,8 +1,11 @@
 #ifndef FREE_API_WINDOWS_H
 #define FREE_API_WINDOWS_H
 
-#include "windef.h"
-#include "winnt.h"
+#include <windef.h>
+#include <winnt.h>
+#include <minwindef.h>
+#include <windef.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
