@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 #ifndef MAX_PATH
 #define MAX_PATH 260
 #endif
