@@ -24,10 +24,14 @@ target_link_libraries(free-api PRIVATE SDL3::SDL3)
 
 target_sources(free-api PRIVATE src/winapi.cpp)
 
-enable_testing()
-add_executable(basic_test tests/basic_test.cpp)
-target_link_libraries(basic_test PRIVATE free-api)
-add_test(NAME basic_test COMMAND basic_test)
+option(FREE_API_BUILD_TESTS "Build free-api tests" ON)
+
+if(FREE_API_BUILD_TESTS)
+    enable_testing()
+    add_executable(basic_test tests/basic_test.cpp)
+    target_link_libraries(basic_test PRIVATE free-api)
+    add_test(NAME basic_test COMMAND basic_test)
+endif()
 
 install(TARGETS free-api
         EXPORT free-api-targets
