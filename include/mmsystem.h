@@ -1,3 +1,8 @@
+/**
+ * @file mmsystem.h
+ * @brief WinMM compatibility subset used by the game runtime.
+ * @note Status: PARTIAL
+ */
 #ifndef FREE_API_MMSYSTEM_H
 #define FREE_API_MMSYSTEM_H
 
@@ -7,11 +12,28 @@
 extern "C" {
 #endif
 
-// WinMM subset - Status: PARTIAL
+/**
+ * @brief Result code type returned by WinMM APIs.
+ * @note Status: IMPLEMENTED
+ */
 typedef UINT MMRESULT;
+/**
+ * @brief Identifier type for MCI devices.
+ * @note Status: PARTIAL
+ */
 typedef UINT MCIDEVICEID;
+/**
+ * @brief Error code type returned by MCI APIs.
+ * @note Status: PARTIAL
+ */
 typedef DWORD MCIERROR;
 
+/**
+ * @brief Extended joystick state structure.
+ *
+ * Mirrors the legacy WinMM JOYINFOEX layout expected by old games.
+ * @note Status: STUB
+ */
 typedef struct tagJOYINFOEX {
     DWORD dwSize;
     DWORD dwFlags;
@@ -28,6 +50,10 @@ typedef struct tagJOYINFOEX {
     DWORD dwReserved2;
 } JOYINFOEX, *PJOYINFOEX, *LPJOYINFOEX;
 
+/**
+ * @brief Legacy waveform format base structure.
+ * @note Status: PARTIAL
+ */
 typedef struct _WAVEFORMAT {
     WORD wFormatTag;
     WORD nChannels;
@@ -65,14 +91,31 @@ typedef struct _MCI_SET_PARMS {
     DWORD dwAudio;
 } MCI_SET_PARMS, *LPMCI_SET_PARMS;
 
+/**
+ * @brief Opaque MIDI output handle type.
+ * @note Status: STUB
+ */
 typedef HANDLE HMIDIOUT;
 typedef HMIDIOUT* LPHMIDIOUT;
 
+/**
+ * @name Timer flags and MM messages
+ * @brief Constant subset used by the game.
+ * @note Status: PARTIAL
+ */
+/** @{ */
 #define TIME_PERIODIC 0x0001
 
 #define MM_MCINOTIFY 0x03B9
 #define MCI_NOTIFY_SUCCESSFUL 0x0001
+/** @} */
 
+/**
+ * @name Joystick and MCI constants
+ * @brief WinMM symbolic values consumed by legacy code.
+ * @note Status: PARTIAL
+ */
+/** @{ */
 #define JOY_BUTTON1 0x0001
 #define JOY_BUTTON2 0x0002
 #define JOY_BUTTON3 0x0004
@@ -94,30 +137,81 @@ typedef HMIDIOUT* LPHMIDIOUT;
 #define MCI_SET_TIME_FORMAT 0x00000400L
 #define MCI_FORMAT_TMSF 10
 #define MCI_TRACK 0x00000010L
+/** @} */
 
+/**
+ * @brief Builds a little-endian FOURCC value.
+ * @note Status: IMPLEMENTED
+ */
 #define mmioFOURCC(ch0, ch1, ch2, ch3) \
     ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) | ((DWORD)(BYTE)(ch2) << 16) | ((DWORD)(BYTE)(ch3) << 24))
 
+/**
+ * @brief Callback type used by multimedia periodic timers.
+ * @note Status: PARTIAL
+ */
 typedef void(CALLBACK* LPTIMECALLBACK)(UINT uTimerID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2);
 
+/**
+ * @brief Starts a WinMM-style periodic timer.
+ *
+ * Internally mapped to a compatibility timer queue in `free-api`.
+ * @note Status: PARTIAL
+ */
 MMRESULT WINAPI timeSetEvent(UINT uDelay,
                              UINT uResolution,
                              LPTIMECALLBACK lpTimeProc,
                              DWORD_PTR dwUser,
-                             UINT fuEvent); // Status: STUB
+                             UINT fuEvent);
 
-MMRESULT WINAPI timeKillEvent(UINT uTimerID); // Status: STUB
+/**
+ * @brief Stops a timer started by `timeSetEvent`.
+ * @note Status: PARTIAL
+ */
+MMRESULT WINAPI timeKillEvent(UINT uTimerID);
 
-MMRESULT WINAPI joyGetPosEx(UINT uJoyID, LPJOYINFOEX pji); // Status: STUB
-UINT WINAPI joyGetNumDevs(void); // Status: STUB
+/**
+ * @brief Queries joystick state.
+ * @note Status: STUB
+ */
+MMRESULT WINAPI joyGetPosEx(UINT uJoyID, LPJOYINFOEX pji);
+/**
+ * @brief Returns the number of available joystick devices.
+ * @note Status: STUB
+ */
+UINT WINAPI joyGetNumDevs(void);
 
-UINT WINAPI midiOutGetNumDevs(void); // Status: STUB
-MMRESULT WINAPI midiOutOpen(LPHMIDIOUT phmo, UINT uDeviceID, DWORD_PTR dwCallback, DWORD_PTR dwInstance, DWORD fdwOpen); // Status: STUB
-MMRESULT WINAPI midiOutSetVolume(HMIDIOUT hmo, DWORD dwVolume); // Status: STUB
-MMRESULT WINAPI midiOutClose(HMIDIOUT hmo); // Status: STUB
+/**
+ * @brief Returns number of MIDI output devices.
+ * @note Status: STUB
+ */
+UINT WINAPI midiOutGetNumDevs(void);
+/**
+ * @brief Opens a MIDI output device handle.
+ * @note Status: STUB
+ */
+MMRESULT WINAPI midiOutOpen(LPHMIDIOUT phmo, UINT uDeviceID, DWORD_PTR dwCallback, DWORD_PTR dwInstance, DWORD fdwOpen);
+/**
+ * @brief Sets MIDI output volume.
+ * @note Status: STUB
+ */
+MMRESULT WINAPI midiOutSetVolume(HMIDIOUT hmo, DWORD dwVolume);
+/**
+ * @brief Closes a MIDI output device handle.
+ * @note Status: STUB
+ */
+MMRESULT WINAPI midiOutClose(HMIDIOUT hmo);
 
-MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam); // Status: STUB
-BOOL WINAPI mciGetErrorStringA(MCIERROR mcierr, LPSTR pszText, UINT cchText); // Status: STUB
+/**
+ * @brief Sends an MCI command to an opened device.
+ * @note Status: STUB
+ */
+MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam);
+/**
+ * @brief Converts an MCI error code to text.
+ * @note Status: STUB
+ */
+BOOL WINAPI mciGetErrorStringA(MCIERROR mcierr, LPSTR pszText, UINT cchText);
 
 #define mciSendCommand mciSendCommandA
 #define mciGetErrorString mciGetErrorStringA

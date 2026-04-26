@@ -11,17 +11,138 @@
 #include <thread>
 #include <atomic>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 #include <cstdarg>
 #include <fcntl.h>
 #include <unistd.h>
 
 namespace {
+    constexpr uint32_t kCompatBitmapMagic = 0x504d5442u; // 'BTMP'
+    constexpr uint32_t kCompatDcMagic = 0x30434446u;     // 'FDC0'
+
+    enum class CompatDcKind {
+        Memory,
+        Surface
+    };
+
+    struct CompatBitmap {
+        uint32_t magic = kCompatBitmapMagic;
+        int width = 0;
+        int height = 0;
+        int pitch = 0;
+        int bitsPerPixel = 32;
+        std::vector<uint8_t> pixels;
+    };
+
+    struct CompatDC {
+        uint32_t magic = kCompatDcMagic;
+        CompatDcKind kind = CompatDcKind::Memory;
+        CompatBitmap* selectedBitmap = nullptr;
+        uint8_t* surfacePixels = nullptr;
+        int surfaceWidth = 0;
+        int surfaceHeight = 0;
+        int surfacePitch = 0;
+        int surfaceBitsPerPixel = 32;
+    };
+
     std::unordered_map<std::string, WNDPROC> g_registeredClasses;
     std::unordered_map<HWND, WNDPROC> g_windowProcedures;
     std::queue<MSG> g_messageQueue;
+    std::unordered_set<UINT> g_activeTimerIds;
     bool g_videoInitialized = false;
     std::atomic<UINT> g_nextTimerId{1};
     HWND g_focusWindow = NULL;
+
+    CompatBitmap* AsCompatBitmap(HGDIOBJ object)
+    {
+        auto* bitmap = reinterpret_cast<CompatBitmap*>(object);
+        if (!bitmap || bitmap->magic != kCompatBitmapMagic) {
+            return nullptr;
+        }
+        return bitmap;
+    }
+
+    CompatDC* AsCompatDC(HDC dc)
+    {
+        auto* compatDc = reinterpret_cast<CompatDC*>(dc);
+        if (!compatDc || compatDc->magic != kCompatDcMagic) {
+            return nullptr;
+        }
+        return compatDc;
+    }
+
+    std::string NormalizePath(const char* path)
+    {
+        std::string normalized = path ? path : "";
+        for (char& ch : normalized) {
+            if (ch == '\\') {
+                ch = '/';
+            }
+        }
+        return normalized;
+    }
+
+    CompatBitmap* CreateCompatBitmapFromSurface(SDL_Surface* surface)
+    {
+        if (!surface) {
+            return nullptr;
+        }
+
+        SDL_Surface* rgbaSurface = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
+        if (!rgbaSurface) {
+            SDL_Log("free-api LoadImageA: SDL_ConvertSurface failed: %s", SDL_GetError());
+            return nullptr;
+        }
+
+        auto* bitmap = new CompatBitmap{};
+        bitmap->width = rgbaSurface->w;
+        bitmap->height = rgbaSurface->h;
+        bitmap->bitsPerPixel = 32;
+        bitmap->pitch = bitmap->width * 4;
+        bitmap->pixels.resize(static_cast<size_t>(bitmap->pitch) * static_cast<size_t>(bitmap->height));
+
+        for (int y = 0; y < bitmap->height; ++y) {
+            const auto* srcRow = static_cast<const uint8_t*>(rgbaSurface->pixels) + static_cast<size_t>(y) * static_cast<size_t>(rgbaSurface->pitch);
+            auto* dstRow = bitmap->pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(bitmap->pitch);
+            memcpy(dstRow, srcRow, static_cast<size_t>(bitmap->pitch));
+        }
+
+        SDL_DestroySurface(rgbaSurface);
+        return bitmap;
+    }
+
+    void ScaleCompatBitmap(CompatBitmap& bitmap, const int targetWidth, const int targetHeight)
+    {
+        if (targetWidth <= 0 || targetHeight <= 0 || (targetWidth == bitmap.width && targetHeight == bitmap.height)) {
+            return;
+        }
+
+        std::vector<uint8_t> scaled(static_cast<size_t>(targetWidth) * static_cast<size_t>(targetHeight) * 4u, 0);
+        const int srcWidth = bitmap.width;
+        const int srcHeight = bitmap.height;
+        const int srcPitch = bitmap.pitch;
+        const uint8_t* srcData = bitmap.pixels.data();
+
+        for (int y = 0; y < targetHeight; ++y) {
+            const int srcY = (y * srcHeight) / targetHeight;
+            auto* dstRow = scaled.data() + static_cast<size_t>(y) * static_cast<size_t>(targetWidth) * 4u;
+            for (int x = 0; x < targetWidth; ++x) {
+                const int srcX = (x * srcWidth) / targetWidth;
+                const auto* srcPixel = srcData + static_cast<size_t>(srcY) * static_cast<size_t>(srcPitch) + static_cast<size_t>(srcX) * 4u;
+                auto* dstPixel = dstRow + static_cast<size_t>(x) * 4u;
+                dstPixel[0] = srcPixel[0];
+                dstPixel[1] = srcPixel[1];
+                dstPixel[2] = srcPixel[2];
+                dstPixel[3] = srcPixel[3];
+            }
+        }
+
+        bitmap.width = targetWidth;
+        bitmap.height = targetHeight;
+        bitmap.pitch = targetWidth * 4;
+        bitmap.pixels.swap(scaled);
+    }
 
     bool EnsureVideoSubsystem()
     {
@@ -30,10 +151,12 @@ namespace {
         }
 
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+            SDL_Log("free-api EnsureVideoSubsystem: SDL_INIT_VIDEO failed: %s", SDL_GetError());
             return false;
         }
 
         g_videoInitialized = true;
+        SDL_Log("free-api EnsureVideoSubsystem: SDL video initialized");
         return true;
     }
 
@@ -171,12 +294,24 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
     (void)hInstance;
     (void)lpParam;
 
+    SDL_Log("free-api CreateWindowExA: class=%s title=%s style=0x%08lx exStyle=0x%08lx pos=(%d,%d) size=%dx%d", 
+            lpClassName ? lpClassName : "<null>",
+            lpWindowName ? lpWindowName : "<null>",
+            static_cast<unsigned long>(dwStyle),
+            static_cast<unsigned long>(dwExStyle),
+            X,
+            Y,
+            nWidth,
+            nHeight);
+
     if (!lpClassName) {
+        SDL_Log("free-api CreateWindowExA: missing class name");
         return NULL;
     }
 
     const auto classIt = g_registeredClasses.find(lpClassName);
     if (classIt == g_registeredClasses.end()) {
+        SDL_Log("free-api CreateWindowExA: class not registered: %s", lpClassName);
         return NULL;
     }
 
@@ -196,14 +331,23 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
         flags |= SDL_WINDOW_BORDERLESS;
     }
 
+    SDL_Log("free-api SDL_CreateWindow: title=%s width=%d height=%d flags=0x%08x", 
+            lpWindowName ? lpWindowName : lpClassName,
+            width,
+            height,
+            static_cast<unsigned>(flags));
     auto* sdlWindow = SDL_CreateWindow(lpWindowName ? lpWindowName : lpClassName, width, height, flags);
     if (!sdlWindow) {
+        SDL_Log("free-api SDL_CreateWindow failed: %s", SDL_GetError());
         return NULL;
     }
+
+    SDL_Log("free-api SDL_CreateWindow result: window=%p id=%u", static_cast<void*>(sdlWindow), static_cast<unsigned>(SDL_GetWindowID(sdlWindow)));
 
     const int posX = (X < 0) ? SDL_WINDOWPOS_CENTERED : X;
     const int posY = (Y < 0) ? SDL_WINDOWPOS_CENTERED : Y;
     SDL_SetWindowPosition(sdlWindow, posX, posY);
+    SDL_Log("free-api SDL_SetWindowPosition: window=%p x=%d y=%d", static_cast<void*>(sdlWindow), posX, posY);
 
     HWND hwnd = reinterpret_cast<HWND>(sdlWindow);
     g_windowProcedures[hwnd] = classIt->second;
@@ -223,6 +367,12 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
     createStruct.lpszClass = lpClassName;
     createStruct.dwExStyle = dwExStyle;
     classIt->second(hwnd, WM_CREATE, 0, reinterpret_cast<LPARAM>(&createStruct));
+
+    SDL_Log("free-api CreateWindowExA result: hwnd=%p visible=%s popup=%s caption=%s", 
+            hwnd,
+            ((dwStyle & WS_VISIBLE) != 0) ? "yes" : "no",
+            ((dwStyle & WS_POPUP) != 0) ? "yes" : "no",
+            ((dwStyle & WS_CAPTION) != 0) ? "yes" : "no");
 
     return hwnd;
 }
@@ -277,6 +427,7 @@ BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
     }
 
     auto* sdlWindow = reinterpret_cast<SDL_Window*>(hWnd);
+    SDL_Log("free-api ShowWindow: hwnd=%p cmd=%d window=%p", hWnd, nCmdShow, static_cast<void*>(sdlWindow));
     switch (nCmdShow) {
         case SW_HIDE:
             SDL_HideWindow(sdlWindow);
@@ -300,6 +451,11 @@ BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
             SDL_RaiseWindow(sdlWindow);
             break;
     }
+
+    int windowWidth = 0;
+    int windowHeight = 0;
+    SDL_GetWindowSize(sdlWindow, &windowWidth, &windowHeight);
+    SDL_Log("free-api ShowWindow applied: window=%p size=%dx%d", static_cast<void*>(sdlWindow), windowWidth, windowHeight);
 
     return TRUE;
 }
@@ -331,7 +487,9 @@ BOOL WINAPI UpdateWindow(HWND hWnd)
         return FALSE;
     }
 
-    SDL_RaiseWindow(reinterpret_cast<SDL_Window*>(hWnd));
+    auto* sdlWindow = reinterpret_cast<SDL_Window*>(hWnd);
+    SDL_RaiseWindow(sdlWindow);
+    SDL_Log("free-api UpdateWindow: hwnd=%p raised window=%p", hWnd, static_cast<void*>(sdlWindow));
     return TRUE;
 }
 
@@ -470,19 +628,64 @@ HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName)
     return reinterpret_cast<HMODULE>(static_cast<uintptr_t>(1));
 }
 
+HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel)
+{
+    if (!pixels || width <= 0 || height <= 0 || pitch <= 0 || bitsPerPixel != 32) {
+        return NULL;
+    }
+
+    auto* dc = new CompatDC{};
+    dc->kind = CompatDcKind::Surface;
+    dc->surfacePixels = static_cast<uint8_t*>(pixels);
+    dc->surfaceWidth = width;
+    dc->surfaceHeight = height;
+    dc->surfacePitch = pitch;
+    dc->surfaceBitsPerPixel = bitsPerPixel;
+    return reinterpret_cast<HDC>(dc);
+}
+
+BOOL FreeApiDestroySurfaceDC(HDC hdc)
+{
+    auto* dc = AsCompatDC(hdc);
+    if (!dc) {
+        return FALSE;
+    }
+
+    delete dc;
+    return TRUE;
+}
+
 HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy, UINT fuLoad)
 {
     (void)hInst;
-    (void)name;
-    (void)type;
-    (void)cx;
-    (void)cy;
-    (void)fuLoad;
 
-    BITMAP* bitmap = new BITMAP{};
-    bitmap->bmWidth = cx > 0 ? cx : 320;
-    bitmap->bmHeight = cy > 0 ? cy : 200;
-    bitmap->bmBitsPixel = 8;
+    if (type != IMAGE_BITMAP || !name) {
+        return NULL;
+    }
+
+    if ((fuLoad & LR_LOADFROMFILE) == 0) {
+        SDL_Log("free-api LoadImageA: resource bitmap loading is not implemented for '%s'", name);
+        return NULL;
+    }
+
+    std::string normalizedPath = NormalizePath(name);
+    SDL_Surface* loaded = SDL_LoadBMP(normalizedPath.c_str());
+    if (!loaded) {
+        SDL_Log("free-api LoadImageA: SDL_LoadBMP failed for '%s': %s", normalizedPath.c_str(), SDL_GetError());
+        return NULL;
+    }
+
+    CompatBitmap* bitmap = CreateCompatBitmapFromSurface(loaded);
+    SDL_DestroySurface(loaded);
+    if (!bitmap) {
+        return NULL;
+    }
+
+    if (cx > 0 && cy > 0) {
+        ScaleCompatBitmap(*bitmap, cx, cy);
+    }
+
+    SDL_Log("free-api LoadImageA: loaded bitmap '%s' -> %dx%d", normalizedPath.c_str(), bitmap->width, bitmap->height);
     return reinterpret_cast<HANDLE>(bitmap);
 }
 
@@ -492,37 +695,69 @@ int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv)
         return 0;
     }
 
-    BITMAP* src = reinterpret_cast<BITMAP*>(h);
-    int copySize = c < static_cast<int>(sizeof(BITMAP)) ? c : static_cast<int>(sizeof(BITMAP));
-    memcpy(pv, src, static_cast<size_t>(copySize));
-    return copySize;
+    CompatBitmap* bitmap = AsCompatBitmap(reinterpret_cast<HGDIOBJ>(h));
+    if (!bitmap) {
+        return 0;
+    }
+
+    BITMAP info{};
+    info.bmType = 0;
+    info.bmWidth = bitmap->width;
+    info.bmHeight = bitmap->height;
+    info.bmWidthBytes = bitmap->pitch;
+    info.bmPlanes = 1;
+    info.bmBitsPixel = static_cast<WORD>(bitmap->bitsPerPixel);
+    info.bmBits = bitmap->pixels.data();
+
+    const int copySize = c < static_cast<int>(sizeof(BITMAP)) ? c : static_cast<int>(sizeof(BITMAP));
+    memcpy(pv, &info, static_cast<size_t>(copySize));
+    return static_cast<int>(sizeof(BITMAP));
 }
 
 BOOL WINAPI DeleteObject(HGDIOBJ ho)
 {
-    if (!ho) {
+    auto* bitmap = AsCompatBitmap(ho);
+    if (!bitmap) {
         return FALSE;
     }
 
-    delete reinterpret_cast<BITMAP*>(ho);
+    delete bitmap;
     return TRUE;
 }
 
 HDC WINAPI CreateCompatibleDC(HDC hdc)
 {
     (void)hdc;
-    return reinterpret_cast<HDC>(static_cast<uintptr_t>(g_nextTimerId.fetch_add(1) + 1024));
+    auto* dc = new CompatDC{};
+    dc->kind = CompatDcKind::Memory;
+    return reinterpret_cast<HDC>(dc);
 }
 
 HGDIOBJ WINAPI SelectObject(HDC hdc, HGDIOBJ h)
 {
-    (void)hdc;
-    return h;
+    CompatDC* dc = AsCompatDC(hdc);
+    if (!dc) {
+        return NULL;
+    }
+
+    if (CompatBitmap* bitmap = AsCompatBitmap(h)) {
+        HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(dc->selectedBitmap);
+        dc->selectedBitmap = bitmap;
+        return previous;
+    }
+
+    return NULL;
 }
 
 BOOL WINAPI DeleteDC(HDC hdc)
 {
-    return hdc ? TRUE : FALSE;
+    CompatDC* dc = AsCompatDC(hdc);
+    if (!dc) {
+        return FALSE;
+    }
+
+    delete dc;
+    return TRUE;
 }
 
 BOOL WINAPI StretchBlt(HDC hdcDest,
@@ -537,33 +772,166 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
                        int hSrc,
                        DWORD rop)
 {
-    (void)hdcDest;
-    (void)xDest;
-    (void)yDest;
-    (void)wDest;
-    (void)hDest;
-    (void)hdcSrc;
-    (void)xSrc;
-    (void)ySrc;
-    (void)wSrc;
-    (void)hSrc;
-    (void)rop;
+    if (rop != SRCCOPY) {
+        SDL_Log("free-api StretchBlt: unsupported ROP=0x%08lx", static_cast<unsigned long>(rop));
+        return FALSE;
+    }
+
+    CompatDC* dst = AsCompatDC(hdcDest);
+    CompatDC* src = AsCompatDC(hdcSrc);
+    if (!dst || !src || dst->kind != CompatDcKind::Surface || dst->surfaceBitsPerPixel != 32 || !dst->surfacePixels || !src->selectedBitmap) {
+        SDL_Log("free-api StretchBlt: unsupported DC pair dst=%p src=%p", reinterpret_cast<void*>(hdcDest), reinterpret_cast<void*>(hdcSrc));
+        return FALSE;
+    }
+
+    if (wDest <= 0 || hDest <= 0 || wSrc <= 0 || hSrc <= 0) {
+        return FALSE;
+    }
+
+    CompatBitmap* srcBitmap = src->selectedBitmap;
+    const uint8_t* srcPixels = srcBitmap->pixels.data();
+
+    for (int y = 0; y < hDest; ++y) {
+        const int dstY = yDest + y;
+        if (dstY < 0 || dstY >= dst->surfaceHeight) {
+            continue;
+        }
+
+        const int srcY = ySrc + static_cast<int>((static_cast<int64_t>(y) * static_cast<int64_t>(hSrc)) / static_cast<int64_t>(hDest));
+        if (srcY < 0 || srcY >= srcBitmap->height) {
+            continue;
+        }
+
+        auto* dstRow = dst->surfacePixels + static_cast<size_t>(dstY) * static_cast<size_t>(dst->surfacePitch);
+        const auto* srcRow = srcPixels + static_cast<size_t>(srcY) * static_cast<size_t>(srcBitmap->pitch);
+
+        for (int x = 0; x < wDest; ++x) {
+            const int dstX = xDest + x;
+            if (dstX < 0 || dstX >= dst->surfaceWidth) {
+                continue;
+            }
+
+            const int srcX = xSrc + static_cast<int>((static_cast<int64_t>(x) * static_cast<int64_t>(wSrc)) / static_cast<int64_t>(wDest));
+            if (srcX < 0 || srcX >= srcBitmap->width) {
+                continue;
+            }
+
+            const auto* srcPixel = srcRow + static_cast<size_t>(srcX) * 4u;
+            auto* dstPixel = dstRow + static_cast<size_t>(dstX) * 4u;
+            dstPixel[0] = srcPixel[0];
+            dstPixel[1] = srcPixel[1];
+            dstPixel[2] = srcPixel[2];
+            dstPixel[3] = 255;
+        }
+    }
+
+    int dstSampleX = xDest;
+    int dstSampleY = yDest;
+    if (dstSampleX < 0) dstSampleX = 0;
+    if (dstSampleY < 0) dstSampleY = 0;
+    if (dstSampleX >= dst->surfaceWidth) dstSampleX = dst->surfaceWidth - 1;
+    if (dstSampleY >= dst->surfaceHeight) dstSampleY = dst->surfaceHeight - 1;
+
+    uint8_t dstR = 0;
+    uint8_t dstG = 0;
+    uint8_t dstB = 0;
+    if (dst->surfaceWidth > 0 && dst->surfaceHeight > 0) {
+        const auto* dstSample = dst->surfacePixels + static_cast<size_t>(dstSampleY) * static_cast<size_t>(dst->surfacePitch) + static_cast<size_t>(dstSampleX) * 4u;
+        dstR = dstSample[0];
+        dstG = dstSample[1];
+        dstB = dstSample[2];
+    }
+
+    int srcSampleX = xSrc;
+    int srcSampleY = ySrc;
+    if (srcSampleX < 0) srcSampleX = 0;
+    if (srcSampleY < 0) srcSampleY = 0;
+    if (srcSampleX >= srcBitmap->width) srcSampleX = srcBitmap->width - 1;
+    if (srcSampleY >= srcBitmap->height) srcSampleY = srcBitmap->height - 1;
+
+    uint8_t srcR = 0;
+    uint8_t srcG = 0;
+    uint8_t srcB = 0;
+    if (srcBitmap->width > 0 && srcBitmap->height > 0) {
+        const auto* srcSample = srcPixels + static_cast<size_t>(srcSampleY) * static_cast<size_t>(srcBitmap->pitch) + static_cast<size_t>(srcSampleX) * 4u;
+        srcR = srcSample[0];
+        srcG = srcSample[1];
+        srcB = srcSample[2];
+    }
+
+    SDL_Log("free-api StretchBlt: copied src=%dx%d[%d,%d] rgb=(%u,%u,%u) to dst=%dx%d[%d,%d] rgb=(%u,%u,%u)",
+            wSrc,
+            hSrc,
+            xSrc,
+            ySrc,
+            static_cast<unsigned>(srcR),
+            static_cast<unsigned>(srcG),
+            static_cast<unsigned>(srcB),
+            wDest,
+            hDest,
+            xDest,
+            yDest,
+            static_cast<unsigned>(dstR),
+            static_cast<unsigned>(dstG),
+            static_cast<unsigned>(dstB));
     return TRUE;
 }
 
 COLORREF WINAPI GetPixel(HDC hdc, int x, int y)
 {
-    (void)hdc;
-    (void)x;
-    (void)y;
-    return 0;
+    CompatDC* dc = AsCompatDC(hdc);
+    if (!dc) {
+        return 0;
+    }
+
+    const uint8_t* pixel = nullptr;
+    if (dc->kind == CompatDcKind::Surface) {
+        if (x < 0 || y < 0 || x >= dc->surfaceWidth || y >= dc->surfaceHeight || !dc->surfacePixels) {
+            return 0;
+        }
+        pixel = dc->surfacePixels + static_cast<size_t>(y) * static_cast<size_t>(dc->surfacePitch) + static_cast<size_t>(x) * 4u;
+    } else if (dc->selectedBitmap) {
+        if (x < 0 || y < 0 || x >= dc->selectedBitmap->width || y >= dc->selectedBitmap->height) {
+            return 0;
+        }
+        pixel = dc->selectedBitmap->pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(dc->selectedBitmap->pitch) + static_cast<size_t>(x) * 4u;
+    }
+
+    if (!pixel) {
+        return 0;
+    }
+
+    return RGB(pixel[0], pixel[1], pixel[2]);
 }
 
 COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color)
 {
-    (void)hdc;
-    (void)x;
-    (void)y;
+    CompatDC* dc = AsCompatDC(hdc);
+    if (!dc) {
+        return color;
+    }
+
+    uint8_t* pixel = nullptr;
+    if (dc->kind == CompatDcKind::Surface) {
+        if (x < 0 || y < 0 || x >= dc->surfaceWidth || y >= dc->surfaceHeight || !dc->surfacePixels) {
+            return color;
+        }
+        pixel = dc->surfacePixels + static_cast<size_t>(y) * static_cast<size_t>(dc->surfacePitch) + static_cast<size_t>(x) * 4u;
+    } else if (dc->selectedBitmap) {
+        if (x < 0 || y < 0 || x >= dc->selectedBitmap->width || y >= dc->selectedBitmap->height) {
+            return color;
+        }
+        pixel = dc->selectedBitmap->pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(dc->selectedBitmap->pitch) + static_cast<size_t>(x) * 4u;
+    }
+
+    if (!pixel) {
+        return color;
+    }
+
+    pixel[0] = static_cast<uint8_t>((color >> 16) & 0xFFu);
+    pixel[1] = static_cast<uint8_t>((color >> 8) & 0xFFu);
+    pixel[2] = static_cast<uint8_t>(color & 0xFFu);
+    pixel[3] = 255;
     return color;
 }
 
@@ -746,7 +1114,11 @@ HWND WINAPI SetFocus(HWND hWnd)
     HWND oldFocus = g_focusWindow;
     g_focusWindow = hWnd;
     if (hWnd) {
-        SDL_RaiseWindow(reinterpret_cast<SDL_Window*>(hWnd));
+        auto* sdlWindow = reinterpret_cast<SDL_Window*>(hWnd);
+        SDL_RaiseWindow(sdlWindow);
+        SDL_Log("free-api SetFocus: old=%p new=%p window=%p", oldFocus, hWnd, static_cast<void*>(sdlWindow));
+    } else {
+        SDL_Log("free-api SetFocus: old=%p new=<null>", oldFocus);
     }
     return oldFocus;
 }
@@ -864,8 +1236,17 @@ void WINAPI PostQuitMessage(int nExitCode)
 
 BOOL WINAPI WaitMessage(void)
 {
+    if (!g_messageQueue.empty()) {
+        return TRUE;
+    }
+
     PumpSdlEvents();
+    if (!g_messageQueue.empty()) {
+        return TRUE;
+    }
+
     SDL_Delay(1);
+    PumpSdlEvents();
     return TRUE;
 }
 
@@ -880,13 +1261,25 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
     (void)lpTimeProc;
     (void)dwUser;
     (void)fuEvent;
-    return g_nextTimerId.fetch_add(1);
+
+    if (uDelay == 0) {
+        SDL_Log("free-api timeSetEvent: zero delay is unsupported in compatibility mode");
+        return 0;
+    }
+
+    const UINT timerId = g_nextTimerId.fetch_add(1);
+    g_activeTimerIds.insert(timerId);
+    return timerId;
 }
 
 MMRESULT WINAPI timeKillEvent(UINT uTimerID)
 {
-    (void)uTimerID;
-    return 0;
+    if (uTimerID == 0 || g_activeTimerIds.erase(uTimerID) == 0) {
+        SDL_Log("free-api timeKillEvent: unknown timer id %u", uTimerID);
+        return 1;
+    }
+
+    return MMSYSERR_NOERROR;
 }
 
 MMRESULT WINAPI joyGetPosEx(UINT uJoyID, LPJOYINFOEX pji)

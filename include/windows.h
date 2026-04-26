@@ -12,13 +12,28 @@
 extern "C" {
 #endif
 
-// WinBase.h (Subset) - Status: PARTIAL
+/**
+ * @name WinBase subset
+ * @brief Process, timing and debug helpers used by the game.
+ * @note Status: PARTIAL
+ */
+/** @{ */
+/** @brief Suspends the current thread for at least `dwMilliseconds`. @note Status: IMPLEMENTED */
 void WINAPI Sleep(DWORD dwMilliseconds);
+/** @brief Returns elapsed system ticks in milliseconds. @note Status: IMPLEMENTED */
 DWORD WINAPI GetTickCount(void);
+/** @brief Closes a generic handle. @note Status: PARTIAL */
 BOOL WINAPI CloseHandle(HANDLE hObject);
+/** @brief Writes debug text to the compatibility logger (ANSI). @note Status: IMPLEMENTED */
 void WINAPI OutputDebugStringA(LPCSTR lpOutputString);
+/** @brief Writes debug text to the compatibility logger (wide). @note Status: IMPLEMENTED */
 void WINAPI OutputDebugStringW(LPCWSTR lpOutputString);
+/** @} */
 
+/**
+ * @brief Legacy memory status structure filled by `GlobalMemoryStatus`.
+ * @note Status: PARTIAL
+ */
 typedef struct _MEMORYSTATUS {
     DWORD dwLength;
     DWORD dwMemoryLoad;
@@ -30,7 +45,14 @@ typedef struct _MEMORYSTATUS {
     DWORD dwAvailVirtual;
 } MEMORYSTATUS, *LPMEMORYSTATUS;
 
-void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer); // Status: STUB
+/**
+ * @brief Reports process-visible memory statistics.
+ *
+ * Values are compatibility approximations and should not be treated as exact
+ * physical memory telemetry.
+ * @note Status: PARTIAL
+ */
+void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer);
 
 #ifdef UNICODE
 #define OutputDebugString OutputDebugStringW
@@ -38,18 +60,25 @@ void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer); // Status: STUB
 #define OutputDebugString OutputDebugStringA
 #endif
 
-// WinUser.h (Subset) - Status: PARTIAL
+/**
+ * @name WinUser subset
+ * @brief Window, message-loop and input declarations consumed by legacy game code.
+ * @note Status: PARTIAL
+ */
+/** @{ */
 typedef WORD ATOM;
 typedef DWORD COLORREF;
 typedef UINT MCIDEVICEID;
 
-extern char* _pgmptr; // Status: STUB
+/** @brief Program path pointer expected by old CRT startup code. @note Status: PARTIAL */
+extern char* _pgmptr;
 
-// Legacy alias used by old Win32 codebases - Status: STUB
+/** @brief Legacy alias used by older codebases. @note Status: STUB */
 #ifndef byte
 #define byte BYTE
 #endif
 
+/** @brief Win32 rectangle structure. @note Status: IMPLEMENTED */
 typedef struct tagRECT {
     LONG left;
     LONG top;
@@ -57,11 +86,13 @@ typedef struct tagRECT {
     LONG bottom;
 } RECT, *PRECT, *LPRECT;
 
+/** @brief Win32 integer point structure. @note Status: IMPLEMENTED */
 typedef struct tagPOINT {
     LONG x;
     LONG y;
 } POINT, *PPOINT, *LPPOINT;
 
+/** @brief GDI bitmap metadata structure. @note Status: STUB */
 typedef struct tagBITMAP {
     LONG bmType;
     LONG bmWidth;
@@ -72,6 +103,7 @@ typedef struct tagBITMAP {
     LPVOID bmBits;
 } BITMAP, *PBITMAP, *LPBITMAP;
 
+/** @brief RGB color quad used by DIB/BMP formats. @note Status: STUB */
 typedef struct tagRGBQUAD {
     BYTE rgbBlue;
     BYTE rgbGreen;
@@ -81,6 +113,7 @@ typedef struct tagRGBQUAD {
 
 #ifndef FREE_API_PALETTEENTRY_DEFINED
 #define FREE_API_PALETTEENTRY_DEFINED
+/** @brief Palette entry layout shared with DirectDraw. @note Status: PARTIAL */
 typedef struct tagPALETTEENTRY {
     BYTE peRed;
     BYTE peGreen;
@@ -89,6 +122,7 @@ typedef struct tagPALETTEENTRY {
 } PALETTEENTRY, *LPPALETTEENTRY;
 #endif
 
+/** @brief BMP file header. @note Status: STUB */
 typedef struct tagBITMAPFILEHEADER {
     WORD bfType;
     DWORD bfSize;
@@ -97,6 +131,7 @@ typedef struct tagBITMAPFILEHEADER {
     DWORD bfOffBits;
 } BITMAPFILEHEADER, *LPBITMAPFILEHEADER;
 
+/** @brief BMP info header. @note Status: STUB */
 typedef struct tagBITMAPINFOHEADER {
     DWORD biSize;
     LONG biWidth;
@@ -111,6 +146,7 @@ typedef struct tagBITMAPINFOHEADER {
     DWORD biClrImportant;
 } BITMAPINFOHEADER, *LPBITMAPINFOHEADER;
 
+/** @brief Message queue entry passed through Win32 dispatch loop. @note Status: PARTIAL */
 typedef struct tagMSG {
     HWND hwnd;
     UINT message;
@@ -120,6 +156,7 @@ typedef struct tagMSG {
     POINT pt;
 } MSG, *PMSG, *LPMSG;
 
+/** @brief Window creation payload for `WM_CREATE` processing. @note Status: PARTIAL */
 typedef struct tagCREATESTRUCTA {
     LPVOID lpCreateParams;
     HINSTANCE hInstance;
@@ -140,6 +177,7 @@ typedef LPCREATESTRUCTA LPCREATESTRUCT;
 
 typedef LRESULT(CALLBACK* WNDPROC)(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 
+/** @brief Class registration descriptor for `RegisterClassA`. @note Status: PARTIAL */
 typedef struct tagWNDCLASSA {
     UINT style;
     WNDPROC lpfnWndProc;
@@ -153,6 +191,12 @@ typedef struct tagWNDCLASSA {
     LPCSTR lpszClassName;
 } WNDCLASSA, *PWNDCLASSA, *LPWNDCLASSA;
 
+/**
+ * @name Win32 message constants
+ * @brief Minimal message subset used by the current game runtime.
+ * @note Status: PARTIAL
+ */
+/** @{ */
 #define WM_NULL 0x0000
 #define WM_CREATE 0x0001
 #define WM_DESTROY 0x0002
@@ -176,19 +220,28 @@ typedef struct tagWNDCLASSA {
 #define WM_RBUTTONDOWN 0x0204
 #define WM_RBUTTONUP 0x0205
 #define WM_USER 0x0400
+/** @} */
 
+/** @brief `PeekMessage` mode constants. @note Status: IMPLEMENTED */
 #define PM_NOREMOVE 0x0000
 #define PM_REMOVE 0x0001
 
 #define SW_HIDE 0
 #define SW_SHOW 5
 
+/** @brief Message box style subset. @note Status: STUB */
 #define MB_OK 0x00000000L
 
 #ifndef E_FAIL
 #define E_FAIL ((HRESULT)0x80004005L)
 #endif
 
+/**
+ * @name Virtual-key subset
+ * @brief Keyboard VK constants consumed by the game.
+ * @note Status: PARTIAL
+ */
+/** @{ */
 #define VK_F5 0x74
 #define VK_F6 0x75
 #define VK_F7 0x76
@@ -210,7 +263,14 @@ typedef struct tagWNDCLASSA {
 #define VK_DOWN 0x28
 #define VK_HOME 0x24
 #define VK_SPACE 0x20
+/** @} */
 
+/**
+ * @name Window class/style constants
+ * @brief Legacy style values interpreted by the compatibility layer.
+ * @note Status: PARTIAL
+ */
+/** @{ */
 #define CS_VREDRAW 0x0001
 #define CS_HREDRAW 0x0002
 
@@ -233,6 +293,7 @@ typedef struct tagWNDCLASSA {
 
 #define LR_LOADFROMFILE 0x00000010
 #define LR_CREATEDIBSECTION 0x00002000
+/** @} */
 
 #define SRCCOPY 0x00CC0020
 
@@ -260,8 +321,10 @@ typedef struct tagWNDCLASSA {
 #define CopyMemory(Destination, Source, Length) memmove((Destination), (Source), (Length))
 #endif
 
+/** @brief Legacy desktop pseudo-window handle. @note Status: IMPLEMENTED */
 #define HWND_DESKTOP ((HWND)0)
 
+/** @brief Packs RGB bytes into COLORREF. @note Status: IMPLEMENTED */
 #define RGB(r, g, b) ((COLORREF)(((BYTE)(r) | ((WORD)((BYTE)(g)) << 8)) | (((DWORD)(BYTE)(b)) << 16)))
 
 #ifndef MAKELONG
@@ -276,7 +339,9 @@ typedef struct tagWNDCLASSA {
 #define HIWORD(l) ((WORD)((DWORD_PTR)(l) >> 16))
 #endif
 
+/** @brief Registers a window class (ANSI). @note Status: PARTIAL */
 ATOM WINAPI RegisterClassA(const WNDCLASSA* lpWndClass);
+/** @brief Creates a window with extended style (ANSI). @note Status: PARTIAL */
 HWND WINAPI CreateWindowExA(DWORD dwExStyle,
                             LPCSTR lpClassName,
                             LPCSTR lpWindowName,
@@ -289,6 +354,7 @@ HWND WINAPI CreateWindowExA(DWORD dwExStyle,
                             HMENU hMenu,
                             HINSTANCE hInstance,
                             LPVOID lpParam);
+/** @brief Creates a window (ANSI). @note Status: PARTIAL */
 HWND WINAPI CreateWindowA(LPCSTR lpClassName,
                           LPCSTR lpWindowName,
                           DWORD dwStyle,
@@ -300,36 +366,65 @@ HWND WINAPI CreateWindowA(LPCSTR lpClassName,
                           HMENU hMenu,
                           HINSTANCE hInstance,
                           LPVOID lpParam);
+/** @brief Destroys a window and releases internal mappings. @note Status: PARTIAL */
 BOOL WINAPI DestroyWindow(HWND hWnd);
+/** @brief Changes window visibility/state. @note Status: PARTIAL */
 BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow);
+/** @brief Requests immediate window refresh/raise. @note Status: PARTIAL */
 BOOL WINAPI UpdateWindow(HWND hWnd);
-BOOL WINAPI MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint); // Status: STUB
-BOOL WINAPI InvalidateRect(HWND hWnd, const RECT* lpRect, BOOL bErase); // Status: STUB
+/** @brief Moves/resizes a window. @note Status: STUB */
+BOOL WINAPI MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint);
+/** @brief Invalidates window client area. @note Status: STUB */
+BOOL WINAPI InvalidateRect(HWND hWnd, const RECT* lpRect, BOOL bErase);
+/** @brief Polls message queue. @note Status: IMPLEMENTED */
 BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
-BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax); // Status: STUB
+/** @brief Blocks until a message is available or quit is posted. @note Status: PARTIAL */
+BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
+/** @brief Performs keyboard translation phase. @note Status: PARTIAL */
 BOOL WINAPI TranslateMessage(const MSG* lpMsg);
+/** @brief Dispatches message to a window procedure. @note Status: PARTIAL */
 LRESULT WINAPI DispatchMessageA(const MSG* lpMsg);
+/** @brief Default window procedure fallback. @note Status: PARTIAL */
 LRESULT WINAPI DefWindowProcA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+/** @brief Posts quit message to the thread queue. @note Status: IMPLEMENTED */
 void WINAPI PostQuitMessage(int nExitCode);
-BOOL WINAPI WaitMessage(void); // Status: STUB
+/** @brief Waits until the message queue receives work. @note Status: PARTIAL */
+BOOL WINAPI WaitMessage(void);
 
-BOOL WINAPI SetWindowTextA(HWND hWnd, LPCSTR lpString); // Status: STUB
-BOOL WINAPI PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam); // Status: STUB
-int WINAPI MessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType); // Status: STUB
-BOOL WINAPI GetCursorPos(LPPOINT lpPoint); // Status: STUB
-BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint); // Status: STUB
-HCURSOR WINAPI SetCursor(HCURSOR hCursor); // Status: STUB
-int WINAPI ShowCursor(BOOL bShow); // Status: STUB
-BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint); // Status: STUB
-BOOL WINAPI SetCursorPos(int X, int Y); // Status: STUB
-int WINAPI LoadStringA(HINSTANCE hInstance, UINT uID, LPSTR lpBuffer, int cchBufferMax); // Status: STUB
-HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName); // Status: STUB
-HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy, UINT fuLoad); // Status: STUB
-int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv); // Status: STUB
-BOOL WINAPI DeleteObject(HGDIOBJ ho); // Status: STUB
-HDC WINAPI CreateCompatibleDC(HDC hdc); // Status: STUB
-HGDIOBJ WINAPI SelectObject(HDC hdc, HGDIOBJ h); // Status: STUB
-BOOL WINAPI DeleteDC(HDC hdc); // Status: STUB
+/** @brief Sets window title text. @note Status: STUB */
+BOOL WINAPI SetWindowTextA(HWND hWnd, LPCSTR lpString);
+/** @brief Posts a message to the queue. @note Status: STUB */
+BOOL WINAPI PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+/** @brief Displays a simple message box replacement. @note Status: STUB */
+int WINAPI MessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType);
+/** @brief Retrieves cursor position in screen coordinates. @note Status: STUB */
+BOOL WINAPI GetCursorPos(LPPOINT lpPoint);
+/** @brief Converts screen coordinates to client coordinates. @note Status: STUB */
+BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint);
+/** @brief Sets active cursor shape. @note Status: STUB */
+HCURSOR WINAPI SetCursor(HCURSOR hCursor);
+/** @brief Shows/hides cursor and returns display counter. @note Status: STUB */
+int WINAPI ShowCursor(BOOL bShow);
+/** @brief Converts client coordinates to screen coordinates. @note Status: STUB */
+BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint);
+/** @brief Sets cursor screen position. @note Status: STUB */
+BOOL WINAPI SetCursorPos(int X, int Y);
+/** @brief Loads string resource text. @note Status: STUB */
+int WINAPI LoadStringA(HINSTANCE hInstance, UINT uID, LPSTR lpBuffer, int cchBufferMax);
+/** @brief Returns current module handle. @note Status: STUB */
+HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName);
+/** @brief Loads bitmap/image resource. @note Status: STUB */
+HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy, UINT fuLoad);
+/** @brief Retrieves object info from GDI handle. @note Status: STUB */
+int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv);
+/** @brief Deletes a GDI object. @note Status: STUB */
+BOOL WINAPI DeleteObject(HGDIOBJ ho);
+/** @brief Creates compatible device context. @note Status: STUB */
+HDC WINAPI CreateCompatibleDC(HDC hdc);
+/** @brief Selects object into device context. @note Status: STUB */
+HGDIOBJ WINAPI SelectObject(HDC hdc, HGDIOBJ h);
+/** @brief Deletes device context. @note Status: STUB */
+BOOL WINAPI DeleteDC(HDC hdc);
 BOOL WINAPI StretchBlt(HDC hdcDest,
                        int xDest,
                        int yDest,
@@ -340,30 +435,53 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
                        int ySrc,
                        int wSrc,
                        int hSrc,
-                       DWORD rop); // Status: STUB
-COLORREF WINAPI GetPixel(HDC hdc, int x, int y); // Status: STUB
-COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color); // Status: STUB
-int WINAPI GetDeviceCaps(HDC hdc, int index); // Status: STUB
-UINT WINAPI GetSystemPaletteEntries(HDC hdc, UINT iStartIndex, UINT nEntries, LPVOID lppe); // Status: STUB
-HRSRC WINAPI FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType); // Status: STUB
-HGLOBAL WINAPI LoadResource(HMODULE hModule, HRSRC hResInfo); // Status: STUB
-DWORD WINAPI SizeofResource(HMODULE hModule, HRSRC hResInfo); // Status: STUB
-LPVOID WINAPI LockResource(HGLOBAL hResData); // Status: STUB
-BOOL WINAPI UnlockResource(HGLOBAL hResData); // Status: STUB
-BOOL WINAPI FreeResource(HGLOBAL hResData); // Status: STUB
-int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite); // Status: STUB
-UINT WINAPI _lread(int hFile, LPVOID lpBuffer, UINT uBytes); // Status: STUB
-int WINAPI _lclose(int hFile); // Status: STUB
-BOOL WINAPI DeleteFileA(LPCSTR lpFileName); // Status: STUB
-int WINAPIV wsprintfA(LPSTR lpOut, LPCSTR lpFmt, ...); // Status: STUB
-HCURSOR WINAPI LoadCursorA(HINSTANCE hInstance, LPCSTR lpCursorName); // Status: STUB
-HICON WINAPI LoadIconA(HINSTANCE hInstance, LPCSTR lpIconName); // Status: STUB
-HBRUSH WINAPI GetStockBrush(int fnObject); // Status: STUB
-int WINAPI GetSystemMetrics(int nIndex); // Status: STUB
-BOOL WINAPI AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu); // Status: STUB
-HWND WINAPI SetFocus(HWND hWnd); // Status: STUB
-UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTimerFunc); // Status: STUB
-BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent); // Status: STUB
+                       DWORD rop);
+/** @brief Reads a pixel color from DC. @note Status: STUB */
+COLORREF WINAPI GetPixel(HDC hdc, int x, int y);
+/** @brief Writes a pixel color to DC. @note Status: STUB */
+COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color);
+/** @brief Queries a device capability value. @note Status: STUB */
+int WINAPI GetDeviceCaps(HDC hdc, int index);
+/** @brief Returns palette entries from system palette. @note Status: STUB */
+UINT WINAPI GetSystemPaletteEntries(HDC hdc, UINT iStartIndex, UINT nEntries, LPVOID lppe);
+/** @brief Finds an embedded resource. @note Status: STUB */
+HRSRC WINAPI FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType);
+/** @brief Loads resource block handle. @note Status: STUB */
+HGLOBAL WINAPI LoadResource(HMODULE hModule, HRSRC hResInfo);
+/** @brief Returns resource size in bytes. @note Status: STUB */
+DWORD WINAPI SizeofResource(HMODULE hModule, HRSRC hResInfo);
+/** @brief Locks resource memory. @note Status: STUB */
+LPVOID WINAPI LockResource(HGLOBAL hResData);
+/** @brief Unlocks resource memory. @note Status: STUB */
+BOOL WINAPI UnlockResource(HGLOBAL hResData);
+/** @brief Releases resource handle. @note Status: STUB */
+BOOL WINAPI FreeResource(HGLOBAL hResData);
+/** @brief Legacy low-level open call wrapper. @note Status: STUB */
+int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite);
+/** @brief Legacy low-level read wrapper. @note Status: STUB */
+UINT WINAPI _lread(int hFile, LPVOID lpBuffer, UINT uBytes);
+/** @brief Legacy low-level close wrapper. @note Status: STUB */
+int WINAPI _lclose(int hFile);
+/** @brief Deletes a file by path. @note Status: STUB */
+BOOL WINAPI DeleteFileA(LPCSTR lpFileName);
+/** @brief Legacy formatted print into buffer. @note Status: STUB */
+int WINAPIV wsprintfA(LPSTR lpOut, LPCSTR lpFmt, ...);
+/** @brief Loads a cursor resource. @note Status: STUB */
+HCURSOR WINAPI LoadCursorA(HINSTANCE hInstance, LPCSTR lpCursorName);
+/** @brief Loads an icon resource. @note Status: STUB */
+HICON WINAPI LoadIconA(HINSTANCE hInstance, LPCSTR lpIconName);
+/** @brief Retrieves stock brush handle. @note Status: STUB */
+HBRUSH WINAPI GetStockBrush(int fnObject);
+/** @brief Returns selected system metric value. @note Status: PARTIAL */
+int WINAPI GetSystemMetrics(int nIndex);
+/** @brief Adjusts window rectangle for styles. @note Status: STUB */
+BOOL WINAPI AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
+/** @brief Sets keyboard focus window. @note Status: PARTIAL */
+HWND WINAPI SetFocus(HWND hWnd);
+/** @brief Starts a user timer. @note Status: STUB */
+UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTimerFunc);
+/** @brief Stops a user timer. @note Status: STUB */
+BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent);
 
 static inline BOOL SetRect(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom)
 {
@@ -405,7 +523,9 @@ static inline BOOL UnionRect(LPRECT lprcDst, const RECT* lprcSrc1, const RECT* l
     return TRUE;
 }
 
-BOOL WINAPI GetClientRect(HWND hWnd, LPRECT lpRect); // Status: STUB
+/** @brief Gets current client rectangle. @note Status: STUB */
+BOOL WINAPI GetClientRect(HWND hWnd, LPRECT lpRect);
+/** @} */
 
 typedef int(WINAPI* FREE_API_WINMAIN_PROC)(HINSTANCE, HINSTANCE, LPSTR, int);
 int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** argv);
