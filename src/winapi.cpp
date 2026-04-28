@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <atomic>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -49,7 +50,22 @@ namespace {
     std::unordered_map<std::string, WNDPROC> g_registeredClasses;
     std::unordered_map<HWND, WNDPROC> g_windowProcedures;
     std::queue<MSG> g_messageQueue;
+    // Mutex protecting g_messageQueue. The multimedia timer (timeSetEvent)
+    // dispatches its callback on a separate SDL thread, where the user code
+    // is allowed to call PostMessage. Without locking, concurrent push/pop
+    // would corrupt the std::queue.
+    std::mutex g_messageQueueMutex;
     std::unordered_set<UINT> g_activeTimerIds;
+    // Map from MMTIMER id (we expose) to SDL_TimerID that actually drives it,
+    // plus the user callback parameters that must be passed to LPTIMECALLBACK.
+    struct MmTimerEntry {
+        SDL_TimerID sdlId = 0;
+        LPTIMECALLBACK callback = nullptr;
+        DWORD_PTR user = 0;
+        UINT mmId = 0;
+    };
+    std::unordered_map<UINT, MmTimerEntry> g_mmTimers;
+    std::mutex g_mmTimerMutex;
     bool g_videoInitialized = false;
     std::atomic<UINT> g_nextTimerId{1};
     HWND g_focusWindow = NULL;
@@ -277,7 +293,10 @@ namespace {
         // Initialize debug input flag from environment
         const char* dbgInput = SDL_getenv("FREE_API_DEBUG_INPUT");
         const char* dbgMouse = SDL_getenv("FREE_API_DEBUG_MOUSE");
-        g_debugInput = (dbgInput && dbgInput[0] == '1') || (dbgMouse && dbgMouse[0] == '1');
+        const char* dbgReal  = SDL_getenv("FREE_API_DEBUG_REAL_INPUT");
+        g_debugInput = (dbgInput && dbgInput[0] == '1')
+            || (dbgMouse && dbgMouse[0] == '1')
+            || (dbgReal  && dbgReal[0]  == '1');
         return true;
     }
 
@@ -301,13 +320,20 @@ namespace {
         msg.lParam = lParam;
         msg.time = static_cast<DWORD>(SDL_GetTicks());
         msg.pt = {0, 0};
-        g_messageQueue.push(msg);
+        size_t qsize;
+        {
+            std::lock_guard<std::mutex> lock(g_messageQueueMutex);
+            g_messageQueue.push(msg);
+            qsize = g_messageQueue.size();
+        }
         InputLog("ENQUEUE hwnd=%p msg=0x%04X wParam=0x%X lParam=0x%X qsize=%d",
-            (void*)hwnd, message, (unsigned)wParam, (unsigned)lParam, (int)g_messageQueue.size());
+            (void*)hwnd, message, (unsigned)wParam, (unsigned)lParam, (int)qsize);
     }
 
     void PumpSdlEvents()
     {
+        // Make sure SDL has consumed pending OS events before we poll.
+        SDL_PumpEvents();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
@@ -379,7 +405,10 @@ namespace {
                     break;
                 }
                 case SDL_EVENT_MOUSE_MOTION: {
-                    HWND hwnd = GetActiveWindow();
+                    HWND hwnd = FindWindowById(event.motion.windowID);
+                    if (!hwnd) hwnd = GetActiveWindow();
+                    InputLog("SDL_EVENT_MOUSE_MOTION windowID=%u resolvedHwnd=%p",
+                        (unsigned)event.motion.windowID, (void*)hwnd);
                     if (!hwnd) break;
                     int x = (int)event.motion.x;
                     int y = (int)event.motion.y;
@@ -392,7 +421,10 @@ namespace {
                 }
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
                 case SDL_EVENT_MOUSE_BUTTON_UP: {
-                    HWND hwnd = GetActiveWindow();
+                    HWND hwnd = FindWindowById(event.button.windowID);
+                    if (!hwnd) hwnd = GetActiveWindow();
+                    InputLog("SDL_EVENT_MOUSE_BUTTON windowID=%u resolvedHwnd=%p",
+                        (unsigned)event.button.windowID, (void*)hwnd);
                     if (!hwnd) break;
                     int x = (int)event.button.x;
                     int y = (int)event.button.y;
@@ -1400,10 +1432,11 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
         return FALSE;
     }
 
-    if (g_messageQueue.empty()) {
-        PumpSdlEvents();
-    }
+    // Always pump SDL events so real OS mouse/keyboard events cannot be starved
+    // by other queued messages (e.g. timer-style messages) staying ahead in the queue.
+    PumpSdlEvents();
 
+    std::lock_guard<std::mutex> lock(g_messageQueueMutex);
     if (g_messageQueue.empty()) {
         // Yield CPU briefly to avoid busy-spinning in the main game loop.
         SDL_Delay(1);
@@ -1500,13 +1533,15 @@ void WINAPI PostQuitMessage(int nExitCode)
 
 BOOL WINAPI WaitMessage(void)
 {
-    if (!g_messageQueue.empty()) {
-        return TRUE;
+    {
+        std::lock_guard<std::mutex> lock(g_messageQueueMutex);
+        if (!g_messageQueue.empty()) return TRUE;
     }
 
     PumpSdlEvents();
-    if (!g_messageQueue.empty()) {
-        return TRUE;
+    {
+        std::lock_guard<std::mutex> lock(g_messageQueueMutex);
+        if (!g_messageQueue.empty()) return TRUE;
     }
 
     SDL_Delay(1);
@@ -1514,35 +1549,126 @@ BOOL WINAPI WaitMessage(void)
     return TRUE;
 }
 
+/**
+ * @brief SDL3 timer callback bridge that invokes the user-supplied LPTIMECALLBACK.
+ *
+ * SDL_AddTimer fires this callback on a private SDL timer thread; the user
+ * callback (commonly TimerStep in legacy WinAPI games) typically calls
+ * PostMessage which queues a WM_* message. The message queue is therefore
+ * mutex-protected (see g_messageQueueMutex).
+ *
+ * @param userdata Pointer to MmTimerEntry registered in timeSetEvent.
+ * @param sdlTimerId SDL timer id (unused, we already store it).
+ * @param interval Current interval in ms; returning the same value reschedules.
+ * @return Same interval to keep the periodic timer running.
+ *
+ * @note Status: IMPLEMENTED
+ */
+static Uint32 SDLCALL FreeApiMmTimerBridge(void* userdata, SDL_TimerID sdlTimerId, Uint32 interval)
+{
+    (void)sdlTimerId;
+    LPTIMECALLBACK cb = nullptr;
+    UINT mmId = 0;
+    DWORD_PTR user = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_mmTimerMutex);
+        const auto* entry = static_cast<const MmTimerEntry*>(userdata);
+        if (!entry) return 0;
+        // Verify the entry is still alive in the map (avoid use-after-free if killed).
+        auto it = g_mmTimers.find(entry->mmId);
+        if (it == g_mmTimers.end()) return 0;
+        cb = it->second.callback;
+        mmId = it->second.mmId;
+        user = it->second.user;
+    }
+    if (cb) {
+        cb(mmId, 0, static_cast<DWORD>(user), 0, 0);
+    }
+    return interval;
+}
+
+/**
+ * @brief Starts a periodic multimedia timer using SDL3.
+ *
+ * Implemented via SDL_AddTimer; the registered callback is invoked roughly every
+ * @p uDelay milliseconds on a private SDL timer thread. The legacy fuEvent
+ * parameter is honored only for TIME_PERIODIC; one-shot is treated as periodic.
+ *
+ * @note Status: IMPLEMENTED
+ */
 MMRESULT WINAPI timeSetEvent(UINT uDelay,
                              UINT uResolution,
                              LPTIMECALLBACK lpTimeProc,
                              DWORD_PTR dwUser,
                              UINT fuEvent)
 {
-    (void)uDelay;
     (void)uResolution;
-    (void)lpTimeProc;
-    (void)dwUser;
     (void)fuEvent;
 
-    if (uDelay == 0) {
-        SDL_Log("free-api timeSetEvent: zero delay is unsupported in compatibility mode");
+    if (uDelay == 0 || lpTimeProc == nullptr) {
+        SDL_Log("free-api timeSetEvent: invalid args (uDelay=%u, lpTimeProc=%p)", uDelay, (void*)(uintptr_t)lpTimeProc);
         return 0;
     }
 
+    if (!SDL_InitSubSystem(SDL_INIT_EVENTS)) {
+        SDL_Log("free-api timeSetEvent: SDL_INIT_EVENTS failed: %s", SDL_GetError());
+    }
+
     const UINT timerId = g_nextTimerId.fetch_add(1);
+    MmTimerEntry* entryPtr = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_mmTimerMutex);
+        auto& entry = g_mmTimers[timerId];
+        entry.mmId = timerId;
+        entry.callback = lpTimeProc;
+        entry.user = dwUser;
+        entry.sdlId = 0;
+        entryPtr = &entry;
+    }
+
+    SDL_TimerID sdlId = SDL_AddTimer(uDelay, FreeApiMmTimerBridge, entryPtr);
+    if (sdlId == 0) {
+        SDL_Log("free-api timeSetEvent: SDL_AddTimer failed: %s", SDL_GetError());
+        std::lock_guard<std::mutex> lock(g_mmTimerMutex);
+        g_mmTimers.erase(timerId);
+        return 0;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_mmTimerMutex);
+        auto it = g_mmTimers.find(timerId);
+        if (it != g_mmTimers.end()) it->second.sdlId = sdlId;
+    }
     g_activeTimerIds.insert(timerId);
+    SDL_Log("free-api timeSetEvent: mmId=%u sdlId=%u delay=%u ms", timerId, sdlId, uDelay);
     return timerId;
 }
 
+/**
+ * @brief Stops a multimedia timer started with timeSetEvent.
+ *
+ * @note Status: IMPLEMENTED
+ */
 MMRESULT WINAPI timeKillEvent(UINT uTimerID)
 {
-    if (uTimerID == 0 || g_activeTimerIds.erase(uTimerID) == 0) {
-        SDL_Log("free-api timeKillEvent: unknown timer id %u", uTimerID);
+    if (uTimerID == 0) {
         return 1;
     }
-
+    SDL_TimerID sdlId = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_mmTimerMutex);
+        auto it = g_mmTimers.find(uTimerID);
+        if (it == g_mmTimers.end()) {
+            SDL_Log("free-api timeKillEvent: unknown timer id %u", uTimerID);
+            return 1;
+        }
+        sdlId = it->second.sdlId;
+        g_mmTimers.erase(it);
+    }
+    if (sdlId != 0) {
+        SDL_RemoveTimer(sdlId);
+    }
+    g_activeTimerIds.erase(uTimerID);
     return MMSYSERR_NOERROR;
 }
 

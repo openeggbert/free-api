@@ -66,10 +66,11 @@ WinAPI (subset ~1998)
   * Function keys: `VK_F1`–`VK_F12` (F10 uses `WM_SYSKEYDOWN`/`WM_SYSKEYUP` matching Windows behavior)
 * **Text input** — `SDL_EVENT_TEXT_INPUT` → `WM_CHAR` (for name entry screens)
 * **Window focus** — `SDL_EVENT_WINDOW_FOCUS_GAINED` → `WM_ACTIVATEAPP(1)`; `SDL_EVENT_WINDOW_FOCUS_LOST` is suppressed (not translated to `WM_ACTIVATEAPP(0)`) to prevent games from entering inactive/suspended state due to spurious desktop focus changes
-* **Debug logging** — set env `FREE_API_DEBUG_INPUT=1` (or alias `FREE_API_DEBUG_MOUSE=1`) at runtime to log all translated messages, ENQUEUE/DISPATCH events, GetCursorPos and ScreenToClient calls
+* **Debug logging** — set env `FREE_API_DEBUG_INPUT=1` (aliases: `FREE_API_DEBUG_MOUSE=1`, `FREE_API_DEBUG_REAL_INPUT=1`) at runtime to log all translated messages, ENQUEUE/DISPATCH events, per-event SDL `windowID` and resolved `HWND`, GetCursorPos and ScreenToClient calls.
 
 #### Input pipeline notes
-- Mouse and keyboard events arriving before the first `FOCUS_GAINED` are routed to the first registered window (fallback), so startup events are not silently dropped.
+- Mouse and keyboard events are routed to the `HWND` matching the SDL `windowID` of the event; if no match (e.g. before window creation completes), they fall back to the active/first registered window so startup events are not silently dropped.
+- `PeekMessageA` calls `SDL_PumpEvents()` + `PumpSdlEvents()` on **every** invocation (not only when the queue is empty), so real OS mouse/keyboard events cannot be starved by other queued messages staying ahead in the queue. This was the root cause of "test pipeline passes but real game does not see input" reports.
 - The `WM_ACTIVATEAPP(0)` suppression is intentional: many SDL environments deliver spurious `FOCUS_LOST` at startup or in headless/virtual environments; sending deactivation would freeze games that guard rendering/input behind `g_bActive`.
 - All input events flow through `PeekMessage` → `DispatchMessage` → `WndProc`; no direct callbacks bypass the WinAPI message queue.
 
@@ -83,6 +84,11 @@ cmake --build build --target test_input_pipeline
 ```
 
 Verified: `WM_MOUSEMOVE`, `WM_LBUTTONDOWN/UP`, `WM_RBUTTONDOWN`, `WM_KEYDOWN` (VK_SPACE), `WM_KEYUP` (VK_ESCAPE).
+
+### Multimedia Timer (`mmsystem.h`)
+* `timeSetEvent` / `timeKillEvent` — implemented with `SDL_AddTimer` / `SDL_RemoveTimer`. The user-supplied `LPTIMECALLBACK` fires periodically on a private SDL timer thread.
+* The internal WinAPI message queue (`g_messageQueue`) is mutex-protected because the timer thread is allowed to call `PostMessage` (e.g. legacy games posting `WM_TIMER`/`WM_UPDATE` from `TimerStep`).
+* Without this implementation, games using `MMTIMER` mode (`timeSetEvent(50ms, TimerStep, …, TIME_PERIODIC)`) never received their tick, so they could not animate, redraw, or process input — even though raw SDL mouse/keyboard events were arriving and being translated correctly.
 
 ### System Utilities
 * Timing (`GetTickCount`, `Sleep`)
