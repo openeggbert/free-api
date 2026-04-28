@@ -1159,6 +1159,8 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
     }
 
     if (g_messageQueue.empty()) {
+        // Yield CPU briefly to avoid busy-spinning in the main game loop.
+        SDL_Delay(1);
         return FALSE;
     }
 
