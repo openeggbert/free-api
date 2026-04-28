@@ -928,9 +928,10 @@ COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color)
         return color;
     }
 
-    pixel[0] = static_cast<uint8_t>((color >> 16) & 0xFFu);
-    pixel[1] = static_cast<uint8_t>((color >> 8) & 0xFFu);
-    pixel[2] = static_cast<uint8_t>(color & 0xFFu);
+    // COLORREF layout is 0x00BBGGRR; surface pixel layout is RGBA.
+    pixel[0] = static_cast<uint8_t>(color & 0xFFu);          // R
+    pixel[1] = static_cast<uint8_t>((color >> 8) & 0xFFu);   // G
+    pixel[2] = static_cast<uint8_t>((color >> 16) & 0xFFu);  // B
     pixel[3] = 255;
     return color;
 }
