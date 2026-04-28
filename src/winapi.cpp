@@ -276,7 +276,8 @@ namespace {
         SDL_Log("free-api EnsureVideoSubsystem: SDL video initialized");
         // Initialize debug input flag from environment
         const char* dbgInput = SDL_getenv("FREE_API_DEBUG_INPUT");
-        g_debugInput = (dbgInput && dbgInput[0] == '1');
+        const char* dbgMouse = SDL_getenv("FREE_API_DEBUG_MOUSE");
+        g_debugInput = (dbgInput && dbgInput[0] == '1') || (dbgMouse && dbgMouse[0] == '1');
         return true;
     }
 
@@ -772,6 +773,7 @@ BOOL WINAPI GetCursorPos(LPPOINT lpPoint)
     SDL_GetGlobalMouseState(&x, &y);
     lpPoint->x = static_cast<LONG>(x);
     lpPoint->y = static_cast<LONG>(y);
+    InputLog("GetCursorPos -> screen=(%d,%d)", (int)lpPoint->x, (int)lpPoint->y);
     return TRUE;
 }
 
@@ -787,8 +789,12 @@ BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint)
         return FALSE;
     }
 
+    LONG inX = lpPoint->x;
+    LONG inY = lpPoint->y;
     lpPoint->x -= x;
     lpPoint->y -= y;
+    InputLog("ScreenToClient hwnd=%p win=(%d,%d) screen=(%d,%d) -> client=(%d,%d)",
+        (void*)hWnd, x, y, (int)inX, (int)inY, (int)lpPoint->x, (int)lpPoint->y);
     return TRUE;
 }
 

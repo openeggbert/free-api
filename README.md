@@ -66,7 +66,7 @@ WinAPI (subset ~1998)
   * Function keys: `VK_F1`–`VK_F12` (F10 uses `WM_SYSKEYDOWN`/`WM_SYSKEYUP` matching Windows behavior)
 * **Text input** — `SDL_EVENT_TEXT_INPUT` → `WM_CHAR` (for name entry screens)
 * **Window focus** — `SDL_EVENT_WINDOW_FOCUS_GAINED` → `WM_ACTIVATEAPP(1)`; `SDL_EVENT_WINDOW_FOCUS_LOST` is suppressed (not translated to `WM_ACTIVATEAPP(0)`) to prevent games from entering inactive/suspended state due to spurious desktop focus changes
-* **Debug logging** — set env `FREE_API_DEBUG_INPUT=1` at runtime to log all translated messages
+* **Debug logging** — set env `FREE_API_DEBUG_INPUT=1` (or alias `FREE_API_DEBUG_MOUSE=1`) at runtime to log all translated messages, ENQUEUE/DISPATCH events, GetCursorPos and ScreenToClient calls
 
 #### Input pipeline notes
 - Mouse and keyboard events arriving before the first `FOCUS_GAINED` are routed to the first registered window (fallback), so startup events are not silently dropped.
