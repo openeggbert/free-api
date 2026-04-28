@@ -55,6 +55,35 @@ WinAPI (subset ~1998)
 * Message loop (`PeekMessage`, `DispatchMessage`)
 * Window procedures (`WNDPROC`)
 
+### Input (SDL3 → WinAPI message translation)
+* **Mouse motion** — `SDL_EVENT_MOUSE_MOTION` → `WM_MOUSEMOVE` with `lParam` = packed `(y<<16)|x`
+* **Mouse buttons** — `SDL_EVENT_MOUSE_BUTTON_DOWN/UP` → `WM_LBUTTONDOWN/UP`, `WM_RBUTTONDOWN/UP`, `WM_MBUTTONDOWN/UP`
+* **Mouse button state** — `wParam` contains live `MK_LBUTTON`/`MK_RBUTTON`/`MK_MBUTTON`/`MK_SHIFT`/`MK_CONTROL` flags
+* **Keyboard** — `SDL_EVENT_KEY_DOWN/UP` → `WM_KEYDOWN`/`WM_KEYUP` with `wParam` = `VK_*` code
+  * Letters A–Z (uppercase VK codes), digits 0–9
+  * Navigation: `VK_LEFT/RIGHT/UP/DOWN`, `VK_HOME`, `VK_END`, `VK_PRIOR`, `VK_NEXT`, `VK_INSERT`, `VK_DELETE`
+  * Control: `VK_RETURN`, `VK_ESCAPE`, `VK_SPACE`, `VK_TAB`, `VK_BACK`, `VK_SHIFT`, `VK_CONTROL`, `VK_MENU`, `VK_PAUSE`
+  * Function keys: `VK_F1`–`VK_F12` (F10 uses `WM_SYSKEYDOWN`/`WM_SYSKEYUP` matching Windows behavior)
+* **Text input** — `SDL_EVENT_TEXT_INPUT` → `WM_CHAR` (for name entry screens)
+* **Window focus** — `SDL_EVENT_WINDOW_FOCUS_GAINED` → `WM_ACTIVATEAPP(1)`; `SDL_EVENT_WINDOW_FOCUS_LOST` is suppressed (not translated to `WM_ACTIVATEAPP(0)`) to prevent games from entering inactive/suspended state due to spurious desktop focus changes
+* **Debug logging** — set env `FREE_API_DEBUG_INPUT=1` at runtime to log all translated messages
+
+#### Input pipeline notes
+- Mouse and keyboard events arriving before the first `FOCUS_GAINED` are routed to the first registered window (fallback), so startup events are not silently dropped.
+- The `WM_ACTIVATEAPP(0)` suppression is intentional: many SDL environments deliver spurious `FOCUS_LOST` at startup or in headless/virtual environments; sending deactivation would freeze games that guard rendering/input behind `g_bActive`.
+- All input events flow through `PeekMessage` → `DispatchMessage` → `WndProc`; no direct callbacks bypass the WinAPI message queue.
+
+#### Input pipeline test
+An automated end-to-end test (`tests/test_input_pipeline.cpp`) injects SDL events programmatically and verifies the full pipeline:
+
+```bash
+cmake --build build --target test_input_pipeline
+./build/bin/test_input_pipeline
+# Expected output: [input-pipeline-test] ALL TESTS PASSED
+```
+
+Verified: `WM_MOUSEMOVE`, `WM_LBUTTONDOWN/UP`, `WM_RBUTTONDOWN`, `WM_KEYDOWN` (VK_SPACE), `WM_KEYUP` (VK_ESCAPE).
+
 ### System Utilities
 * Timing (`GetTickCount`, `Sleep`)
 * Debugging (`OutputDebugString`)

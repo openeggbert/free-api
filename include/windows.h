@@ -219,7 +219,24 @@ typedef struct tagWNDCLASSA {
 #define WM_LBUTTONUP 0x0202
 #define WM_RBUTTONDOWN 0x0204
 #define WM_RBUTTONUP 0x0205
+#define WM_MBUTTONDOWN 0x0207
+#define WM_MBUTTONUP 0x0208
+#define WM_MOUSEWHEEL 0x020A
+#define WM_CHAR 0x0102
 #define WM_USER 0x0400
+/** @} */
+
+/**
+ * @name Mouse button/modifier key flags for WM_MOUSEMOVE and related messages.
+ * @brief Minimal MK_* subset used by the current game runtime.
+ * @note Status: IMPLEMENTED
+ */
+/** @{ */
+#define MK_LBUTTON  0x0001
+#define MK_RBUTTON  0x0002
+#define MK_SHIFT    0x0004
+#define MK_CONTROL  0x0008
+#define MK_MBUTTON  0x0010
 /** @} */
 
 /** @brief `PeekMessage` mode constants. @note Status: IMPLEMENTED */
@@ -263,6 +280,18 @@ typedef struct tagWNDCLASSA {
 #define VK_DOWN 0x28
 #define VK_HOME 0x24
 #define VK_SPACE 0x20
+#define VK_PRIOR 0x21
+#define VK_NEXT  0x22
+#define VK_TAB   0x09
+#define VK_BACK  0x08
+#define VK_DELETE 0x2E
+#define VK_INSERT 0x2D
+#define VK_MENU  0x12
+#define VK_F9  0x78
+#define VK_F11 0x7A
+#define VK_F12 0x7B
+/** @brief Letters A-Z map directly to ASCII 0x41-0x5A. */
+/** @brief Digits 0-9 map directly to ASCII 0x30-0x39. */
 /** @} */
 
 /**

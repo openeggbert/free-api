@@ -33,6 +33,14 @@ if(FREE_API_BUILD_TESTS)
     add_executable(basic_test tests/basic_test.cpp)
     target_link_libraries(basic_test PRIVATE free-api)
     add_test(NAME basic_test COMMAND basic_test)
+
+    # End-to-end input pipeline test: injects SDL events and verifies WinAPI translation
+    add_executable(test_input_pipeline tests/test_input_pipeline.cpp)
+    set_target_properties(test_input_pipeline PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED YES)
+    target_link_libraries(test_input_pipeline PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_input_pipeline COMMAND test_input_pipeline)
 endif()
 
 install(TARGETS free-api
