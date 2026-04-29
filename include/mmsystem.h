@@ -126,7 +126,11 @@ typedef HMIDIOUT* LPHMIDIOUT;
 #define JOY_BUTTON3 0x0004
 #define JOY_BUTTON4 0x0008
 
-#define MMSYSERR_NOERROR 0
+/** @brief WinMM result codes subset. @note Status: PARTIAL */
+#define MMSYSERR_NOERROR             0
+#define MCIERR_INVALID_DEVICE_ID   259
+#define MCIERR_UNSUPPORTED_FUNCTION 268
+#define MCIERR_INTERNAL            305
 
 #define WAVE_FORMAT_PCM 1
 

@@ -18,6 +18,9 @@
 #include <cstdarg>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <cerrno>
+#include <cstring>
 
 namespace {
     constexpr uint32_t kCompatBitmapMagic = 0x504d5442u; // 'BTMP'
@@ -57,6 +60,15 @@ namespace {
     // would corrupt the std::queue.
     std::mutex g_messageQueueMutex;
     std::unordered_set<UINT> g_activeTimerIds;
+    // WinAPI-style timers registered via SetTimer()
+    struct WinTimer {
+        HWND hwnd = NULL;
+        UINT_PTR id = 0;
+        UINT intervalMs = 0;
+        uint64_t lastFireTick = 0; // SDL_GetTicks() when last fired
+    };
+    std::unordered_map<UINT_PTR, WinTimer> g_winTimers;
+    std::mutex g_winTimerMutex;
     // Map from MMTIMER id (we expose) to SDL_TimerID that actually drives it,
     // plus the user callback parameters that must be passed to LPTIMECALLBACK.
     struct MmTimerEntry {
@@ -595,7 +607,10 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
 
     const int width = nWidth > 0 ? nWidth : 640;
     const int height = nHeight > 0 ? nHeight : 480;
-    Uint32 flags = SDL_WINDOW_RESIZABLE;
+    // Do NOT use SDL_WINDOW_RESIZABLE by default: on some Wayland/X11 compositors
+    // a resizable popup window immediately receives a WM_CLOSE from the compositor.
+    // Planet Blupi uses WS_POPUPWINDOW|WS_CAPTION (popup with title bar, fixed size).
+    Uint32 flags = 0;
 
     if ((dwStyle & WS_VISIBLE) == 0) {
         flags |= SDL_WINDOW_HIDDEN;
@@ -1004,6 +1019,68 @@ BOOL WINAPI DeleteObject(HGDIOBJ ho)
     return TRUE;
 }
 
+// TODO: CreateBitmap creates a GDI-compatible bitmap from raw pixel bits.
+// Planet Blupi uses this for the minimap: it writes 8-bit or 16-bit pixels into
+// a raw buffer, calls CreateBitmap, then passes the HBITMAP to DDConnectBitmap
+// which reads dimensions via GetObject and blits via StretchBlt.
+// We convert the source pixels to RGBA32 so the existing StretchBlt path works.
+HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount, const void* lpBits)
+{
+    (void)nPlanes; // always 1 for device-independent bitmaps
+    if (nWidth <= 0 || nHeight <= 0) {
+        return NULL;
+    }
+
+    auto* bitmap = new CompatBitmap{};
+    bitmap->width = nWidth;
+    bitmap->height = nHeight;
+    bitmap->bitsPerPixel = 32; // store as RGBA32 internally
+    bitmap->pitch = nWidth * 4;
+    bitmap->pixels.resize(static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight) * 4u, 0);
+
+    if (lpBits) {
+        if (nBitCount == 8) {
+            // 8-bit indexed: store index as grey (palette expansion not yet supported)
+            // TODO: apply palette if one is set
+            const uint8_t* src = static_cast<const uint8_t*>(lpBits);
+            uint8_t* dst = bitmap->pixels.data();
+            for (int y = 0; y < nHeight; ++y) {
+                for (int x = 0; x < nWidth; ++x) {
+                    uint8_t idx = src[y * nWidth + x];
+                    // Expand to RGBA: treat index as greyscale placeholder
+                    dst[(y * nWidth + x) * 4 + 0] = idx;
+                    dst[(y * nWidth + x) * 4 + 1] = idx;
+                    dst[(y * nWidth + x) * 4 + 2] = idx;
+                    dst[(y * nWidth + x) * 4 + 3] = 0xFF;
+                }
+            }
+        } else if (nBitCount == 16) {
+            // 16-bit RGB565: convert to RGBA32
+            const uint16_t* src = static_cast<const uint16_t*>(lpBits);
+            uint8_t* dst = bitmap->pixels.data();
+            for (int y = 0; y < nHeight; ++y) {
+                for (int x = 0; x < nWidth; ++x) {
+                    uint16_t px = src[y * nWidth + x];
+                    uint8_t r = static_cast<uint8_t>(((px >> 11) & 0x1F) * 255 / 31);
+                    uint8_t g = static_cast<uint8_t>(((px >> 5)  & 0x3F) * 255 / 63);
+                    uint8_t b = static_cast<uint8_t>(((px >> 0)  & 0x1F) * 255 / 31);
+                    dst[(y * nWidth + x) * 4 + 0] = r;
+                    dst[(y * nWidth + x) * 4 + 1] = g;
+                    dst[(y * nWidth + x) * 4 + 2] = b;
+                    dst[(y * nWidth + x) * 4 + 3] = 0xFF;
+                }
+            }
+        } else if (nBitCount == 32) {
+            const size_t byteCount = static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight) * 4u;
+            memcpy(bitmap->pixels.data(), lpBits, byteCount);
+        } else {
+            SDL_Log("free-api CreateBitmap: unsupported bpp=%u, pixels zeroed", nBitCount);
+        }
+    }
+
+    return reinterpret_cast<HBITMAP>(bitmap);
+}
+
 HDC WINAPI CreateCompatibleDC(HDC hdc)
 {
     (void)hdc;
@@ -1340,6 +1417,36 @@ BOOL WINAPI DeleteFileA(LPCSTR lpFileName)
     return remove(lpFileName) == 0 ? TRUE : FALSE;
 }
 
+// TODO: CreateDirectoryA - creates directory hierarchy, ignores SECURITY_ATTRIBUTES
+BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes)
+{
+    (void)lpSecurityAttributes; // security descriptors not supported on Linux
+    if (!lpPathName) {
+        return FALSE;
+    }
+    // Convert backslashes to forward slashes and remove drive letter
+    std::string path(lpPathName);
+    if (path.size() >= 2 && isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
+        path.erase(0, 2);
+    }
+    for (char& c : path) {
+        if (c == '\\') c = '/';
+    }
+    while (!path.empty() && (path[0] == '/' || path[0] == '\\')) {
+        path.erase(0, 1);
+    }
+
+    if (path.empty()) return TRUE; // Already exists (root)
+
+    // mkdir returns 0 on success, -1 on error (EEXIST is treated as success)
+    int rc = mkdir(path.c_str(), 0755);
+    if (rc == 0 || errno == EEXIST) {
+        return TRUE;
+    }
+    SDL_Log("free-api CreateDirectoryA: failed to create '%s' (orig: '%s'): %s", path.c_str(), lpPathName, strerror(errno));
+    return FALSE;
+}
+
 BOOL WINAPI UnlockResource(HGLOBAL hResData)
 {
     (void)hResData;
@@ -1405,21 +1512,37 @@ HWND WINAPI SetFocus(HWND hWnd)
 
 UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTimerFunc)
 {
-    (void)hWnd;
-    (void)uElapse;
     (void)lpTimerFunc;
 
-    if (nIDEvent != 0) {
-        return nIDEvent;
+    if (nIDEvent == 0) {
+        nIDEvent = g_nextTimerId.fetch_add(1);
     }
 
-    return g_nextTimerId.fetch_add(1);
+    WinTimer wt;
+    wt.hwnd = hWnd;
+    wt.id = nIDEvent;
+    wt.intervalMs = (uElapse > 0) ? uElapse : 1;
+    wt.lastFireTick = SDL_GetTicks();
+
+    {
+        std::lock_guard<std::mutex> lock(g_winTimerMutex);
+        g_winTimers[nIDEvent] = wt;
+    }
+    SDL_Log("free-api SetTimer: hwnd=%p id=%lu elapse=%u ms",
+            static_cast<void*>(hWnd),
+            static_cast<unsigned long>(nIDEvent),
+            static_cast<unsigned>(uElapse));
+    return nIDEvent;
 }
 
 BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent)
 {
     (void)hWnd;
-    (void)uIDEvent;
+    std::lock_guard<std::mutex> lock(g_winTimerMutex);
+    g_winTimers.erase(uIDEvent);
+    SDL_Log("free-api KillTimer: hwnd=%p id=%lu",
+            static_cast<void*>(hWnd),
+            static_cast<unsigned long>(uIDEvent));
     return TRUE;
 }
 
@@ -1436,6 +1559,33 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
     // Always pump SDL events so real OS mouse/keyboard events cannot be starved
     // by other queued messages (e.g. timer-style messages) staying ahead in the queue.
     PumpSdlEvents();
+
+    // Generate WM_TIMER messages for elapsed WinAPI timers.
+    // Collect into a local vector first to avoid nested locking.
+    {
+        std::vector<MSG> pendingTimers;
+        {
+            std::lock_guard<std::mutex> timerLock(g_winTimerMutex);
+            const uint64_t now = SDL_GetTicks();
+            for (auto& [id, wt] : g_winTimers) {
+                if (now - wt.lastFireTick >= wt.intervalMs) {
+                    wt.lastFireTick = now;
+                    MSG timerMsg{};
+                    timerMsg.hwnd = wt.hwnd;
+                    timerMsg.message = WM_TIMER;
+                    timerMsg.wParam = static_cast<WPARAM>(wt.id);
+                    timerMsg.lParam = 0;
+                    pendingTimers.push_back(timerMsg);
+                }
+            }
+        }
+        if (!pendingTimers.empty()) {
+            std::lock_guard<std::mutex> qLock(g_messageQueueMutex);
+            for (auto& m : pendingTimers) {
+                g_messageQueue.push(m);
+            }
+        }
+    }
 
     std::lock_guard<std::mutex> lock(g_messageQueueMutex);
     if (g_messageQueue.empty()) {
@@ -1721,6 +1871,19 @@ MMRESULT WINAPI midiOutClose(HMIDIOUT hmo)
 
 MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam)
 {
+    // TODO: MCI_OPEN with MCI_OPEN_TYPE only (no MCI_OPEN_ELEMENT) is an
+    // "open device class" call, used by CMovie::initAVI() for "avivideo".
+    // AVI video playback is not implemented; return an error so the game sets
+    // m_bEnable=FALSE and skips movie playback gracefully.
+    //
+    // IMPORTANT: Planet Blupi truncates the struct pointer to DWORD when passing
+    // it to this function, which makes the pointer invalid on 64-bit Linux.
+    // We must NOT dereference dwParam here when only MCI_OPEN_TYPE is set.
+    if (uMsg == MCI_OPEN && (fdwCommand & MCI_OPEN_TYPE) && !(fdwCommand & MCI_OPEN_ELEMENT)) {
+        SDL_Log("free-api mciSendCommandA: MCI_OPEN device-type-only (avivideo) — "
+                "video playback not implemented, returning MCIERR_UNSUPPORTED_FUNCTION");
+        return MCIERR_UNSUPPORTED_FUNCTION;
+    }
     return MidiMusicSendCommand(mciId, uMsg, fdwCommand, dwParam);
 }
 

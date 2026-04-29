@@ -100,6 +100,7 @@ MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwComma
 MCIDEVICEID WINAPI mciGetDeviceIDA(LPCSTR lpszDevice); // Status: STUB
 
 #define mciSendCommand mciSendCommandA
+#define mciGetDeviceID mciGetDeviceIDA
 
 #ifdef __cplusplus
 }

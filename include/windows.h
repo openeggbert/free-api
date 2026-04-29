@@ -191,6 +191,11 @@ typedef struct tagWNDCLASSA {
     LPCSTR lpszClassName;
 } WNDCLASSA, *PWNDCLASSA, *LPWNDCLASSA;
 
+/** @brief ANSI WNDCLASS alias (non-unicode default). @note Status: IMPLEMENTED */
+typedef WNDCLASSA WNDCLASS;
+typedef PWNDCLASSA PWNDCLASS;
+typedef LPWNDCLASSA LPWNDCLASS;
+
 /**
  * @name Win32 message constants
  * @brief Minimal message subset used by the current game runtime.
@@ -337,6 +342,9 @@ typedef struct tagWNDCLASSA {
 #ifndef MAKEINTRESOURCEA
 #define MAKEINTRESOURCEA(i) ((LPSTR)((ULONG_PTR)((WORD)(i))))
 #endif
+#ifndef MAKEINTRESOURCE
+#define MAKEINTRESOURCE MAKEINTRESOURCEA
+#endif
 
 #ifndef ZeroMemory
 #define ZeroMemory(Destination, Length) memset((Destination), 0, (Length))
@@ -448,6 +456,8 @@ HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy
 int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv);
 /** @brief Deletes a GDI object. @note Status: STUB */
 BOOL WINAPI DeleteObject(HGDIOBJ ho);
+/** @brief Creates a GDI bitmap from raw pixel data. @note Status: PARTIAL */
+HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount, const void* lpBits);
 /** @brief Creates compatible device context. @note Status: STUB */
 HDC WINAPI CreateCompatibleDC(HDC hdc);
 /** @brief Selects object into device context. @note Status: STUB */
@@ -495,6 +505,16 @@ int WINAPI _lclose(int hFile);
 BOOL WINAPI DeleteFileA(LPCSTR lpFileName);
 /** @brief Legacy formatted print into buffer. @note Status: STUB */
 int WINAPIV wsprintfA(LPSTR lpOut, LPCSTR lpFmt, ...);
+
+/** @brief Security attributes for directory creation. @note Status: PARTIAL */
+typedef struct _SECURITY_ATTRIBUTES {
+    DWORD nLength;
+    LPVOID lpSecurityDescriptor;
+    BOOL bInheritHandle;
+} SECURITY_ATTRIBUTES, *PSECURITY_ATTRIBUTES, *LPSECURITY_ATTRIBUTES;
+
+/** @brief Creates a directory; security descriptor is ignored. @note Status: STUB */
+BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes);
 /** @brief Loads a cursor resource. @note Status: STUB */
 HCURSOR WINAPI LoadCursorA(HINSTANCE hInstance, LPCSTR lpCursorName);
 /** @brief Loads an icon resource. @note Status: STUB */
@@ -593,6 +613,10 @@ int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** 
 #define DefWindowProc DefWindowProcA
 #define LoadCursor LoadCursorA
 #define LoadIcon LoadIconA
+#define FindResource FindResourceA
+#define DeleteFile DeleteFileA
+#define wsprintf wsprintfA
+#define CreateDirectory CreateDirectoryA
 #endif
 
 #ifdef __cplusplus
@@ -612,7 +636,61 @@ int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** 
     int main(int argc, char** argv) { return FreeApiRunWinMain(&WinMain, argc, argv); } \
     int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 #endif
-#endif
+
+// ---------------------------------------------------------------------------
+// fopen path-normalization wrapper
+// ---------------------------------------------------------------------------
+// Planet Blupi uses Windows backslash paths like "data\\config.def" which do
+// not work on Linux POSIX file systems.  This inline wrapper converts all
+// backslashes to forward slashes before calling the real fopen and also tries
+// an uppercase-basename fallback for case-sensitive file systems.
+// Defined here so every C++ translation unit that includes <windows.h> picks
+// it up automatically without changing Planet Blupi source files.
+// @note Status: IMPLEMENTED
+#ifndef FREE_API_FOPEN_WRAPPER_DEFINED
+#define FREE_API_FOPEN_WRAPPER_DEFINED
+#include <cstdio>
+#include <cctype>
+#include <string>
+static inline FILE* free_api_fopen(const char* path, const char* mode)
+{
+    if (!path) return nullptr;
+    std::string p(path);
+    // Remove Windows drive letter if present (e.g., "C:\path" -> "\path")
+    if (p.size() >= 2 && isalpha(static_cast<unsigned char>(p[0])) && p[1] == ':') {
+        p.erase(0, 2);
+    }
+    for (char& c : p) {
+        if (c == '\\') c = '/';
+    }
+    // Remove leading slashes if we want it relative to current dir,
+    // but Planet Blupi often uses relative paths like "data\config.def".
+    // If it was "c:\Planète Blupi\data\info.blp", after removing "c:" it's "\Planète Blupi\data\info.blp".
+    // We should probably make it relative if it starts with a slash after drive removal,
+    // because we don't want to look in the root of the Linux filesystem.
+    while (!p.empty() && (p[0] == '/' || p[0] == '\\')) {
+        p.erase(0, 1);
+    }
+
+    if (p.empty()) return nullptr;
+
+    FILE* f = ::fopen(p.c_str(), mode);
+    if (!f) {
+        // Case-insensitive fallback: uppercase the basename component
+        std::string upper = p;
+        auto slash = upper.rfind('/');
+        size_t base = (slash == std::string::npos) ? 0u : slash + 1u;
+        for (size_t i = base; i < upper.size(); ++i)
+            upper[i] = static_cast<char>(toupper(static_cast<unsigned char>(upper[i])));
+        if (upper != p) f = ::fopen(upper.c_str(), mode);
+    }
+    return f;
+}
+#undef fopen
+#define fopen free_api_fopen
+#endif // FREE_API_FOPEN_WRAPPER_DEFINED
+
+#endif // __cplusplus (outer)
 
 #include <mmsystem.h>
 

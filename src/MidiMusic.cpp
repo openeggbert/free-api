@@ -75,9 +75,17 @@ static const SDL_AudioSpec kMixSpec = {SDL_AUDIO_F32, 2, 44100};
 static constexpr int kBlockFrames = 512;
 
 /* MCI error codes (not in the project mmsystem.h subset). */
+// MCIERR_* constants are now defined in mmsystem.h
+// Keep local aliases for backward compatibility within this file.
+#ifndef MCIERR_UNSUPPORTED_FUNCTION
 static constexpr MCIERROR MCIERR_UNSUPPORTED_FUNCTION = 268;
+#endif
+#ifndef MCIERR_INVALID_DEVICE_ID
 static constexpr MCIERROR MCIERR_INVALID_DEVICE_ID    = 259;
+#endif
+#ifndef MCIERR_INTERNAL
 static constexpr MCIERROR MCIERR_INTERNAL              = 305;
+#endif
 
 /* -------------------------------------------------------------------------- */
 /*  SoundFont loader                                                           */
