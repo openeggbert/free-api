@@ -85,6 +85,106 @@ cmake --build build --target test_input_pipeline
 
 Verified: `WM_MOUSEMOVE`, `WM_LBUTTONDOWN/UP`, `WM_RBUTTONDOWN`, `WM_KEYDOWN` (VK_SPACE), `WM_KEYUP` (VK_ESCAPE).
 
+### MIDI / MCI Music (`mmsystem.h`) — TinySoundFont + TinyMidiLoader
+
+MIDI music playback is implemented through **TinySoundFont** (v0.9) + **TinyMidiLoader** (v0.7)
+rendered to stereo float PCM and fed into an **SDL3 audio stream**.
+
+#### Architecture
+
+```
+MCI_OPEN (sequencer, musicXXX.blp)
+        ↓
+TinyMidiLoader ─ loads MIDI Type 0/1 file
+        ↓
+Mixer thread ─ advances MIDI time, sends events to TinySoundFont
+        ↓
+TinySoundFont ─ synthesises stereo float PCM using a SoundFont .sf2
+        ↓
+SDL3 audio stream ─ one shared device opened on first use
+```
+
+#### SoundFont requirement
+
+A **SoundFont 2 (.sf2)** file is required for audio synthesis.
+No SoundFont is bundled (to avoid copyright issues).
+
+Lookup order (first found wins):
+1. `FREE_API_SOUNDFONT` environment variable
+2. `assets/soundfont/default.sf2`
+3. `soundfont/default.sf2`
+
+If no SoundFont is found, `MCI_OPEN` still succeeds but playback is silent.
+A warning is printed to the SDL log:
+```
+[midi] WARNING: No SoundFont found. Music will be silent.
+Set FREE_API_SOUNDFONT=/path/to/file.sf2 or place default.sf2 in assets/soundfont/ or soundfont/.
+```
+
+Free SoundFonts suitable for testing:
+- [GeneralUser GS](https://schristiancollins.com/generaluser.php) — freely redistributable, ~30 MB
+- [FluidR3_GM](https://packages.debian.org/fluid-soundfont-gm) — available in Debian/Ubuntu packages
+
+#### Supported MCI commands
+
+| Command | Status |
+|---------|--------|
+| `MCI_OPEN` with `lpstrDeviceType="sequencer"` | Implemented |
+| `MCI_PLAY` with `MCI_NOTIFY` | Implemented |
+| `MCI_CLOSE` | Implemented |
+| `MCI_SET` | Accepted, no-op |
+| `cdaudio` device type | Gracefully declined |
+
+#### midiOut subset
+
+| Function | Status |
+|----------|--------|
+| `midiOutGetNumDevs` | Implemented (returns 1 if SDL audio available) |
+| `midiOutOpen` | Implemented (dummy handle) |
+| `midiOutSetVolume` | Implemented (maps WinMM packed volume to linear gain) |
+| `midiOutClose` | Implemented |
+
+#### Supported MIDI features
+
+- MIDI Type 0 and Type 1 files
+- Note on/off, program change, pitch bend, control change
+- Channel 9 percussion
+- Global volume via `midiOutSetVolume`
+
+#### Limitations / TODOs
+
+- Looping (`MCI_PLAY` with loop flag): TODO — playback stops at end-of-song
+- CD audio (`cdaudio`): TODO — gracefully declined
+- MCI_NOTIFY: posted when song ends (partial; no timeout handling)
+- Concurrent music tracks: not supported (one at a time)
+- Web (Emscripten): SDL3 audio may require a user gesture before audio starts
+
+#### Debug logging
+
+Set `FREE_API_DEBUG_MIDI=1` to enable per-call logging:
+```bash
+FREE_API_DEBUG_MIDI=1 ./SPEEDY_BLUPI_WINDOWS
+```
+
+#### Platform support
+
+| Platform | Status |
+|----------|--------|
+| Linux | Supported via SDL3 |
+| Windows | Supported via SDL3 (not WinMM real MIDI) |
+| macOS | Supported via SDL3 |
+| Android | Supported if SoundFont is packaged in assets |
+| Web (Emscripten) | Supported; may need user gesture for audio |
+
+#### Vendored libraries
+
+The following single-header libraries are vendored under `external/`:
+
+- `external/tsf.h` — [TinySoundFont v0.9](https://github.com/schellingb/TinySoundFont) by Bernhard Schelling (MIT)
+- `external/tml.h` — [TinyMidiLoader v0.7](https://github.com/schellingb/TinySoundFont) by Bernhard Schelling (MIT)
+
+---
+
 ### Multimedia Timer (`mmsystem.h`)
 * `timeSetEvent` / `timeKillEvent` — implemented with `SDL_AddTimer` / `SDL_RemoveTimer`. The user-supplied `LPTIMECALLBACK` fires periodically on a private SDL timer thread.
 * The internal WinAPI message queue (`g_messageQueue`) is mutex-protected because the timer thread is allowed to call `PostMessage` (e.g. legacy games posting `WM_TIMER`/`WM_UPDATE` from `TimerStep`).

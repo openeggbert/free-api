@@ -2,6 +2,7 @@
 #include "io.h"
 #include "mmsystem.h"
 #include "digitalv.h"
+#include "MidiMusic.h"
 #include <SDL3/SDL.h>
 
 #include <chrono>
@@ -1694,7 +1695,7 @@ UINT WINAPI joyGetNumDevs(void)
 
 UINT WINAPI midiOutGetNumDevs(void)
 {
-    return 0;
+    return MidiMusicGetNumDevs();
 }
 
 MMRESULT WINAPI midiOutOpen(LPHMIDIOUT phmo, UINT uDeviceID, DWORD_PTR dwCallback, DWORD_PTR dwInstance, DWORD fdwOpen)
@@ -1703,32 +1704,24 @@ MMRESULT WINAPI midiOutOpen(LPHMIDIOUT phmo, UINT uDeviceID, DWORD_PTR dwCallbac
     (void)dwCallback;
     (void)dwInstance;
     (void)fdwOpen;
-    if (phmo) {
-        *phmo = reinterpret_cast<HMIDIOUT>(static_cast<uintptr_t>(1));
-    }
-    return MMSYSERR_NOERROR;
+    return MidiMusicOutOpen(phmo);
 }
 
 MMRESULT WINAPI midiOutSetVolume(HMIDIOUT hmo, DWORD dwVolume)
 {
     (void)hmo;
-    (void)dwVolume;
-    return MMSYSERR_NOERROR;
+    return MidiMusicSetVolume(dwVolume);
 }
 
 MMRESULT WINAPI midiOutClose(HMIDIOUT hmo)
 {
     (void)hmo;
-    return MMSYSERR_NOERROR;
+    return MidiMusicOutClose();
 }
 
 MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam)
 {
-    (void)mciId;
-    (void)uMsg;
-    (void)fdwCommand;
-    (void)dwParam;
-    return 0;
+    return MidiMusicSendCommand(mciId, uMsg, fdwCommand, dwParam);
 }
 
 MCIDEVICEID WINAPI mciGetDeviceIDA(LPCSTR lpszDevice)
@@ -1739,13 +1732,7 @@ MCIDEVICEID WINAPI mciGetDeviceIDA(LPCSTR lpszDevice)
 
 BOOL WINAPI mciGetErrorStringA(MCIERROR mcierr, LPSTR pszText, UINT cchText)
 {
-    (void)mcierr;
-    if (!pszText || cchText == 0) {
-        return FALSE;
-    }
-
-    snprintf(pszText, cchText, "MCI error");
-    return TRUE;
+    return MidiMusicGetErrorString(mcierr, pszText, cchText);
 }
 
 int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** argv)

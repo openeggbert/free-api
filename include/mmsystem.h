@@ -2,6 +2,11 @@
  * @file mmsystem.h
  * @brief WinMM compatibility subset used by the game runtime.
  * @note Status: PARTIAL
+ *
+ * MIDI/MCI music is implemented through TinySoundFont + TinyMidiLoader over SDL3 audio.
+ * Supported MCI commands: MCI_OPEN (sequencer), MCI_PLAY, MCI_CLOSE, MCI_SET (no-op).
+ * midiOut subset: GetNumDevs, Open, SetVolume, Close.
+ * CD audio (cdaudio) is gracefully declined.
  */
 #ifndef FREE_API_MMSYSTEM_H
 #define FREE_API_MMSYSTEM_H
@@ -183,33 +188,50 @@ UINT WINAPI joyGetNumDevs(void);
 
 /**
  * @brief Returns number of MIDI output devices.
- * @note Status: STUB
+ *
+ * Returns 1 if the SDL3 audio subsystem is available, 0 otherwise.
+ * @note Status: IMPLEMENTED
  */
 UINT WINAPI midiOutGetNumDevs(void);
 /**
  * @brief Opens a MIDI output device handle.
- * @note Status: STUB
+ *
+ * Returns a dummy handle; real audio rendering is handled through MCI.
+ * @note Status: IMPLEMENTED
  */
 MMRESULT WINAPI midiOutOpen(LPHMIDIOUT phmo, UINT uDeviceID, DWORD_PTR dwCallback, DWORD_PTR dwInstance, DWORD fdwOpen);
 /**
  * @brief Sets MIDI output volume.
- * @note Status: STUB
+ *
+ * Accepts a WinMM packed left/right 16-bit volume word and maps it to a
+ * linear gain (0.0–1.0) applied to the TinySoundFont renderer.
+ * @note Status: IMPLEMENTED
  */
 MMRESULT WINAPI midiOutSetVolume(HMIDIOUT hmo, DWORD dwVolume);
 /**
  * @brief Closes a MIDI output device handle.
- * @note Status: STUB
+ * @note Status: IMPLEMENTED
  */
 MMRESULT WINAPI midiOutClose(HMIDIOUT hmo);
 
 /**
  * @brief Sends an MCI command to an opened device.
- * @note Status: STUB
+ *
+ * Supported commands:
+ * - MCI_OPEN with lpstrDeviceType="sequencer": loads a MIDI file via TinyMidiLoader.
+ * - MCI_PLAY: starts playback via TinySoundFont + SDL3 audio stream.
+ * - MCI_CLOSE: stops playback and frees MIDI data.
+ * - MCI_SET: accepted as no-op (CD-audio time-format; irrelevant for MIDI).
+ * - cdaudio device type: gracefully declined with an error code.
+ *
+ * @note Status: PARTIAL
+ * - Looping (MCI_PLAY looping flag): TODO
+ * - CD audio: TODO
  */
 MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam);
 /**
- * @brief Converts an MCI error code to text.
- * @note Status: STUB
+ * @brief Converts an MCI error code to a human-readable string.
+ * @note Status: IMPLEMENTED
  */
 BOOL WINAPI mciGetErrorStringA(MCIERROR mcierr, LPSTR pszText, UINT cchText);
 

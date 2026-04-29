@@ -24,7 +24,10 @@ target_link_libraries(free-api PRIVATE SDL3::SDL3)
 
 target_sources(free-api PRIVATE
     src/winapi.cpp
-    src/winmain_bridge.cpp)
+    src/winmain_bridge.cpp
+    src/MidiMusic.cpp)
+
+target_include_directories(free-api PRIVATE external)
 
 option(FREE_API_BUILD_TESTS "Build free-api tests" ON)
 
