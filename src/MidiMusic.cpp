@@ -46,6 +46,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 /* -------------------------------------------------------------------------- */
@@ -210,14 +211,18 @@ static MidiState g_midi;
  * @brief Converts backslashes to forward slashes, then resolves the path.
  *
  * On case-sensitive file systems (Linux) the game-generated path uses lowercase
- * while the actual files on disk may be UPPERCASE.  We try the path as-is first,
- * then retry with the basename uppercased.
+ * while the actual files on disk may be UPPERCASE. We try the path as-is first,
+ * then retry uppercase variants for progressively larger path suffixes.
  *
  * @note Status: IMPLEMENTED
  */
 static std::string NormalizeMidiPath(const char* raw)
 {
     if (!raw) return {};
+
+    auto fileExists = [](const std::string& path) -> bool {
+        return ::access(path.c_str(), F_OK) == 0;
+    };
 
     /* Step 1 – convert backslashes. */
     std::string s(raw);
@@ -226,21 +231,42 @@ static std::string NormalizeMidiPath(const char* raw)
     }
 
     /* Step 2 – try the path as-is (handles already-correct paths). */
-    {
-        FILE* f = fopen(s.c_str(), "rb");
-        if (f) { fclose(f); return s; }
+    if (fileExists(s)) {
+        return s;
     }
 
-    /* Step 3 – retry with the basename uppercased. */
-    std::string upper = s;
-    auto slash = upper.rfind('/');
-    size_t base = (slash == std::string::npos) ? 0 : slash + 1;
-    for (size_t i = base; i < upper.size(); ++i) {
-        upper[i] = static_cast<char>(toupper(static_cast<unsigned char>(upper[i])));
+    /*
+     * Step 3 – retry with uppercase fallbacks.
+     *
+     * We uppercase progressively larger suffixes of the path (from basename
+     * to parent folders), e.g.:
+     *   /.../bin/sound/music000.blp
+     *   /.../bin/sound/MUSIC000.BLP
+     *   /.../bin/SOUND/MUSIC000.BLP
+     *
+     * This keeps absolute path prefixes intact while handling uppercase asset
+     * directories/files on case-sensitive file systems.
+     */
+    std::vector<size_t> componentStarts;
+    componentStarts.push_back(0);
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '/' && i + 1 < s.size()) {
+            componentStarts.push_back(i + 1);
+        }
     }
-    if (upper != s) {
-        FILE* f = fopen(upper.c_str(), "rb");
-        if (f) { fclose(f); MIDI_LOG("NormalizeMidiPath: using uppercase fallback '%s'", upper.c_str()); return upper; }
+
+    for (auto it = componentStarts.rbegin(); it != componentStarts.rend(); ++it) {
+        std::string upper = s;
+        for (size_t i = *it; i < upper.size(); ++i) {
+            if (upper[i] != '/') {
+                upper[i] = static_cast<char>(toupper(static_cast<unsigned char>(upper[i])));
+            }
+        }
+
+        if (upper != s && fileExists(upper)) {
+            MIDI_LOG("NormalizeMidiPath: using uppercase fallback '%s'", upper.c_str());
+            return upper;
+        }
     }
 
     /* Return original normalised path; tml_load_filename will report the error. */
