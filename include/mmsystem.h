@@ -12,6 +12,7 @@
 #define FREE_API_MMSYSTEM_H
 
 #include <windows.h>
+#include <mmiscapi2.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -154,12 +155,6 @@ typedef HMIDIOUT* LPHMIDIOUT;
  */
 #define mmioFOURCC(ch0, ch1, ch2, ch3) \
     ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) | ((DWORD)(BYTE)(ch2) << 16) | ((DWORD)(BYTE)(ch3) << 24))
-
-/**
- * @brief Callback type used by multimedia periodic timers.
- * @note Status: PARTIAL
- */
-typedef void(CALLBACK* LPTIMECALLBACK)(UINT uTimerID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2);
 
 /**
  * @brief Starts a WinMM-style periodic timer.

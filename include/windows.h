@@ -32,6 +32,7 @@
 #ifndef FREE_API_WINDOWS_H
 #define FREE_API_WINDOWS_H
 
+#include <winuser.h>
 #include <minwindef.h>
 #include <windef.h>
 #include <winnt.h>
@@ -117,12 +118,6 @@ typedef struct tagRECT {
     LONG bottom;
 } RECT, *PRECT, *LPRECT;
 
-/** @brief Win32 integer point structure. @note Status: IMPLEMENTED */
-typedef struct tagPOINT {
-    LONG x;
-    LONG y;
-} POINT, *PPOINT, *LPPOINT;
-
 /** @brief GDI bitmap metadata structure. @note Status: STUB */
 typedef struct tagBITMAP {
     LONG bmType;
@@ -177,15 +172,7 @@ typedef struct tagBITMAPINFOHEADER {
     DWORD biClrImportant;
 } BITMAPINFOHEADER, *LPBITMAPINFOHEADER;
 
-/** @brief Message queue entry passed through Win32 dispatch loop. @note Status: PARTIAL */
-typedef struct tagMSG {
-    HWND hwnd;
-    UINT message;
-    WPARAM wParam;
-    LPARAM lParam;
-    DWORD time;
-    POINT pt;
-} MSG, *PMSG, *LPMSG;
+
 
 /** @brief Window creation payload for `WM_CREATE` processing. @note Status: PARTIAL */
 typedef struct tagCREATESTRUCTA {

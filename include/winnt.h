@@ -24,7 +24,29 @@ typedef char CHAR;
 typedef uint16_t WCHAR;
 typedef uint8_t BOOLEAN;
 
+/**
+ * @brief Pointer aliases for mutable ANSI/narrow character strings.
+ *
+ * These typedefs mirror common Win32 naming conventions for pointers to
+ * `CHAR` data. They are typically used by ANSI (`A`) Win32 APIs that operate
+ * on narrow, null-terminated strings, such as `CreateWindowExA()` or
+ * `GetModuleFileNameA()`.
+ *
+ * In Free API, these aliases are provided for source compatibility with
+ * Win32-style code. They do not imply ownership, allocation strategy, or string
+ * lifetime rules.
+ *
+ * @note Status: IMPLEMENTED
+ *       These are type aliases only. They provide compile-time source
+ *       compatibility and have no runtime behavior.
+ * @note REVIEWED
+ *
+ * @see CHAR
+ * @see LPCSTR
+ * @see LPCTSTR
+ */
 typedef CHAR *PCHAR, *LPCH, *PCH, *NPSTR, *LPSTR, *PSTR;
+
 typedef const CHAR *LPCSTR, *PCSTR;
 
 typedef WCHAR *PWCHAR, *LPWCH, *PWCH, *NWPSTR, *LPWSTR, *PWSTR;

@@ -19,6 +19,8 @@
 #define FREE_API_WINDEF_H
 
 #include <stdint.h>
+#include <winnt.h>
+#include <minwindef.h>
 
 #ifndef NULL
 #ifdef __cplusplus
@@ -27,22 +29,6 @@
 #define NULL ((void *)0)
 #endif
 #endif
-
-typedef void* HANDLE;
-typedef HANDLE HWND;
-typedef HANDLE HINSTANCE;
-typedef HANDLE HMODULE;
-typedef HANDLE HGLOBAL;
-typedef HANDLE HRSRC;
-typedef HANDLE HDC;
-typedef HANDLE HGDIOBJ;
-typedef HANDLE HBRUSH;
-typedef HANDLE HBITMAP;
-typedef HANDLE HPALETTE;
-typedef HANDLE HICON;
-typedef HANDLE HCURSOR;
-typedef HANDLE HMENU;
-typedef HANDLE HFONT;
 
 typedef intptr_t INT_PTR, *PINT_PTR;
 typedef uintptr_t UINT_PTR, *PUINT_PTR;
@@ -53,6 +39,12 @@ typedef uintptr_t DWORD_PTR, *PDWORD_PTR;
 typedef LONG_PTR LRESULT;
 typedef UINT_PTR WPARAM;
 typedef LONG_PTR LPARAM;
+
+/** @brief Win32 integer point structure. @note Status: IMPLEMENTED */
+typedef struct tagPOINT {
+    LONG x;
+    LONG y;
+} POINT, *PPOINT, *LPPOINT;
 
 #define CALLBACK __stdcall
 #define WINAPI __stdcall

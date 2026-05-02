@@ -19,7 +19,15 @@ set_target_properties(free-api PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR})
 
-target_include_directories(free-api PUBLIC include)
+target_include_directories(free-api PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+if(NOT WIN32)
+    target_include_directories(free-api PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/include_non_windows
+    )
+endif()
 target_link_libraries(free-api PRIVATE SDL3::SDL3)
 
 target_sources(free-api PRIVATE

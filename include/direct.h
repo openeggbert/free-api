@@ -15,6 +15,7 @@
 #define FREE_API_DIRECT_H
 
 #include <unistd.h>
+//todo: fix, this is not portable
 #include <sys/stat.h>
 
 /** @brief Changes current directory. @note Status: PARTIAL */
