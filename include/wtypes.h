@@ -1,15 +1,34 @@
+/**
+ * @file wtypes.h
+ * @brief Minimal OLE/WTypes compatibility subset.
+ *
+ * Provides a handful of OLE/Automation types required by the game source:
+ * - VARTYPE (variant type tag for VARIANT/VARIANTARG)
+ * - SCODE (COM status code, equivalent to HRESULT)
+ * - DATE (OLE date/time as double)
+ * - CLIPFORMAT (clipboard format identifier)
+ * - byte alias macro (expected by some Win32 CRT headers)
+ *
+ * These types are declared to compile but are not functionally used at runtime;
+ * OLE/COM is not implemented in this compatibility layer.
+ *
+ * @note Status: STUB
+ */
 #ifndef FREE_API_WTYPES_H
 #define FREE_API_WTYPES_H
 
 #include <windows.h>
 
-// OLE / WTypes compatibility subset - Status: STUB
+/** @brief OLE variant type tag. @note Status: STUB */
 typedef unsigned short VARTYPE;
+/** @brief COM status code; synonym for HRESULT. @note Status: STUB */
 typedef long SCODE;
+/** @brief OLE date/time (days since 30 Dec 1899 as double). @note Status: STUB */
 typedef double DATE;
+/** @brief Clipboard format identifier. @note Status: STUB */
 typedef WORD CLIPFORMAT;
 
-// Legacy Win32 alias expected by the original game source - Status: STUB
+/** @brief Legacy Win32 `byte` alias expected by some old game source files. @note Status: STUB */
 #ifndef byte
 #define byte BYTE
 #endif

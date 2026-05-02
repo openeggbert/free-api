@@ -1,3 +1,34 @@
+/**
+ * @file windows.h
+ * @brief Central public WinAPI compatibility header for Free API.
+ *
+ * Free API is an SDL3-backed compatibility layer that exposes a Win32/WinAPI-like
+ * public surface for old C/C++ games. This is not Wine and not a full WinAPI
+ * implementation — only the subset needed by the target game(s) is implemented.
+ *
+ * Architecture:
+ * @code
+ * Legacy game source  ->  Free API headers  ->  SDL3 + POSIX
+ * @endcode
+ *
+ * This header includes minwindef.h, windef.h, winnt.h, and declares:
+ * - WinBase helpers (Sleep, GetTickCount, ...)
+ * - Window class, window creation and lifetime functions
+ * - Message constants and message queue/dispatch (PeekMessageA, GetMessageA, ...)
+ * - Input: mouse, keyboard, cursor
+ * - GDI-like bitmap and DC subset (LoadImageA, StretchBlt, ...)
+ * - File/path helpers (CreateDirectoryA, DeleteFileA, _lopen/read/close)
+ * - User timers (SetTimer / KillTimer)
+ * - WinMain bridge (FREE_API_IMPLEMENT_WINMAIN, FreeApiRunWinMain)
+ * - fopen path-normalization wrapper (C++ only)
+ *
+ * Unsupported areas: real Win32 resources, common dialogs, real GDI drawing,
+ * palettes, DIB sections, brushes, icons, cursors, fonts, real Unicode APIs,
+ * security descriptors, parent/child window semantics.
+ *
+ * @note The implementation lives in src/winapi.cpp.
+ * @note This header must not expose SDL types.
+ */
 #ifndef FREE_API_WINDOWS_H
 #define FREE_API_WINDOWS_H
 
@@ -409,7 +440,7 @@ BOOL WINAPI DestroyWindow(HWND hWnd);
 BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow);
 /** @brief Requests immediate window refresh/raise. @note Status: PARTIAL */
 BOOL WINAPI UpdateWindow(HWND hWnd);
-/** @brief Moves/resizes a window. @note Status: STUB */
+/** @brief Moves/resizes a window via SDL. Ignores repaint semantics. @note Status: PARTIAL */
 BOOL WINAPI MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint);
 /** @brief Invalidates window client area. @note Status: STUB */
 BOOL WINAPI InvalidateRect(HWND hWnd, const RECT* lpRect, BOOL bErase);
@@ -428,42 +459,55 @@ void WINAPI PostQuitMessage(int nExitCode);
 /** @brief Waits until the message queue receives work. @note Status: PARTIAL */
 BOOL WINAPI WaitMessage(void);
 
-/** @brief Sets window title text. @note Status: STUB */
+/** @brief Sets SDL window title. @note Status: PARTIAL */
 BOOL WINAPI SetWindowTextA(HWND hWnd, LPCSTR lpString);
-/** @brief Posts a message to the queue. @note Status: STUB */
+/** @brief Enqueues a message into the global mutex-protected queue. No thread/window validation. @note Status: PARTIAL */
 BOOL WINAPI PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 /** @brief Displays a simple message box replacement. @note Status: STUB */
 int WINAPI MessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType);
-/** @brief Retrieves cursor position in screen coordinates. @note Status: STUB */
+/** @brief Retrieves cursor position via SDL_GetGlobalMouseState. @note Status: PARTIAL */
 BOOL WINAPI GetCursorPos(LPPOINT lpPoint);
-/** @brief Converts screen coordinates to client coordinates. @note Status: STUB */
+/** @brief Converts screen coordinates to client by subtracting SDL window position. @note Status: PARTIAL */
 BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint);
 /** @brief Sets active cursor shape. @note Status: STUB */
 HCURSOR WINAPI SetCursor(HCURSOR hCursor);
 /** @brief Shows/hides cursor and returns display counter. @note Status: STUB */
 int WINAPI ShowCursor(BOOL bShow);
-/** @brief Converts client coordinates to screen coordinates. @note Status: STUB */
+/** @brief Converts client to screen coordinates by adding SDL window position. @note Status: PARTIAL */
 BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint);
-/** @brief Sets cursor screen position. @note Status: STUB */
+/** @brief Warps the cursor to screen position via SDL_WarpMouseGlobal. @note Status: PARTIAL */
 BOOL WINAPI SetCursorPos(int X, int Y);
 /** @brief Loads string resource text. @note Status: STUB */
 int WINAPI LoadStringA(HINSTANCE hInstance, UINT uID, LPSTR lpBuffer, int cchBufferMax);
 /** @brief Returns current module handle. @note Status: STUB */
 HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName);
-/** @brief Loads bitmap/image resource. @note Status: STUB */
+/**
+ * @brief Loads an image from disk (IMAGE_BITMAP + LR_LOADFROMFILE only).
+ *
+ * Loads a BMP via SDL_LoadBMP, converts to RGBA32, optionally scales.
+ * Resource loading (without LR_LOADFROMFILE) is not implemented.
+ * @note Status: PARTIAL
+ */
 HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy, UINT fuLoad);
-/** @brief Retrieves object info from GDI handle. @note Status: STUB */
+/** @brief Fills a BITMAP structure for an internal compatible bitmap. @note Status: PARTIAL */
 int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv);
-/** @brief Deletes a GDI object. @note Status: STUB */
+/** @brief Deletes an internal compatible bitmap. @note Status: PARTIAL */
 BOOL WINAPI DeleteObject(HGDIOBJ ho);
 /** @brief Creates a GDI bitmap from raw pixel data. @note Status: PARTIAL */
 HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount, const void* lpBits);
-/** @brief Creates compatible device context. @note Status: STUB */
+/** @brief Allocates an internal memory DC. @note Status: PARTIAL */
 HDC WINAPI CreateCompatibleDC(HDC hdc);
-/** @brief Selects object into device context. @note Status: STUB */
+/** @brief Selects an internal bitmap into a memory DC; returns previously selected object. @note Status: PARTIAL */
 HGDIOBJ WINAPI SelectObject(HDC hdc, HGDIOBJ h);
-/** @brief Deletes device context. @note Status: STUB */
+/** @brief Deletes an internal compatible DC. @note Status: PARTIAL */
 BOOL WINAPI DeleteDC(HDC hdc);
+/**
+ * @brief Copies/scales a region from a source DC to a destination DC.
+ *
+ * Only SRCCOPY from a memory DC with selected bitmap to an internal surface DC
+ * is implemented. Uses nearest-neighbor scaling.
+ * @note Status: PARTIAL
+ */
 BOOL WINAPI StretchBlt(HDC hdcDest,
                        int xDest,
                        int yDest,
@@ -475,13 +519,13 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
                        int wSrc,
                        int hSrc,
                        DWORD rop);
-/** @brief Reads a pixel color from DC. @note Status: STUB */
+/** @brief Reads an RGB color from a surface DC or selected bitmap. @note Status: PARTIAL */
 COLORREF WINAPI GetPixel(HDC hdc, int x, int y);
-/** @brief Writes a pixel color to DC. @note Status: STUB */
+/** @brief Writes an RGB color into a surface DC or selected bitmap. @note Status: PARTIAL */
 COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color);
-/** @brief Queries a device capability value. @note Status: STUB */
+/** @brief Returns 256 for SIZEPALETTE; otherwise 0. @note Status: PARTIAL */
 int WINAPI GetDeviceCaps(HDC hdc, int index);
-/** @brief Returns palette entries from system palette. @note Status: STUB */
+/** @brief Fills palette entries as grayscale values. @note Status: PARTIAL */
 UINT WINAPI GetSystemPaletteEntries(HDC hdc, UINT iStartIndex, UINT nEntries, LPVOID lppe);
 /** @brief Finds an embedded resource. @note Status: STUB */
 HRSRC WINAPI FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType);
@@ -495,15 +539,15 @@ LPVOID WINAPI LockResource(HGLOBAL hResData);
 BOOL WINAPI UnlockResource(HGLOBAL hResData);
 /** @brief Releases resource handle. @note Status: STUB */
 BOOL WINAPI FreeResource(HGLOBAL hResData);
-/** @brief Legacy low-level open call wrapper. @note Status: STUB */
+/** @brief Calls POSIX open(O_RDONLY); ignores iReadWrite mode. @note Status: PARTIAL */
 int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite);
-/** @brief Legacy low-level read wrapper. @note Status: STUB */
+/** @brief Calls POSIX read(); returns byte count. @note Status: PARTIAL */
 UINT WINAPI _lread(int hFile, LPVOID lpBuffer, UINT uBytes);
-/** @brief Legacy low-level close wrapper. @note Status: STUB */
+/** @brief Calls POSIX close(). @note Status: PARTIAL */
 int WINAPI _lclose(int hFile);
-/** @brief Deletes a file by path. @note Status: STUB */
+/** @brief Calls remove() directly; no backslash normalization. @note Status: PARTIAL */
 BOOL WINAPI DeleteFileA(LPCSTR lpFileName);
-/** @brief Legacy formatted print into buffer. @note Status: STUB */
+/** @brief Formatted print using vsnprintf with a 1024-byte fixed buffer. @note Status: PARTIAL */
 int WINAPIV wsprintfA(LPSTR lpOut, LPCSTR lpFmt, ...);
 
 /** @brief Security attributes for directory creation. @note Status: PARTIAL */
@@ -513,7 +557,14 @@ typedef struct _SECURITY_ATTRIBUTES {
     BOOL bInheritHandle;
 } SECURITY_ATTRIBUTES, *PSECURITY_ATTRIBUTES, *LPSECURITY_ATTRIBUTES;
 
-/** @brief Creates a directory; security descriptor is ignored. @note Status: STUB */
+/**
+ * @brief Creates a directory; security descriptor is ignored.
+ *
+ * Normalizes Windows-style paths (removes drive letter, converts backslashes,
+ * strips leading slashes). Calls mkdir(path, 0755). Treats EEXIST as success.
+ * Does not recursively create missing parent directories.
+ * @note Status: PARTIAL
+ */
 BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes);
 /** @brief Loads a cursor resource. @note Status: STUB */
 HCURSOR WINAPI LoadCursorA(HINSTANCE hInstance, LPCSTR lpCursorName);
@@ -527,9 +578,15 @@ int WINAPI GetSystemMetrics(int nIndex);
 BOOL WINAPI AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
 /** @brief Sets keyboard focus window. @note Status: PARTIAL */
 HWND WINAPI SetFocus(HWND hWnd);
-/** @brief Starts a user timer. @note Status: STUB */
+/**
+ * @brief Stores a polling timer; PeekMessageA generates WM_TIMER messages.
+ *
+ * lpTimerFunc is ignored. If nIDEvent == 0, a unique ID is generated.
+ * Timers only fire while the message loop calls PeekMessageA or GetMessageA.
+ * @note Status: PARTIAL
+ */
 UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTimerFunc);
-/** @brief Stops a user timer. @note Status: STUB */
+/** @brief Removes a stored polling timer. @note Status: PARTIAL */
 BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent);
 
 static inline BOOL SetRect(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom)
@@ -572,11 +629,24 @@ static inline BOOL UnionRect(LPRECT lprcDst, const RECT* lprcSrc1, const RECT* l
     return TRUE;
 }
 
-/** @brief Gets current client rectangle. @note Status: STUB */
+/** @brief Returns {0, 0, windowWidth, windowHeight} from the SDL window size. @note Status: PARTIAL */
 BOOL WINAPI GetClientRect(HWND hWnd, LPRECT lpRect);
 /** @} */
 
+/**
+ * @brief WinMain-compatible function pointer type.
+ * @note Status: HEADER_ONLY
+ */
 typedef int(WINAPI* FREE_API_WINMAIN_PROC)(HINSTANCE, HINSTANCE, LPSTR, int);
+
+/**
+ * @brief Adapts a standard main() environment to call a WinMain-style function.
+ *
+ * Sets _pgmptr to argv[0] when available. Builds lpCmdLine from argv[1..] separated
+ * by spaces. Calls the entry point with hInstance=NULL, hPrevInstance=NULL, nCmdShow=SW_SHOW.
+ * Returns -1 if the entry point pointer is null.
+ * @note Status: PARTIAL
+ */
 int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** argv);
 
 #ifdef UNICODE

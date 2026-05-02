@@ -1,3 +1,17 @@
+/**
+ * @file minwindef.h
+ * @brief Basic Win32 scalar typedefs and fundamental constants.
+ *
+ * Defines the minimal set of scalar types and constants expected by old C/C++
+ * Win32 code: MAX_PATH, TRUE/FALSE, DWORD, BOOL, BYTE, WORD, FLOAT, INT, UINT,
+ * and common pointer-to-scalar typedefs (LPVOID, LPDWORD, etc.).
+ *
+ * All types are implemented as standard C99/C++11 integer type aliases.
+ * Note: old WinAPI code uses LP-prefixed types heavily; "LP" historically meant
+ * "long pointer" but in modern flat-memory models it simply means a pointer.
+ *
+ * @note Status: HEADER_ONLY
+ */
 #pragma once
 
 #include <stdint.h>

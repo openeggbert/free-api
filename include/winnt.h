@@ -1,3 +1,20 @@
+/**
+ * @file winnt.h
+ * @brief Win32 character/string types, HRESULT, GUID, and basic COM aliases.
+ *
+ * Provides:
+ * - Character types: CHAR, WCHAR, BOOLEAN
+ * - String pointer aliases: LPSTR, LPCSTR, LPWSTR, LPCWSTR, TCHAR/LPTSTR/LPCTSTR
+ * - Integer types: LONG, ULONG, USHORT, UCHAR
+ * - HRESULT type (int32_t)
+ * - IUnknown forward declaration (no COM behavior implemented)
+ * - GUID/IID/CLSID structures and pointer/reference aliases
+ *
+ * This project is ANSI-oriented; the UNICODE alias layer exists but most
+ * implemented functions are the 'A' variants.
+ *
+ * @note Status: HEADER_ONLY
+ */
 #ifndef FREE_API_WINNT_H
 #define FREE_API_WINNT_H
 

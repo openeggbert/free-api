@@ -1,3 +1,26 @@
+/**
+ * @file digitalv.h
+ * @brief MCI Digital Video / MIDI sequencer compatibility subset.
+ *
+ * Exposes the WinMM MCI command interface (mciSendCommand / mciGetDeviceID)
+ * and the supporting MCI parameter structures.
+ *
+ * Supported device types:
+ * - "sequencer" : MIDI playback via TinySoundFont + TinyMidiLoader (MCI_OPEN,
+ *   MCI_PLAY, MCI_CLOSE, MCI_SET).
+ *
+ * Unsupported device types:
+ * - "cdaudio": gracefully declined with MCIERR_UNSUPPORTED_FUNCTION.
+ * - All other video/digital-video device types: declined.
+ *
+ * MCI_NOTIFY is supported for MCI_PLAY: MM_MCINOTIFY is posted to the
+ * callback HWND when playback completes.
+ *
+ * MCI_PLAY looping is not implemented (TODO).
+ *
+ * @note The implementation lives in src/winapi.cpp and src/MidiMusic.cpp.
+ * @note Status: STUB (for digital video); PARTIAL (for MIDI/sequencer)
+ */
 #ifndef FREE_API_DIGITALV_H
 #define FREE_API_DIGITALV_H
 
@@ -6,8 +29,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-// MCI Digital Video subset - Status: STUB
 #define MCI_OPEN 0x0803
 #define MCI_CLOSE 0x0804
 #define MCI_PLAY 0x0806
@@ -96,8 +117,21 @@ typedef MCI_DGV_OPEN_PARMS MCI_OPEN_PARMS;
 typedef LPMCI_DGV_OPEN_PARMS LPMCI_OPEN_PARMS;
 #endif
 
-MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam); // Status: STUB
-MCIDEVICEID WINAPI mciGetDeviceIDA(LPCSTR lpszDevice); // Status: STUB
+/**
+ * @brief Sends an MCI command to a device.
+ *
+ * Only "sequencer" MIDI devices are handled; other types are declined.
+ * @note Status: PARTIAL
+ */
+MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam);
+
+/**
+ * @brief Returns the device ID for a named MCI device.
+ *
+ * Not implemented; always returns 0.
+ * @note Status: STUB
+ */
+MCIDEVICEID WINAPI mciGetDeviceIDA(LPCSTR lpszDevice);
 
 #define mciSendCommand mciSendCommandA
 #define mciGetDeviceID mciGetDeviceIDA

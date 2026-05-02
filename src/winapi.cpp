@@ -1,3 +1,64 @@
+/**
+ * @file winapi.cpp
+ * @brief Main WinAPI / WinMM / GDI-like compatibility layer — implementation.
+ *
+ * This file implements the public API declared in include/windows.h and
+ * include/mmsystem.h using SDL3 and POSIX.  It is the core of the Free API
+ * compatibility library.  No WinAPI symbols are emitted; all public functions
+ * are C linkage wrappers around SDL/POSIX calls.
+ *
+ * @par Internal Structure
+ * All private state is in an anonymous namespace:
+ *
+ * - @b CompatBitmap / @b CompatDC — GDI-like in-memory bitmaps and device
+ *   contexts.  Only a small RGBA32 pixel buffer subset is implemented.
+ *   Handles (HBITMAP, HDC) are pointers to these structs cast through void*.
+ *   Magic-number validation guards against stale handles.
+ *
+ * - @b Message Queue — a global std::queue<MSG> protected by
+ *   @c g_messageQueueMutex.  The multimedia timer (timeSetEvent) fires its
+ *   callback on an SDL thread, which may call PostMessageA; the mutex prevents
+ *   concurrent queue corruption.
+ *
+ * - @b WinTimers — WinAPI polling timers (SetTimer/KillTimer).  Timers are
+ *   stored in @c g_winTimers and checked in PeekMessageA; they produce
+ *   WM_TIMER messages when their interval has elapsed.  There is no separate
+ *   timer thread.
+ *
+ * - @b MmTimers — WinMM multimedia timers (timeSetEvent/timeKillEvent).
+ *   Backed by SDL_AddTimer (fires on a dedicated SDL timer thread).  The
+ *   callback receives MMTIM-style parameters and is called from that thread.
+ *   @c g_mmTimerMutex protects the id→entry map.
+ *
+ * - @b Window Map — HWND is an SDL_Window* cast to void*.  @c g_windowProcedures
+ *   maps HWND→WNDPROC; @c g_registeredClasses maps class name string→WNDPROC.
+ *
+ * - @b Diagnostics — optional memory/message diagnostic snapshots controlled
+ *   by the @c FREE_API_DIAGNOSTICS=1 environment variable.  Also see
+ *   FreeApiDiagSnapshot() and FreeApiDiagTick().
+ *
+ * @par SDL Event Translation
+ * PumpSdlEvents() processes SDL3 events and converts them to WinAPI messages
+ * pushed into the global message queue:
+ *  - SDL_EVENT_QUIT → WM_QUIT
+ *  - SDL_EVENT_KEY_DOWN/UP → WM_KEYDOWN / WM_KEYUP (via SdlScancodeToVK)
+ *  - SDL_EVENT_MOUSE_MOTION → WM_MOUSEMOVE
+ *  - SDL_EVENT_MOUSE_BUTTON_DOWN/UP → WM_LBUTTONDOWN etc.
+ *  - SDL_EVENT_MOUSE_WHEEL → WM_MOUSEWHEEL (high word = delta * WHEEL_DELTA)
+ *  - SDL_EVENT_WINDOW_CLOSE_REQUESTED → WM_CLOSE
+ *
+ * @par Threading Model
+ * - Main thread: runs the message loop, PeekMessageA/GetMessageA/DispatchMessageA.
+ * - SDL timer thread: fires timeSetEvent callbacks.
+ * - MIDI mixer thread: runs in MidiMusic.cpp.
+ *
+ * @par Unsupported Areas
+ * Real GDI drawing (lines, rectangles, brushes, fonts), Win32 resources,
+ * common dialogs, Unicode APIs, real security descriptors, COM/OLE, Winsock.
+ *
+ * @note See also: src/MidiMusic.cpp for the MIDI/MCI backend.
+ * @note See also: src/winmain_bridge.cpp for the WinMain startup shim.
+ */
 #include "windows.h"
 #include "io.h"
 #include "mmsystem.h"
