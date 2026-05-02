@@ -44,14 +44,7 @@
 extern "C" {
 #endif
 
-/**
- * @name WinBase subset
- * @brief Process, timing and debug helpers used by the game.
- * @note Status: PARTIAL
- */
-/** @{ */
-/** @brief Suspends the current thread for at least `dwMilliseconds`. @note Status: IMPLEMENTED */
-void WINAPI Sleep(DWORD dwMilliseconds);
+#include <synchapi.h>
 /** @brief Returns elapsed system ticks in milliseconds. @note Status: IMPLEMENTED */
 DWORD WINAPI GetTickCount(void);
 /** @brief Closes a generic handle. @note Status: PARTIAL */

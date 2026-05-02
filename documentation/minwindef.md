@@ -31,6 +31,51 @@ to 260 characters.
 
 Status: `REVIEWED`
 
+## NULL
+
+`NULL` is the traditional C and C++ null pointer constant used by Win32-style
+headers and old C/C++ code.
+
+Typical definition:
+
+```cpp
+#ifndef NULL
+#ifdef __cplusplus
+#define NULL 0
+#else
+#define NULL ((void *)0)
+#endif
+#endif
+```
+
+In C, `NULL` is commonly defined as a `void*` null pointer value:
+
+```cpp
+#define NULL ((void *)0)
+```
+
+In C++, `NULL` is commonly defined as integer `0`, because implicit conversion
+from `void*` to typed pointers is not allowed in the same way as in C:
+
+```cpp
+#define NULL 0
+```
+
+Example usage:
+
+```cpp
+HWND hwnd = NULL;
+
+if (hwnd == NULL) {
+    // no window handle
+}
+```
+
+For Win32-compatible public APIs and old source code, `NULL` is kept for source
+compatibility. For new internal C++ code, prefer `nullptr`.
+
+Status: `REVIEWED`
+
 ## FALSE
 
 `FALSE` is the conventional Win32 false value.

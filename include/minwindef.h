@@ -12,10 +12,20 @@
 
 #include <stdint.h>
 
+#include <basestd.h>
+
 /* Miscellaneous constants */
 
 #ifndef MAX_PATH
 #define MAX_PATH 260
+#endif
+
+#ifndef NULL
+#ifdef __cplusplus
+#define NULL 0
+#else
+#define NULL ((void *)0)
+#endif
 #endif
 
 #ifndef FALSE
@@ -24,6 +34,21 @@
 
 #ifndef TRUE
 #define TRUE 1
+#endif
+
+#define CALLBACK __stdcall
+#define WINAPI __stdcall
+#define WINAPIV __cdecl
+#define APIENTRY WINAPI
+#define APIPRIVATE __stdcall
+#define PASCAL __stdcall
+
+#ifndef __stdcall
+#define __stdcall
+#endif
+
+#ifndef __cdecl
+#define __cdecl
 #endif
 
 /* Basic scalar types */
@@ -49,6 +74,10 @@ typedef const void     *LPCVOID;
 typedef int            INT;
 typedef unsigned int   UINT;
 typedef unsigned int   *PUINT;
+
+typedef LONG_PTR LRESULT;
+typedef UINT_PTR WPARAM;
+typedef LONG_PTR LPARAM;
 
 /* Handle types */
 
