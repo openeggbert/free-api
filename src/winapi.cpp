@@ -100,6 +100,8 @@ namespace {
     std::atomic<int64_t> g_diagCompatDcs{0};
     std::atomic<int64_t> g_diagCompatDcsEver{0};
     std::atomic<int64_t> g_diagCompatDcsDestroyed{0};
+    std::atomic<int64_t> g_diagCompatBitmapPixelCapacityBytes{0};
+    std::atomic<int64_t> g_diagCompatBitmapPixelCapacityHighWaterBytes{0};
 
     // Mouse button state tracked for MK_* wParam in WM_MOUSEMOVE
     WPARAM g_mouseButtons = 0;
@@ -116,6 +118,17 @@ namespace {
         vsnprintf(buf, sizeof(buf), fmt, ap);
         va_end(ap);
         SDL_Log("[free-api input] %s", buf);
+    }
+
+    void AdjustDiagLiveBytes(std::atomic<int64_t>& liveCounter, std::atomic<int64_t>& highWaterCounter, const int64_t delta)
+    {
+        const int64_t value = liveCounter.fetch_add(delta, std::memory_order_relaxed) + delta;
+        if (delta <= 0) return;
+
+        int64_t highWater = highWaterCounter.load(std::memory_order_relaxed);
+        while (value > highWater &&
+               !highWaterCounter.compare_exchange_weak(highWater, value, std::memory_order_relaxed)) {
+        }
     }
 
     void FreeApiDiagSnapshot(const char* tag);
@@ -188,7 +201,8 @@ namespace {
         const long rssKb = FreeApiReadRssKB();
         SDL_Log("[FREE_API_DIAG][%s] rss=%ldKB rssMB=%.1f queue=%zu activeTimers=%zu winTimers=%zu mmTimers=%zu "
                 "wmUpdate=posted:%llu dispatched:%llu pending:%lld messages=posted:%llu dispatched:%llu sdlEvents=%llu "
-                "sdlSurface=%lld/%lld/%lld compatBitmap=%lld/%lld/%lld compatDC=%lld/%lld/%lld cache: freeApi=0",
+                "sdlSurface=%lld/%lld/%lld compatBitmap=%lld/%lld/%lld compatDC=%lld/%lld/%lld "
+                "bytes: compatBitmapPixels=%lldKB(hw=%lldKB) cache: freeApi=0",
                 tag ? tag : "snapshot",
                 rssKb,
                 static_cast<double>(rssKb) / 1024.0,
@@ -210,7 +224,9 @@ namespace {
                 static_cast<long long>(g_diagCompatBitmapsDestroyed.load()),
                 static_cast<long long>(g_diagCompatDcs.load()),
                 static_cast<long long>(g_diagCompatDcsEver.load()),
-                static_cast<long long>(g_diagCompatDcsDestroyed.load()));
+                static_cast<long long>(g_diagCompatDcsDestroyed.load()),
+                static_cast<long long>(g_diagCompatBitmapPixelCapacityBytes.load() / 1024),
+                static_cast<long long>(g_diagCompatBitmapPixelCapacityHighWaterBytes.load() / 1024));
     }
 
     void FreeApiDiagTick()
@@ -375,6 +391,9 @@ namespace {
         bitmap->bitsPerPixel = 32;
         bitmap->pitch = bitmap->width * 4;
         bitmap->pixels.resize(static_cast<size_t>(bitmap->pitch) * static_cast<size_t>(bitmap->height));
+        AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
+                            g_diagCompatBitmapPixelCapacityHighWaterBytes,
+                            static_cast<int64_t>(bitmap->pixels.capacity()));
 
         for (int y = 0; y < bitmap->height; ++y) {
             const auto* srcRow = static_cast<const uint8_t*>(rgbaSurface->pixels) + static_cast<size_t>(y) * static_cast<size_t>(rgbaSurface->pitch);
@@ -394,6 +413,7 @@ namespace {
             return;
         }
 
+        const size_t oldCapacity = bitmap.pixels.capacity();
         std::vector<uint8_t> scaled(static_cast<size_t>(targetWidth) * static_cast<size_t>(targetHeight) * 4u, 0);
         const int srcWidth = bitmap.width;
         const int srcHeight = bitmap.height;
@@ -418,6 +438,10 @@ namespace {
         bitmap.height = targetHeight;
         bitmap.pitch = targetWidth * 4;
         bitmap.pixels.swap(scaled);
+        const auto delta = static_cast<int64_t>(bitmap.pixels.capacity()) - static_cast<int64_t>(oldCapacity);
+        AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
+                            g_diagCompatBitmapPixelCapacityHighWaterBytes,
+                            delta);
     }
 
     bool EnsureVideoSubsystem()
@@ -1160,6 +1184,9 @@ BOOL WINAPI DeleteObject(HGDIOBJ ho)
         return FALSE;
     }
 
+    AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
+                        g_diagCompatBitmapPixelCapacityHighWaterBytes,
+                        -static_cast<int64_t>(bitmap->pixels.capacity()));
     delete bitmap;
     g_diagCompatBitmaps.fetch_sub(1, std::memory_order_relaxed);
     g_diagCompatBitmapsDestroyed.fetch_add(1, std::memory_order_relaxed);
@@ -1186,6 +1213,9 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
     bitmap->bitsPerPixel = 32; // store as RGBA32 internally
     bitmap->pitch = nWidth * 4;
     bitmap->pixels.resize(static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight) * 4u, 0);
+    AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
+                        g_diagCompatBitmapPixelCapacityHighWaterBytes,
+                        static_cast<int64_t>(bitmap->pixels.capacity()));
 
     if (lpBits) {
         if (nBitCount == 8) {
