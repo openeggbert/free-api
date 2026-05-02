@@ -438,6 +438,9 @@ static bool EnsureMidiBackend()
         tsf_set_output(g_midi.soundFont, TSF_STEREO_INTERLEAVED,
                        kMixSpec.freq, 0.0f);
         tsf_set_volume(g_midi.soundFont, 1.0f);
+    } else {
+        MIDI_LOG("audio backend started without SoundFont; music will stay silent");
+        return true;
     }
 
     /* Start mixer thread. */
@@ -612,6 +615,19 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
                     s.notifyHwnd = reinterpret_cast<HWND>(parms->dwCallback);
                 } else {
                     s.notifyHwnd = nullptr;
+                }
+
+                if (!g_midi.soundFont) {
+                    s.playing = false;
+                    s.finished = true;
+                    if (s.notifyHwnd) {
+                        PostMessageA(s.notifyHwnd, MM_MCINOTIFY,
+                                     MCI_NOTIFY_SUCCESSFUL,
+                                     static_cast<LPARAM>(s.id));
+                    }
+                    MIDI_LOG("MCI_PLAY: no SoundFont loaded; treating device id=%u as silent success",
+                             (unsigned)mciId);
+                    return 0;
                 }
 
                 MIDI_LOG("MCI_PLAY: device id=%u notifyHwnd=%p",

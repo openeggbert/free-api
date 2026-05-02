@@ -16,6 +16,7 @@
 #include <unordered_set>
 #include <vector>
 #include <cstdarg>
+#include <cstdlib>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -82,6 +83,23 @@ namespace {
     bool g_videoInitialized = false;
     std::atomic<UINT> g_nextTimerId{1};
     HWND g_focusWindow = NULL;
+    constexpr UINT kDiagWmUpdate = WM_USER + 1;
+
+    std::atomic<uint64_t> g_diagMessagesPosted{0};
+    std::atomic<uint64_t> g_diagMessagesDispatched{0};
+    std::atomic<uint64_t> g_diagSdlEventsProcessed{0};
+    std::atomic<uint64_t> g_diagWmUpdatePosted{0};
+    std::atomic<uint64_t> g_diagWmUpdateDispatched{0};
+    std::atomic<int64_t> g_diagWmUpdatePending{0};
+    std::atomic<int64_t> g_diagSdlSurfaces{0};
+    std::atomic<int64_t> g_diagSdlSurfacesEver{0};
+    std::atomic<int64_t> g_diagSdlSurfacesDestroyed{0};
+    std::atomic<int64_t> g_diagCompatBitmaps{0};
+    std::atomic<int64_t> g_diagCompatBitmapsEver{0};
+    std::atomic<int64_t> g_diagCompatBitmapsDestroyed{0};
+    std::atomic<int64_t> g_diagCompatDcs{0};
+    std::atomic<int64_t> g_diagCompatDcsEver{0};
+    std::atomic<int64_t> g_diagCompatDcsDestroyed{0};
 
     // Mouse button state tracked for MK_* wParam in WM_MOUSEMOVE
     WPARAM g_mouseButtons = 0;
@@ -98,6 +116,112 @@ namespace {
         vsnprintf(buf, sizeof(buf), fmt, ap);
         va_end(ap);
         SDL_Log("[free-api input] %s", buf);
+    }
+
+    void FreeApiDiagSnapshot(const char* tag);
+
+    bool FreeApiDiagnosticsEnabled()
+    {
+        static int cached = -1;
+        if (cached < 0) {
+            const char* direct = SDL_getenv("FREE_DIRECT_DIAGNOSTICS");
+            const char* api = SDL_getenv("FREE_API_DIAGNOSTICS");
+            cached = ((direct && *direct && std::strcmp(direct, "0") != 0)
+                   || (api && *api && std::strcmp(api, "0") != 0)) ? 1 : 0;
+            if (cached) {
+                std::atexit([]() { FreeApiDiagSnapshot("atexit"); });
+                FreeApiDiagSnapshot("startup");
+            }
+        }
+        return cached != 0;
+    }
+
+    long FreeApiReadRssKB()
+    {
+#if defined(__linux__)
+        int fd = open("/proc/self/status", O_RDONLY);
+        if (fd < 0) return 0;
+        char buffer[4096];
+        ssize_t bytes = read(fd, buffer, sizeof(buffer) - 1);
+        close(fd);
+        if (bytes <= 0) return 0;
+        buffer[bytes] = '\0';
+        long rss = 0;
+        const char* line = buffer;
+        while (*line) {
+            if (std::strncmp(line, "VmRSS:", 6) == 0) {
+                std::sscanf(line + 6, "%ld", &rss);
+                break;
+            }
+            const char* next = std::strchr(line, '\n');
+            if (!next) break;
+            line = next + 1;
+        }
+        return rss;
+#else
+        return 0;
+#endif
+    }
+
+    void FreeApiDiagSnapshot(const char* tag)
+    {
+        if (!FreeApiDiagnosticsEnabled()) return;
+
+        size_t queueSize = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_messageQueueMutex);
+            queueSize = g_messageQueue.size();
+        }
+
+        size_t winTimerCount = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_winTimerMutex);
+            winTimerCount = g_winTimers.size();
+        }
+
+        size_t mmTimerCount = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_mmTimerMutex);
+            mmTimerCount = g_mmTimers.size();
+        }
+
+        const long rssKb = FreeApiReadRssKB();
+        SDL_Log("[FREE_API_DIAG][%s] rss=%ldKB rssMB=%.1f queue=%zu activeTimers=%zu winTimers=%zu mmTimers=%zu "
+                "wmUpdate=posted:%llu dispatched:%llu pending:%lld messages=posted:%llu dispatched:%llu sdlEvents=%llu "
+                "sdlSurface=%lld/%lld/%lld compatBitmap=%lld/%lld/%lld compatDC=%lld/%lld/%lld cache: freeApi=0",
+                tag ? tag : "snapshot",
+                rssKb,
+                static_cast<double>(rssKb) / 1024.0,
+                queueSize,
+                winTimerCount + mmTimerCount,
+                winTimerCount,
+                mmTimerCount,
+                static_cast<unsigned long long>(g_diagWmUpdatePosted.load()),
+                static_cast<unsigned long long>(g_diagWmUpdateDispatched.load()),
+                static_cast<long long>(g_diagWmUpdatePending.load()),
+                static_cast<unsigned long long>(g_diagMessagesPosted.load()),
+                static_cast<unsigned long long>(g_diagMessagesDispatched.load()),
+                static_cast<unsigned long long>(g_diagSdlEventsProcessed.load()),
+                static_cast<long long>(g_diagSdlSurfaces.load()),
+                static_cast<long long>(g_diagSdlSurfacesEver.load()),
+                static_cast<long long>(g_diagSdlSurfacesDestroyed.load()),
+                static_cast<long long>(g_diagCompatBitmaps.load()),
+                static_cast<long long>(g_diagCompatBitmapsEver.load()),
+                static_cast<long long>(g_diagCompatBitmapsDestroyed.load()),
+                static_cast<long long>(g_diagCompatDcs.load()),
+                static_cast<long long>(g_diagCompatDcsEver.load()),
+                static_cast<long long>(g_diagCompatDcsDestroyed.load()));
+    }
+
+    void FreeApiDiagTick()
+    {
+        if (!FreeApiDiagnosticsEnabled()) return;
+        static std::atomic<uint64_t> lastNs{0};
+        const uint64_t now = SDL_GetTicksNS();
+        uint64_t prev = lastNs.load(std::memory_order_relaxed);
+        if (prev != 0 && now - prev < 5000000000ULL) return;
+        if (!lastNs.compare_exchange_strong(prev, now)) return;
+        FreeApiDiagSnapshot("periodic5s");
     }
 
     // Returns the active window for input routing.
@@ -240,8 +364,12 @@ namespace {
             SDL_Log("free-api LoadImageA: SDL_ConvertSurface failed: %s", SDL_GetError());
             return nullptr;
         }
+        g_diagSdlSurfaces.fetch_add(1, std::memory_order_relaxed);
+        g_diagSdlSurfacesEver.fetch_add(1, std::memory_order_relaxed);
 
         auto* bitmap = new CompatBitmap{};
+        g_diagCompatBitmaps.fetch_add(1, std::memory_order_relaxed);
+        g_diagCompatBitmapsEver.fetch_add(1, std::memory_order_relaxed);
         bitmap->width = rgbaSurface->w;
         bitmap->height = rgbaSurface->h;
         bitmap->bitsPerPixel = 32;
@@ -255,6 +383,8 @@ namespace {
         }
 
         SDL_DestroySurface(rgbaSurface);
+        g_diagSdlSurfaces.fetch_sub(1, std::memory_order_relaxed);
+        g_diagSdlSurfacesDestroyed.fetch_add(1, std::memory_order_relaxed);
         return bitmap;
     }
 
@@ -326,6 +456,11 @@ namespace {
 
     void PushMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
+        g_diagMessagesPosted.fetch_add(1, std::memory_order_relaxed);
+        if (message == kDiagWmUpdate) {
+            g_diagWmUpdatePosted.fetch_add(1, std::memory_order_relaxed);
+            g_diagWmUpdatePending.fetch_add(1, std::memory_order_relaxed);
+        }
         MSG msg{};
         msg.hwnd = hwnd;
         msg.message = message;
@@ -341,6 +476,7 @@ namespace {
         }
         InputLog("ENQUEUE hwnd=%p msg=0x%04X wParam=0x%X lParam=0x%X qsize=%d",
             (void*)hwnd, message, (unsigned)wParam, (unsigned)lParam, (int)qsize);
+        FreeApiDiagTick();
     }
 
     void PumpSdlEvents()
@@ -349,6 +485,7 @@ namespace {
         SDL_PumpEvents();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            g_diagSdlEventsProcessed.fetch_add(1, std::memory_order_relaxed);
             switch (event.type) {
                 case SDL_EVENT_QUIT:
                     InputLog("SDL_EVENT_QUIT -> WM_QUIT");
@@ -929,6 +1066,8 @@ HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int b
     }
 
     auto* dc = new CompatDC{};
+    g_diagCompatDcs.fetch_add(1, std::memory_order_relaxed);
+    g_diagCompatDcsEver.fetch_add(1, std::memory_order_relaxed);
     dc->kind = CompatDcKind::Surface;
     dc->surfacePixels = static_cast<uint8_t*>(pixels);
     dc->surfaceWidth = width;
@@ -946,6 +1085,8 @@ BOOL FreeApiDestroySurfaceDC(HDC hdc)
     }
 
     delete dc;
+    g_diagCompatDcs.fetch_sub(1, std::memory_order_relaxed);
+    g_diagCompatDcsDestroyed.fetch_add(1, std::memory_order_relaxed);
     return TRUE;
 }
 
@@ -968,9 +1109,13 @@ HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy
         SDL_Log("free-api LoadImageA: SDL_LoadBMP failed for '%s': %s", normalizedPath.c_str(), SDL_GetError());
         return NULL;
     }
+    g_diagSdlSurfaces.fetch_add(1, std::memory_order_relaxed);
+    g_diagSdlSurfacesEver.fetch_add(1, std::memory_order_relaxed);
 
     CompatBitmap* bitmap = CreateCompatBitmapFromSurface(loaded);
     SDL_DestroySurface(loaded);
+    g_diagSdlSurfaces.fetch_sub(1, std::memory_order_relaxed);
+    g_diagSdlSurfacesDestroyed.fetch_add(1, std::memory_order_relaxed);
     if (!bitmap) {
         return NULL;
     }
@@ -1016,6 +1161,8 @@ BOOL WINAPI DeleteObject(HGDIOBJ ho)
     }
 
     delete bitmap;
+    g_diagCompatBitmaps.fetch_sub(1, std::memory_order_relaxed);
+    g_diagCompatBitmapsDestroyed.fetch_add(1, std::memory_order_relaxed);
     return TRUE;
 }
 
@@ -1032,6 +1179,8 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
     }
 
     auto* bitmap = new CompatBitmap{};
+    g_diagCompatBitmaps.fetch_add(1, std::memory_order_relaxed);
+    g_diagCompatBitmapsEver.fetch_add(1, std::memory_order_relaxed);
     bitmap->width = nWidth;
     bitmap->height = nHeight;
     bitmap->bitsPerPixel = 32; // store as RGBA32 internally
@@ -1085,6 +1234,8 @@ HDC WINAPI CreateCompatibleDC(HDC hdc)
 {
     (void)hdc;
     auto* dc = new CompatDC{};
+    g_diagCompatDcs.fetch_add(1, std::memory_order_relaxed);
+    g_diagCompatDcsEver.fetch_add(1, std::memory_order_relaxed);
     dc->kind = CompatDcKind::Memory;
     return reinterpret_cast<HDC>(dc);
 }
@@ -1113,6 +1264,8 @@ BOOL WINAPI DeleteDC(HDC hdc)
     }
 
     delete dc;
+    g_diagCompatDcs.fetch_sub(1, std::memory_order_relaxed);
+    g_diagCompatDcsDestroyed.fetch_add(1, std::memory_order_relaxed);
     return TRUE;
 }
 
@@ -1532,17 +1685,21 @@ UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTim
             static_cast<void*>(hWnd),
             static_cast<unsigned long>(nIDEvent),
             static_cast<unsigned>(uElapse));
+    FreeApiDiagSnapshot("timer-set");
     return nIDEvent;
 }
 
 BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent)
 {
     (void)hWnd;
-    std::lock_guard<std::mutex> lock(g_winTimerMutex);
-    g_winTimers.erase(uIDEvent);
+    {
+        std::lock_guard<std::mutex> lock(g_winTimerMutex);
+        g_winTimers.erase(uIDEvent);
+    }
     SDL_Log("free-api KillTimer: hwnd=%p id=%lu",
             static_cast<void*>(hWnd),
             static_cast<unsigned long>(uIDEvent));
+    FreeApiDiagSnapshot("timer-kill");
     return TRUE;
 }
 
@@ -1551,6 +1708,7 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
     (void)hWnd;
     (void)wMsgFilterMin;
     (void)wMsgFilterMax;
+    FreeApiDiagTick();
 
     if (!lpMsg) {
         return FALSE;
@@ -1582,6 +1740,7 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
         if (!pendingTimers.empty()) {
             std::lock_guard<std::mutex> qLock(g_messageQueueMutex);
             for (auto& m : pendingTimers) {
+                g_diagMessagesPosted.fetch_add(1, std::memory_order_relaxed);
                 g_messageQueue.push(m);
             }
         }
@@ -1597,6 +1756,9 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
     *lpMsg = g_messageQueue.front();
     if ((wRemoveMsg & PM_REMOVE) != 0) {
         g_messageQueue.pop();
+        if (lpMsg->message == kDiagWmUpdate) {
+            g_diagWmUpdatePending.fetch_sub(1, std::memory_order_relaxed);
+        }
     }
 
     return TRUE;
@@ -1634,6 +1796,12 @@ LRESULT WINAPI DispatchMessageA(const MSG* lpMsg)
     if (lpMsg->message == WM_QUIT) {
         return 0;
     }
+
+    g_diagMessagesDispatched.fetch_add(1, std::memory_order_relaxed);
+    if (lpMsg->message == kDiagWmUpdate) {
+        g_diagWmUpdateDispatched.fetch_add(1, std::memory_order_relaxed);
+    }
+    FreeApiDiagTick();
 
     InputLog("DISPATCH hwnd=%p msg=0x%04X wParam=0x%X lParam=0x%X",
         (void*)lpMsg->hwnd, lpMsg->message, (unsigned)lpMsg->wParam, (unsigned)lpMsg->lParam);
@@ -1792,6 +1960,7 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
     }
     g_activeTimerIds.insert(timerId);
     SDL_Log("free-api timeSetEvent: mmId=%u sdlId=%u delay=%u ms", timerId, sdlId, uDelay);
+    FreeApiDiagSnapshot("mm-timer-set");
     return timerId;
 }
 
@@ -1820,6 +1989,7 @@ MMRESULT WINAPI timeKillEvent(UINT uTimerID)
         SDL_RemoveTimer(sdlId);
     }
     g_activeTimerIds.erase(uTimerID);
+    FreeApiDiagSnapshot("mm-timer-kill");
     return MMSYSERR_NOERROR;
 }
 
