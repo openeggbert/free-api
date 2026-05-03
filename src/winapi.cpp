@@ -171,6 +171,9 @@ namespace {
     // Optional debug logging for input translation (set FREE_API_DEBUG_INPUT=1 at runtime)
     bool g_debugInput = false;
 
+    // Map from SDL_WindowID to HWND for O(1) event routing (populated by CreateWindowExA)
+    std::unordered_map<SDL_WindowID, HWND> g_windowsById;
+
     void InputLog(const char* fmt, ...)
     {
         if (!g_debugInput) return;
@@ -207,6 +210,24 @@ namespace {
                 std::atexit([]() { FreeApiDiagSnapshot("atexit"); });
                 FreeApiDiagSnapshot("startup");
             }
+        }
+        return cached != 0;
+    }
+
+    // Cheap cached helper: returns true only when diagnostics are enabled.
+    // Hot functions call this once per entry rather than re-reading env vars.
+    inline bool FreeApiDiagnosticsFastEnabled()
+    {
+        return FreeApiDiagnosticsEnabled();
+    }
+
+    // Returns true when detailed GDI blit diagnostics are requested (FREE_API_DEBUG_GDI=1).
+    bool FreeApiGdiDebugEnabled()
+    {
+        static int cached = -1;
+        if (cached < 0) {
+            const char* v = SDL_getenv("FREE_API_DEBUG_GDI");
+            cached = (v && v[0] == '1') ? 1 : 0;
         }
         return cached != 0;
     }
@@ -531,21 +552,18 @@ namespace {
 
     HWND FindWindowById(const SDL_WindowID windowId)
     {
-        for (const auto& [hwnd, proc] : g_windowProcedures) {
-            auto* sdlWindow = reinterpret_cast<SDL_Window*>(hwnd);
-            if (sdlWindow && SDL_GetWindowID(sdlWindow) == windowId) {
-                return hwnd;
-            }
-        }
-        return NULL;
+        const auto it = g_windowsById.find(windowId);
+        return (it != g_windowsById.end()) ? it->second : NULL;
     }
 
     void PushMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
-        g_diagMessagesPosted.fetch_add(1, std::memory_order_relaxed);
-        if (message == kDiagWmUpdate) {
-            g_diagWmUpdatePosted.fetch_add(1, std::memory_order_relaxed);
-            g_diagWmUpdatePending.fetch_add(1, std::memory_order_relaxed);
+        if (FreeApiDiagnosticsFastEnabled()) {
+            g_diagMessagesPosted.fetch_add(1, std::memory_order_relaxed);
+            if (message == kDiagWmUpdate) {
+                g_diagWmUpdatePosted.fetch_add(1, std::memory_order_relaxed);
+                g_diagWmUpdatePending.fetch_add(1, std::memory_order_relaxed);
+            }
         }
         MSG msg{};
         msg.hwnd = hwnd;
@@ -570,8 +588,9 @@ namespace {
         // Make sure SDL has consumed pending OS events before we poll.
         SDL_PumpEvents();
         SDL_Event event;
+        const bool diagEnabled = FreeApiDiagnosticsFastEnabled();
         while (SDL_PollEvent(&event)) {
-            g_diagSdlEventsProcessed.fetch_add(1, std::memory_order_relaxed);
+            if (diagEnabled) g_diagSdlEventsProcessed.fetch_add(1, std::memory_order_relaxed);
             switch (event.type) {
                 case SDL_EVENT_QUIT:
                     InputLog("SDL_EVENT_QUIT -> WM_QUIT");
@@ -733,9 +752,16 @@ void WINAPI Sleep(DWORD dwMilliseconds) {
 }
 
 DWORD WINAPI GetTickCount(void) {
-    auto now = std::chrono::steady_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
-    return static_cast<DWORD>(ms.count());
+    using namespace std::chrono;
+
+    static const auto start = steady_clock::now();
+    const auto now = steady_clock::now();
+
+    const auto ms = duration_cast<milliseconds>(now - start).count();
+
+    return static_cast<DWORD>(
+        static_cast<uint64_t>(ms) & 0xFFFFFFFFu
+    );
 }
 
 void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer)
@@ -863,6 +889,7 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
 
     HWND hwnd = reinterpret_cast<HWND>(sdlWindow);
     g_windowProcedures[hwnd] = classIt->second;
+    g_windowsById[SDL_GetWindowID(sdlWindow)] = hwnd;
     g_focusWindow = hwnd;
 
     CREATESTRUCTA createStruct{};
@@ -922,7 +949,9 @@ BOOL WINAPI DestroyWindow(HWND hWnd)
     }
 
     g_windowProcedures.erase(hWnd);
-    SDL_DestroyWindow(reinterpret_cast<SDL_Window*>(hWnd));
+    auto* sdlWin = reinterpret_cast<SDL_Window*>(hWnd);
+    g_windowsById.erase(SDL_GetWindowID(sdlWin));
+    SDL_DestroyWindow(sdlWin);
 
     if (g_windowProcedures.empty() && g_videoInitialized) {
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -1392,33 +1421,90 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
     CompatBitmap* srcBitmap = src->selectedBitmap;
     const uint8_t* srcPixels = srcBitmap->pixels.data();
 
-    for (int y = 0; y < hDest; ++y) {
-        const int dstY = yDest + y;
-        if (dstY < 0 || dstY >= dst->surfaceHeight) {
-            continue;
+    // Fast path: 1:1 copy — clip once and copy rows with memcpy.
+    // This avoids per-pixel scaling math for the common case.
+    if (wDest == wSrc && hDest == hSrc) {
+        // Clip against destination surface
+        int dx0 = xDest, dy0 = yDest;
+        int sx0 = xSrc,  sy0 = ySrc;
+        int cw  = wDest, ch  = hDest;
+
+        // Clip left
+        if (dx0 < 0) { sx0 -= dx0; cw += dx0; dx0 = 0; }
+        if (sx0 < 0) { dx0 -= sx0; cw += sx0; sx0 = 0; }
+        // Clip right
+        if (dx0 + cw > dst->surfaceWidth)  cw = dst->surfaceWidth  - dx0;
+        if (sx0 + cw > srcBitmap->width)   cw = srcBitmap->width   - sx0;
+        // Clip top
+        if (dy0 < 0) { sy0 -= dy0; ch += dy0; dy0 = 0; }
+        if (sy0 < 0) { dy0 -= sy0; ch += sy0; sy0 = 0; }
+        // Clip bottom
+        if (dy0 + ch > dst->surfaceHeight) ch = dst->surfaceHeight - dy0;
+        if (sy0 + ch > srcBitmap->height)  ch = srcBitmap->height  - sy0;
+
+        if (cw <= 0 || ch <= 0) return TRUE;
+
+        for (int row = 0; row < ch; ++row) {
+            const uint8_t* srcRow = srcPixels
+                + static_cast<size_t>(sy0 + row) * static_cast<size_t>(srcBitmap->pitch)
+                + static_cast<size_t>(sx0) * 4u;
+            uint8_t* dstRow = dst->surfacePixels
+                + static_cast<size_t>(dy0 + row) * static_cast<size_t>(dst->surfacePitch)
+                + static_cast<size_t>(dx0) * 4u;
+            // Copy RGB, then set alpha=255 for each pixel in the row.
+            // We cannot use a plain memcpy for the whole row because the source
+            // alpha channel must be overridden to 255 to match the original behavior.
+            const uint8_t* s = srcRow;
+            uint8_t*       d = dstRow;
+            for (int px = 0; px < cw; ++px, s += 4, d += 4) {
+                d[0] = s[0];
+                d[1] = s[1];
+                d[2] = s[2];
+                d[3] = 255;
+            }
         }
 
-        const int srcY = ySrc + static_cast<int>((static_cast<int64_t>(y) * static_cast<int64_t>(hSrc)) / static_cast<int64_t>(hDest));
-        if (srcY < 0 || srcY >= srcBitmap->height) {
-            continue;
+        if (FreeApiGdiDebugEnabled()) {
+            SDL_Log("free-api StretchBlt (1:1): src=%dx%d[%d,%d] dst=[%d,%d] clipped=%dx%d",
+                    wSrc, hSrc, xSrc, ySrc, xDest, yDest, cw, ch);
         }
+        return TRUE;
+    }
+
+    // Scaled path: precompute per-destination-column source X to avoid division
+    // inside the inner loop.  Clip destination to surface bounds first so the
+    // lookup table only covers the pixels we will actually write.
+    int dxBegin = xDest, dyBegin = yDest;
+    int dxEnd   = xDest + wDest, dyEnd = yDest + hDest;
+    if (dxBegin < 0) dxBegin = 0;
+    if (dyBegin < 0) dyBegin = 0;
+    if (dxEnd > dst->surfaceWidth)  dxEnd = dst->surfaceWidth;
+    if (dyEnd > dst->surfaceHeight) dyEnd = dst->surfaceHeight;
+    if (dxBegin >= dxEnd || dyBegin >= dyEnd) return TRUE;
+
+    // Build srcX lookup table for the clipped destination column range.
+    const int clippedW = dxEnd - dxBegin;
+    std::vector<int> srcXTable(static_cast<size_t>(clippedW));
+    for (int i = 0; i < clippedW; ++i) {
+        const int dstCol = dxBegin + i - xDest; // 0-based offset within wDest
+        int sx = xSrc + static_cast<int>((static_cast<int64_t>(dstCol) * static_cast<int64_t>(wSrc)) / static_cast<int64_t>(wDest));
+        if (sx < 0) sx = 0;
+        if (sx >= srcBitmap->width) sx = srcBitmap->width - 1;
+        srcXTable[static_cast<size_t>(i)] = sx;
+    }
+
+    for (int dstY = dyBegin; dstY < dyEnd; ++dstY) {
+        const int dstRow0 = dstY - yDest; // 0-based row within hDest
+        const int srcY = ySrc + static_cast<int>((static_cast<int64_t>(dstRow0) * static_cast<int64_t>(hSrc)) / static_cast<int64_t>(hDest));
+        if (srcY < 0 || srcY >= srcBitmap->height) continue;
 
         auto* dstRow = dst->surfacePixels + static_cast<size_t>(dstY) * static_cast<size_t>(dst->surfacePitch);
         const auto* srcRow = srcPixels + static_cast<size_t>(srcY) * static_cast<size_t>(srcBitmap->pitch);
 
-        for (int x = 0; x < wDest; ++x) {
-            const int dstX = xDest + x;
-            if (dstX < 0 || dstX >= dst->surfaceWidth) {
-                continue;
-            }
-
-            const int srcX = xSrc + static_cast<int>((static_cast<int64_t>(x) * static_cast<int64_t>(wSrc)) / static_cast<int64_t>(wDest));
-            if (srcX < 0 || srcX >= srcBitmap->width) {
-                continue;
-            }
-
+        for (int i = 0; i < clippedW; ++i) {
+            const int srcX = srcXTable[static_cast<size_t>(i)];
             const auto* srcPixel = srcRow + static_cast<size_t>(srcX) * 4u;
-            auto* dstPixel = dstRow + static_cast<size_t>(dstX) * 4u;
+            auto* dstPixel = dstRow + static_cast<size_t>(dxBegin + i) * 4u;
             dstPixel[0] = srcPixel[0];
             dstPixel[1] = srcPixel[1];
             dstPixel[2] = srcPixel[2];
@@ -1426,55 +1512,10 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
         }
     }
 
-    int dstSampleX = xDest;
-    int dstSampleY = yDest;
-    if (dstSampleX < 0) dstSampleX = 0;
-    if (dstSampleY < 0) dstSampleY = 0;
-    if (dstSampleX >= dst->surfaceWidth) dstSampleX = dst->surfaceWidth - 1;
-    if (dstSampleY >= dst->surfaceHeight) dstSampleY = dst->surfaceHeight - 1;
-
-    uint8_t dstR = 0;
-    uint8_t dstG = 0;
-    uint8_t dstB = 0;
-    if (dst->surfaceWidth > 0 && dst->surfaceHeight > 0) {
-        const auto* dstSample = dst->surfacePixels + static_cast<size_t>(dstSampleY) * static_cast<size_t>(dst->surfacePitch) + static_cast<size_t>(dstSampleX) * 4u;
-        dstR = dstSample[0];
-        dstG = dstSample[1];
-        dstB = dstSample[2];
+    if (FreeApiGdiDebugEnabled()) {
+        SDL_Log("free-api StretchBlt (scaled): src=%dx%d[%d,%d] dst=%dx%d[%d,%d]",
+                wSrc, hSrc, xSrc, ySrc, wDest, hDest, xDest, yDest);
     }
-
-    int srcSampleX = xSrc;
-    int srcSampleY = ySrc;
-    if (srcSampleX < 0) srcSampleX = 0;
-    if (srcSampleY < 0) srcSampleY = 0;
-    if (srcSampleX >= srcBitmap->width) srcSampleX = srcBitmap->width - 1;
-    if (srcSampleY >= srcBitmap->height) srcSampleY = srcBitmap->height - 1;
-
-    uint8_t srcR = 0;
-    uint8_t srcG = 0;
-    uint8_t srcB = 0;
-    if (srcBitmap->width > 0 && srcBitmap->height > 0) {
-        const auto* srcSample = srcPixels + static_cast<size_t>(srcSampleY) * static_cast<size_t>(srcBitmap->pitch) + static_cast<size_t>(srcSampleX) * 4u;
-        srcR = srcSample[0];
-        srcG = srcSample[1];
-        srcB = srcSample[2];
-    }
-
-    SDL_Log("free-api StretchBlt: copied src=%dx%d[%d,%d] rgb=(%u,%u,%u) to dst=%dx%d[%d,%d] rgb=(%u,%u,%u)",
-            wSrc,
-            hSrc,
-            xSrc,
-            ySrc,
-            static_cast<unsigned>(srcR),
-            static_cast<unsigned>(srcG),
-            static_cast<unsigned>(srcB),
-            wDest,
-            hDest,
-            xDest,
-            yDest,
-            static_cast<unsigned>(dstR),
-            static_cast<unsigned>(dstG),
-            static_cast<unsigned>(dstB));
     return TRUE;
 }
 
@@ -1889,11 +1930,13 @@ LRESULT WINAPI DispatchMessageA(const MSG* lpMsg)
         return 0;
     }
 
-    g_diagMessagesDispatched.fetch_add(1, std::memory_order_relaxed);
-    if (lpMsg->message == kDiagWmUpdate) {
-        g_diagWmUpdateDispatched.fetch_add(1, std::memory_order_relaxed);
+    if (FreeApiDiagnosticsFastEnabled()) {
+        g_diagMessagesDispatched.fetch_add(1, std::memory_order_relaxed);
+        if (lpMsg->message == kDiagWmUpdate) {
+            g_diagWmUpdateDispatched.fetch_add(1, std::memory_order_relaxed);
+        }
+        FreeApiDiagTick();
     }
-    FreeApiDiagTick();
 
     InputLog("DISPATCH hwnd=%p msg=0x%04X wParam=0x%X lParam=0x%X",
         (void*)lpMsg->hwnd, lpMsg->message, (unsigned)lpMsg->wParam, (unsigned)lpMsg->lParam);

@@ -79,6 +79,8 @@ typedef LONG_PTR LRESULT;
 typedef UINT_PTR WPARAM;
 typedef LONG_PTR LPARAM;
 
+typedef WORD ATOM;
+
 /* Handle types */
 
 typedef void* HANDLE;

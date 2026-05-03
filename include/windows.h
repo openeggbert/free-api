@@ -45,45 +45,13 @@ extern "C" {
 #endif
 
 #include <synchapi.h>
-/** @brief Returns elapsed system ticks in milliseconds. @note Status: IMPLEMENTED */
-DWORD WINAPI GetTickCount(void);
-/** @brief Closes a generic handle. @note Status: PARTIAL */
-BOOL WINAPI CloseHandle(HANDLE hObject);
-/** @brief Writes debug text to the compatibility logger (ANSI). @note Status: IMPLEMENTED */
-void WINAPI OutputDebugStringA(LPCSTR lpOutputString);
-/** @brief Writes debug text to the compatibility logger (wide). @note Status: IMPLEMENTED */
-void WINAPI OutputDebugStringW(LPCWSTR lpOutputString);
+#include <sysinfoapi.h>
+#include <handleapi.h>
+
+#include <debugapi.h>
 /** @} */
 
-/**
- * @brief Legacy memory status structure filled by `GlobalMemoryStatus`.
- * @note Status: PARTIAL
- */
-typedef struct _MEMORYSTATUS {
-    DWORD dwLength;
-    DWORD dwMemoryLoad;
-    DWORD dwTotalPhys;
-    DWORD dwAvailPhys;
-    DWORD dwTotalPageFile;
-    DWORD dwAvailPageFile;
-    DWORD dwTotalVirtual;
-    DWORD dwAvailVirtual;
-} MEMORYSTATUS, *LPMEMORYSTATUS;
-
-/**
- * @brief Reports process-visible memory statistics.
- *
- * Values are compatibility approximations and should not be treated as exact
- * physical memory telemetry.
- * @note Status: PARTIAL
- */
-void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer);
-
-#ifdef UNICODE
-#define OutputDebugString OutputDebugStringW
-#else
-#define OutputDebugString OutputDebugStringA
-#endif
+#include <winbase.h>
 
 /**
  * @name WinUser subset
@@ -91,81 +59,16 @@ void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer);
  * @note Status: PARTIAL
  */
 /** @{ */
-typedef WORD ATOM;
-typedef DWORD COLORREF;
-typedef UINT MCIDEVICEID;
 
-/** @brief Program path pointer expected by old CRT startup code. @note Status: PARTIAL */
+/** @brief Program path pointer expected by old CRT startup code. stdlib.h (Visual Studio) does contain_pgmptr, but stdlib.h (GCC) does not contain it.
+  * @note Status: PARTIAL
+  *
+  */
 extern char* _pgmptr;
 
-/** @brief Legacy alias used by older codebases. @note Status: STUB */
-#ifndef byte
-#define byte BYTE
-#endif
+#include <rpcndr.h>
 
-/** @brief Win32 rectangle structure. @note Status: IMPLEMENTED */
-typedef struct tagRECT {
-    LONG left;
-    LONG top;
-    LONG right;
-    LONG bottom;
-} RECT, *PRECT, *LPRECT;
-
-/** @brief GDI bitmap metadata structure. @note Status: STUB */
-typedef struct tagBITMAP {
-    LONG bmType;
-    LONG bmWidth;
-    LONG bmHeight;
-    LONG bmWidthBytes;
-    WORD bmPlanes;
-    WORD bmBitsPixel;
-    LPVOID bmBits;
-} BITMAP, *PBITMAP, *LPBITMAP;
-
-/** @brief RGB color quad used by DIB/BMP formats. @note Status: STUB */
-typedef struct tagRGBQUAD {
-    BYTE rgbBlue;
-    BYTE rgbGreen;
-    BYTE rgbRed;
-    BYTE rgbReserved;
-} RGBQUAD, *LPRGBQUAD;
-
-#ifndef FREE_API_PALETTEENTRY_DEFINED
-#define FREE_API_PALETTEENTRY_DEFINED
-/** @brief Palette entry layout shared with DirectDraw. @note Status: PARTIAL */
-typedef struct tagPALETTEENTRY {
-    BYTE peRed;
-    BYTE peGreen;
-    BYTE peBlue;
-    BYTE peFlags;
-} PALETTEENTRY, *LPPALETTEENTRY;
-#endif
-
-/** @brief BMP file header. @note Status: STUB */
-typedef struct tagBITMAPFILEHEADER {
-    WORD bfType;
-    DWORD bfSize;
-    WORD bfReserved1;
-    WORD bfReserved2;
-    DWORD bfOffBits;
-} BITMAPFILEHEADER, *LPBITMAPFILEHEADER;
-
-/** @brief BMP info header. @note Status: STUB */
-typedef struct tagBITMAPINFOHEADER {
-    DWORD biSize;
-    LONG biWidth;
-    LONG biHeight;
-    WORD biPlanes;
-    WORD biBitCount;
-    DWORD biCompression;
-    DWORD biSizeImage;
-    LONG biXPelsPerMeter;
-    LONG biYPelsPerMeter;
-    DWORD biClrUsed;
-    DWORD biClrImportant;
-} BITMAPINFOHEADER, *LPBITMAPINFOHEADER;
-
-
+#include <wingdi.h>
 
 /** @brief Window creation payload for `WM_CREATE` processing. @note Status: PARTIAL */
 typedef struct tagCREATESTRUCTA {

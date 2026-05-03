@@ -21,6 +21,16 @@
 #include <winnt.h>
 #include <minwindef.h>
 
+typedef DWORD COLORREF;
+
+/** @brief Win32 rectangle structure. @note Status: IMPLEMENTED */
+typedef struct tagRECT {
+    LONG left;
+    LONG top;
+    LONG right;
+    LONG bottom;
+} RECT, *PRECT, *LPRECT;
+
 /** @brief Win32 integer point structure. @note Status: IMPLEMENTED */
 typedef struct tagPOINT {
     LONG x;
