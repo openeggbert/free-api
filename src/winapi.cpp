@@ -74,6 +74,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <cctype>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -116,6 +117,14 @@ namespace {
     };
 
     std::unordered_map<std::string, WNDPROC> g_registeredClasses;
+    struct FreeApiWindowState {
+        int width = 0;
+        int height = 0;
+        bool isFullscreen = false;
+    };
+
+    std::unordered_map<HWND, FreeApiWindowState> g_freeApiWindowStates;
+
     std::unordered_map<HWND, WNDPROC> g_windowProcedures;
     // The message queue is a std::deque (not std::queue) so we can search and
     // update existing pending messages for coalescing (e.g. WM_MOUSEMOVE,
@@ -753,8 +762,19 @@ namespace {
                     InputLog("SDL_EVENT_MOUSE_MOTION windowID=%u resolvedHwnd=%p",
                         (unsigned)event.motion.windowID, (void*)hwnd);
                     if (!hwnd) break;
+
                     int x = (int)event.motion.x;
                     int y = (int)event.motion.y;
+
+                    const auto it = g_freeApiWindowStates.find(hwnd);
+                    if (it != g_freeApiWindowStates.end()) {
+                        int pw, ph;
+                        if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hwnd), &pw, &ph) && pw > 0 && ph > 0) {
+                            x = x * it->second.width / pw;
+                            y = y * it->second.height / ph;
+                        }
+                    }
+
                     // lParam encodes client-area x/y
                     LPARAM lp = (LPARAM)(((WORD)(DWORD_PTR)y << 16) | ((WORD)(DWORD_PTR)x));
                     InputLog("MOUSE_MOTION x=%d y=%d wParam=0x%X -> WM_MOUSEMOVE",
@@ -769,8 +789,19 @@ namespace {
                     InputLog("SDL_EVENT_MOUSE_BUTTON windowID=%u resolvedHwnd=%p",
                         (unsigned)event.button.windowID, (void*)hwnd);
                     if (!hwnd) break;
+
                     int x = (int)event.button.x;
                     int y = (int)event.button.y;
+
+                    const auto it = g_freeApiWindowStates.find(hwnd);
+                    if (it != g_freeApiWindowStates.end()) {
+                        int pw, ph;
+                        if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hwnd), &pw, &ph) && pw > 0 && ph > 0) {
+                            x = x * it->second.width / pw;
+                            y = y * it->second.height / ph;
+                        }
+                    }
+
                     LPARAM lp = (LPARAM)(((WORD)(DWORD_PTR)y << 16) | ((WORD)(DWORD_PTR)x));
                     bool isDown = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
                     UINT msg = 0;
@@ -829,6 +860,7 @@ namespace {
         }
         return cmdLine;
     }
+
 }
 
 extern "C" {
@@ -979,6 +1011,12 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
     g_windowProcedures[hwnd] = classIt->second;
     g_windowsById[SDL_GetWindowID(sdlWindow)] = hwnd;
     g_focusWindow = hwnd;
+
+    FreeApiWindowState state;
+    state.width = width;
+    state.height = height;
+    state.isFullscreen = false;
+    g_freeApiWindowStates[hwnd] = state;
 
     CREATESTRUCTA createStruct{};
     createStruct.lpCreateParams = lpParam;
@@ -1171,18 +1209,30 @@ BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint)
         return FALSE;
     }
 
-    int x = 0;
-    int y = 0;
-    if (!SDL_GetWindowPosition(reinterpret_cast<SDL_Window*>(hWnd), &x, &y)) {
+    int winX = 0;
+    int winY = 0;
+    if (!SDL_GetWindowPosition(reinterpret_cast<SDL_Window*>(hWnd), &winX, &winY)) {
         return FALSE;
     }
 
-    LONG inX = lpPoint->x;
-    LONG inY = lpPoint->y;
-    lpPoint->x -= x;
-    lpPoint->y -= y;
+    const LONG inX = lpPoint->x;
+    const LONG inY = lpPoint->y;
+
+    lpPoint->x -= winX;
+    lpPoint->y -= winY;
+
+    // Scale from physical client coordinates to logical client coordinates
+    const auto it = g_freeApiWindowStates.find(hWnd);
+    if (it != g_freeApiWindowStates.end()) {
+        int pw, ph;
+        if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hWnd), &pw, &ph) && pw > 0 && ph > 0) {
+            lpPoint->x = lpPoint->x * it->second.width / pw;
+            lpPoint->y = lpPoint->y * it->second.height / ph;
+        }
+    }
+
     InputLog("ScreenToClient hwnd=%p win=(%d,%d) screen=(%d,%d) -> client=(%d,%d)",
-        (void*)hWnd, x, y, (int)inX, (int)inY, (int)lpPoint->x, (int)lpPoint->y);
+        static_cast<void*>(hWnd), winX, winY, static_cast<int>(inX), static_cast<int>(inY), static_cast<int>(lpPoint->x), static_cast<int>(lpPoint->y));
     return TRUE;
 }
 
@@ -1203,14 +1253,29 @@ BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint)
         return FALSE;
     }
 
-    int x = 0;
-    int y = 0;
-    if (!SDL_GetWindowPosition(reinterpret_cast<SDL_Window*>(hWnd), &x, &y)) {
+    const LONG inX = lpPoint->x;
+    const LONG inY = lpPoint->y;
+
+    // Scale from logical client coordinates to physical client coordinates
+    const auto it = g_freeApiWindowStates.find(hWnd);
+    if (it != g_freeApiWindowStates.end()) {
+        int pw, ph;
+        if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hWnd), &pw, &ph) && pw > 0 && ph > 0) {
+            lpPoint->x = lpPoint->x * pw / it->second.width;
+            lpPoint->y = lpPoint->y * ph / it->second.height;
+        }
+    }
+
+    int winX = 0;
+    int winY = 0;
+    if (!SDL_GetWindowPosition(reinterpret_cast<SDL_Window*>(hWnd), &winX, &winY)) {
         return FALSE;
     }
 
-    lpPoint->x += x;
-    lpPoint->y += y;
+    lpPoint->x += winX;
+    lpPoint->y += winY;
+    InputLog("ClientToScreen hwnd=%p win=(%d,%d) client=(%d,%d) -> screen=(%d,%d)",
+        static_cast<void*>(hWnd), winX, winY, static_cast<int>(inX), static_cast<int>(inY), static_cast<int>(lpPoint->x), static_cast<int>(lpPoint->y));
     return TRUE;
 }
 
@@ -1278,6 +1343,25 @@ HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int b
     dc->surfacePitch = pitch;
     dc->surfaceBitsPerPixel = bitsPerPixel;
     return reinterpret_cast<HDC>(dc);
+}
+
+void FreeApiSetWindowFullscreen(HWND hwnd, bool fullscreen)
+{
+    if (!hwnd) return;
+    auto* sdlWindow = reinterpret_cast<SDL_Window*>(hwnd);
+
+    const bool diag = FreeApiDiagnosticsEnabled();
+    if (diag) SDL_Log("free-api: FreeApiSetWindowFullscreen(hwnd=%p, fullscreen=%d)", static_cast<void*>(hwnd), fullscreen);
+
+    if (SDL_SetWindowFullscreen(sdlWindow, fullscreen)) {
+        if (diag) SDL_Log("free-api: SDL_SetWindowFullscreen(%s) success", fullscreen ? "true" : "false");
+        auto it = g_freeApiWindowStates.find(hwnd);
+        if (it != g_freeApiWindowStates.end()) {
+            it->second.isFullscreen = fullscreen;
+        }
+    } else {
+        SDL_Log("free-api: SDL_SetWindowFullscreen(%s) failed: %s", fullscreen ? "true" : "false", SDL_GetError());
+    }
 }
 
 BOOL FreeApiDestroySurfaceDC(HDC hdc)
@@ -1704,6 +1788,16 @@ BOOL WINAPI GetClientRect(HWND hWnd, LPRECT lpRect)
 {
     if (!hWnd || !lpRect) {
         return FALSE;
+    }
+
+    // Return the logical client size the game expects (e.g., 640x480).
+    const auto it = g_freeApiWindowStates.find(hWnd);
+    if (it != g_freeApiWindowStates.end()) {
+        lpRect->left = 0;
+        lpRect->top = 0;
+        lpRect->right = it->second.width;
+        lpRect->bottom = it->second.height;
+        return TRUE;
     }
 
     int w = 0;
