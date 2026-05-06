@@ -5,6 +5,9 @@
 #ifndef FREE_API_WINDOWS_WINGDI_H
 #define FREE_API_WINDOWS_WINGDI_H
 
+//#68
+#define SRCCOPY 0x00CC0020
+
 /** @brief GDI bitmap metadata structure. @note Status: STUB */
 typedef struct tagBITMAP {
     LONG bmType;
@@ -50,7 +53,7 @@ typedef struct tagBITMAPFILEHEADER {
     DWORD bfOffBits;
 } BITMAPFILEHEADER, *LPBITMAPFILEHEADER;
 
-//1431
+//#1054
 #ifndef FREE_API_PALETTEENTRY_DEFINED
 #define FREE_API_PALETTEENTRY_DEFINED
 /** @brief Palette entry layout shared with DirectDraw. @note Status: PARTIAL */
@@ -61,5 +64,14 @@ typedef struct tagPALETTEENTRY {
     BYTE peFlags;
 } PALETTEENTRY, *LPPALETTEENTRY;
 #endif
+
+//#1509
+#define BLACK_BRUSH 4
+
+//#1540
+#define CLR_INVALID 0xFFFFFFFF
+
+//#1624
+#define SIZEPALETTE 104
 
 #endif //FREE_API_WINDOWS_WINGDI_H

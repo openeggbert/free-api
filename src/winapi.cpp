@@ -2184,11 +2184,15 @@ MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwComma
     // IMPORTANT: Planet Blupi truncates the struct pointer to DWORD when passing
     // it to this function, which makes the pointer invalid on 64-bit Linux.
     // We must NOT dereference dwParam here when only MCI_OPEN_TYPE is set.
+
     if (uMsg == MCI_OPEN && (fdwCommand & MCI_OPEN_TYPE) && !(fdwCommand & MCI_OPEN_ELEMENT)) {
         SDL_Log("free-api mciSendCommandA: MCI_OPEN device-type-only (avivideo) — "
                 "video playback not implemented, returning MCIERR_UNSUPPORTED_FUNCTION");
         return MCIERR_UNSUPPORTED_FUNCTION;
     }
+
+    //todo: segfault is happening here for the game Planet Blupi
+    //return MCIERR_UNSUPPORTED_FUNCTION;
     return MidiMusicSendCommand(mciId, uMsg, fdwCommand, dwParam);
 }
 

@@ -30,4 +30,7 @@ typedef struct _MEMORYSTATUS {
  */
 void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer);
 
+//#922
+#define OF_READ 0x0000
+
 #endif //FREE_API_WINDOWS_WINBASE_H
