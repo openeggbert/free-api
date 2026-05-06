@@ -6,6 +6,20 @@
 #define FREE_API_WINDOWS_WINBASE_H
 
 #include <minwindef.h>
+
+//#97
+#ifndef ZeroMemory
+#define ZeroMemory(Destination, Length) memset((Destination), 0, (Length))
+#endif
+
+#ifndef FillMemory
+#define FillMemory(Destination, Length, Fill) memset((Destination), (Fill), (Length))
+#endif
+
+#ifndef CopyMemory
+#define CopyMemory(Destination, Source, Length) memmove((Destination), (Source), (Length))
+#endif
+
 /**
  * @brief Legacy memory status structure filled by `GlobalMemoryStatus`.
  * @note Status: PARTIAL

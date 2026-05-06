@@ -3,6 +3,14 @@
 #include <minwindef.h>
 #include <windef.h>
 
+//#145
+#ifndef MAKEINTRESOURCEA
+#define MAKEINTRESOURCEA(i) ((LPSTR)((ULONG_PTR)((WORD)(i))))
+#endif
+#ifndef MAKEINTRESOURCE
+#define MAKEINTRESOURCE MAKEINTRESOURCEA
+#endif
+
 //#159
 #define RT_BITMAP ((LPCSTR)2)
 
@@ -190,6 +198,10 @@ typedef struct tagMSG
 /** @brief `PeekMessage` mode constants. @note Status: IMPLEMENTED */
 #define PM_NOREMOVE 0x0000
 #define PM_REMOVE 0x0001
+
+//#2988
+/** @brief Legacy desktop pseudo-window handle. @note Status: IMPLEMENTED */
+#define HWND_DESKTOP ((HWND)0)
 
 //#4600
 #define SM_CXSCREEN 0

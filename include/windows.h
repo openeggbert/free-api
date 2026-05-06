@@ -74,28 +74,6 @@ extern char* _pgmptr;
 
 /** @} */
 
-#ifndef MAKEINTRESOURCEA
-#define MAKEINTRESOURCEA(i) ((LPSTR)((ULONG_PTR)((WORD)(i))))
-#endif
-#ifndef MAKEINTRESOURCE
-#define MAKEINTRESOURCE MAKEINTRESOURCEA
-#endif
-
-#ifndef ZeroMemory
-#define ZeroMemory(Destination, Length) memset((Destination), 0, (Length))
-#endif
-
-#ifndef FillMemory
-#define FillMemory(Destination, Length, Fill) memset((Destination), (Fill), (Length))
-#endif
-
-#ifndef CopyMemory
-#define CopyMemory(Destination, Source, Length) memmove((Destination), (Source), (Length))
-#endif
-
-/** @brief Legacy desktop pseudo-window handle. @note Status: IMPLEMENTED */
-#define HWND_DESKTOP ((HWND)0)
-
 /** @brief Packs RGB bytes into COLORREF. @note Status: IMPLEMENTED */
 #define RGB(r, g, b) ((COLORREF)(((BYTE)(r) | ((WORD)((BYTE)(g)) << 8)) | (((DWORD)(BYTE)(b)) << 16)))
 

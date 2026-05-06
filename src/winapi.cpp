@@ -15,7 +15,7 @@
  *   Handles (HBITMAP, HDC) are pointers to these structs cast through void*.
  *   Magic-number validation guards against stale handles.
  *
- * - @b Message Queue — a global std::queue<MSG> protected by
+ * - @b Message Queue — a global std::deque<MSG> protected by
  *   @c g_messageQueueMutex.  The multimedia timer (timeSetEvent) fires its
  *   callback on an SDL thread, which may call PostMessageA; the mutex prevents
  *   concurrent queue corruption.
