@@ -31,9 +31,49 @@ endif()
 target_link_libraries(free-api PRIVATE SDL3::SDL3)
 
 target_sources(free-api PRIVATE
+    # Legacy stub (intentionally empty — content split into modules below)
     src/winapi.cpp
+
+    # Internal modules
+    src/internal/FreeApiDiagnostics.cpp
+    src/internal/FreeApiGdi.cpp
+    src/internal/FreeApiWindowRegistry.cpp
+    src/internal/FreeApiMessageQueue.cpp
+    src/internal/FreeApiTimers.cpp
+    src/internal/FreeApiPath.cpp
+    src/internal/FreeApiSdlVideo.cpp
+
+    # WinBase
+    src/winbase.cpp
+    src/winbase_file.cpp
+
+    # WinUser
+    src/winuser_window.cpp
+    src/winuser_message.cpp
+    src/winuser_cursor.cpp
+    src/winuser_timer.cpp
+    src/winuser_misc.cpp
+
+    # WinGDI
+    src/wingdi_bitmap.cpp
+    src/wingdi_dc.cpp
+    src/wingdi_blit.cpp
+    src/wingdi_misc.cpp
+
+    # WinMM
+    src/winmm.cpp
+
+    # CRT compatibility
+    src/crt_io.cpp
+
+    # Startup bridge
     src/winmain_bridge.cpp
+
+    # MIDI backend
     src/MidiMusic.cpp)
+
+target_include_directories(free-api PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_include_directories(free-api PRIVATE external)
 
