@@ -8,6 +8,8 @@ project(free-api
 include(GNUInstallDirs)
 
 find_package(SDL3 REQUIRED)
+find_package(SDL3_image REQUIRED)
+find_package(SDL3_mixer REQUIRED)
 
 add_library(free-api)
 add_library(free-api::free-api ALIAS free-api)
@@ -28,7 +30,7 @@ if(NOT WIN32)
             ${CMAKE_CURRENT_SOURCE_DIR}/include_non_windows
     )
 endif()
-target_link_libraries(free-api PRIVATE SDL3::SDL3)
+target_link_libraries(free-api PRIVATE SDL3::SDL3 SDL3_image::SDL3_image SDL3_mixer::SDL3_mixer)
 
 target_sources(free-api PRIVATE
     # Legacy stub (intentionally empty — content split into modules below)

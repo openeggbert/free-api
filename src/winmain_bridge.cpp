@@ -26,4 +26,13 @@ int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** 
 } // extern "C"
 
 // WinMain entry bridge for legacy projects without explicit main()
-// Moved to individual executable targets to avoid multiple definition errors.
+// Wrapped in a weak symbol to allow targets to override it if they define their own main()
+#ifndef FREE_API_NO_MAIN
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow);
+
+__attribute__((weak))
+int main(int argc, char** argv)
+{
+    return FreeApiRunWinMain(&WinMain, argc, argv);
+}
+#endif
