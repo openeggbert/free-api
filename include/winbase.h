@@ -20,6 +20,14 @@
 #define CopyMemory(Destination, Source, Length) memmove((Destination), (Source), (Length))
 #endif
 
+//#223
+/** @brief Security attributes for directory creation. @note Status: PARTIAL */
+typedef struct _SECURITY_ATTRIBUTES {
+    DWORD nLength;
+    LPVOID lpSecurityDescriptor;
+    BOOL bInheritHandle;
+} SECURITY_ATTRIBUTES, *PSECURITY_ATTRIBUTES, *LPSECURITY_ATTRIBUTES;
+
 /**
  * @brief Legacy memory status structure filled by `GlobalMemoryStatus`.
  * @note Status: PARTIAL
@@ -46,5 +54,62 @@ void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer);
 
 //#922
 #define OF_READ 0x0000
+
+extern "C" {
+//#1052
+/** @brief Releases resource handle. @note Status: STUB */
+BOOL WINAPI FreeResource(HGLOBAL hResData);
+
+//#1059
+/** @brief Locks resource memory. @note Status: STUB */
+LPVOID WINAPI LockResource(HGLOBAL hResData);
+
+//#1063
+/** @brief Unlocks resource memory. @note Status: STUB */
+BOOL WINAPI UnlockResource(HGLOBAL hResData);
+
+//#2261
+/** @brief Loads resource block handle. @note Status: STUB */
+HGLOBAL WINAPI LoadResource(HMODULE hModule, HRSRC hResInfo);
+
+//#2270
+/** @brief Returns resource size in bytes. @note Status: STUB */
+DWORD WINAPI SizeofResource(HMODULE hModule, HRSRC hResInfo);
+
+//#3485
+/** @brief Calls POSIX open(O_RDONLY); ignores iReadWrite mode. @note Status: PARTIAL */
+int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite);
+
+//#3501
+/** @brief Calls POSIX read(); returns byte count. @note Status: PARTIAL */
+UINT WINAPI _lread(int hFile, LPVOID lpBuffer, UINT uBytes);
+
+//#3537
+/** @brief Calls POSIX close(). @note Status: PARTIAL */
+int WINAPI _lclose(int hFile);
+
+//#4227
+/** @brief Returns current module handle. @note Status: STUB */
+HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName);
+
+//#4442
+/** @brief Finds an embedded resource. @note Status: STUB */
+HRSRC WINAPI FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType);
+}
+
+//#5258
+/**
+ * @brief Creates a directory; security descriptor is ignored.
+ *
+ * Normalizes Windows-style paths (removes drive letter, converts backslashes,
+ * strips leading slashes). Calls mkdir(path, 0755). Treats EEXIST as success.
+ * Does not recursively create missing parent directories.
+ * @note Status: PARTIAL
+ */
+BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes);
+
+//#5509
+/** @brief Calls remove() directly; no backslash normalization. @note Status: PARTIAL */
+BOOL WINAPI DeleteFileA(LPCSTR lpFileName);
 
 #endif //FREE_API_WINDOWS_WINBASE_H

@@ -65,6 +65,10 @@ typedef struct tagPALETTEENTRY {
 } PALETTEENTRY, *LPPALETTEENTRY;
 #endif
 
+//#1454
+/** @brief Packs RGB bytes into COLORREF. @note Status: IMPLEMENTED */
+#define RGB(r, g, b) ((COLORREF)(((BYTE)(r) | ((WORD)((BYTE)(g)) << 8)) | (((DWORD)(BYTE)(b)) << 16)))
+
 //#1509
 #define BLACK_BRUSH 4
 
@@ -73,5 +77,67 @@ typedef struct tagPALETTEENTRY {
 
 //#1624
 #define SIZEPALETTE 104
+
+extern "C"{
+//#2622
+/** @brief Creates a GDI bitmap from raw pixel data. @note Status: PARTIAL */
+HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount, const void* lpBits);
+
+//#2627
+/** @brief Allocates an internal memory DC. @note Status: PARTIAL */
+HDC WINAPI CreateCompatibleDC(HDC hdc);
+
+//#2691
+/** @brief Deletes an internal compatible DC. @note Status: PARTIAL */
+BOOL WINAPI DeleteDC(HDC hdc);
+
+//#2693
+/** @brief Deletes an internal compatible bitmap. @note Status: PARTIAL */
+BOOL WINAPI DeleteObject(HGDIOBJ ho);
+
+//#2886
+/** @brief Returns 256 for SIZEPALETTE; otherwise 0. @note Status: PARTIAL */
+int WINAPI GetDeviceCaps(HDC hdc, int index);
+
+//#2923
+/** @brief Reads an RGB color from a surface DC or selected bitmap. @note Status: PARTIAL */
+COLORREF WINAPI GetPixel(HDC hdc, int x, int y);
+
+//#2931
+/** @brief Fills palette entries as grayscale values. @note Status: PARTIAL */
+UINT WINAPI GetSystemPaletteEntries(HDC hdc, UINT iStartIndex, UINT nEntries, LPVOID lppe);
+
+//#3239
+/** @brief Selects an internal bitmap into a memory DC; returns previously selected object. @note Status: PARTIAL */
+HGDIOBJ WINAPI SelectObject(HDC hdc, HGDIOBJ h);
+
+//#3260
+/** @brief Writes an RGB color into a surface DC or selected bitmap. @note Status: PARTIAL */
+COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color);
+
+//#3264
+/**
+ * @brief Copies/scales a region from a source DC to a destination DC.
+ *
+ * Only SRCCOPY from a memory DC with selected bitmap to an internal surface DC
+ * is implemented. Uses nearest-neighbor scaling.
+ * @note Status: PARTIAL
+ */
+BOOL WINAPI StretchBlt(HDC hdcDest,
+                       int xDest,
+                       int yDest,
+                       int wDest,
+                       int hDest,
+                       HDC hdcSrc,
+                       int xSrc,
+                       int ySrc,
+                       int wSrc,
+                       int hSrc,
+                       DWORD rop);
+
+//#3569
+/** @brief Fills a BITMAP structure for an internal compatible bitmap. @note Status: PARTIAL */
+int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv);
+}
 
 #endif //FREE_API_WINDOWS_WINGDI_H

@@ -37,4 +37,17 @@ typedef struct tagPOINT {
     LONG y;
 } POINT, *PPOINT, *LPPOINT;
 
+//#187
+#ifndef MAKELONG
+#define MAKELONG(a, b) ((LONG)(((WORD)((DWORD_PTR)(a) & 0xFFFF)) | ((DWORD)((WORD)((DWORD_PTR)(b) & 0xFFFF))) << 16))
+#endif
+
+#ifndef LOWORD
+#define LOWORD(l) ((WORD)((DWORD_PTR)(l) & 0xFFFF))
+#endif
+
+#ifndef HIWORD
+#define HIWORD(l) ((WORD)((DWORD_PTR)(l) >> 16))
+#endif
+
 #endif // FREE_API_WINDEF_H

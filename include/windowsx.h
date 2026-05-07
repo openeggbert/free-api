@@ -14,4 +14,10 @@
 
 #include <windows.h>
 
+extern "C"{
+//#66
+/** @brief Retrieves stock brush handle. @note Status: STUB */
+HBRUSH WINAPI GetStockBrush(int fnObject);
+}
+
 #endif // FREE_API_WINDOWSX_H
