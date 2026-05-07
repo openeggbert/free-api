@@ -92,46 +92,6 @@ typedef int(WINAPI* FREE_API_WINMAIN_PROC)(HINSTANCE, HINSTANCE, LPSTR, int);
  */
 int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** argv);
 
-#ifdef UNICODE
-#define SetWindowText SetWindowTextW
-#define PostMessage PostMessageW
-#define MessageBox MessageBoxW
-#define LoadString LoadStringW
-#define GetModuleHandle GetModuleHandleW
-#define LoadImage LoadImageW
-#define GetObject GetObjectW
-#define RegisterClass RegisterClassW
-#define CreateWindowEx CreateWindowExW
-#define CreateWindow CreateWindowW
-#define PeekMessage PeekMessageW
-#define GetMessage GetMessageW
-#define DispatchMessage DispatchMessageW
-#define DefWindowProc DefWindowProcW
-#define LoadCursor LoadCursorW
-#define LoadIcon LoadIconW
-#else
-#define SetWindowText SetWindowTextA
-#define PostMessage PostMessageA
-#define MessageBox MessageBoxA
-#define LoadString LoadStringA
-#define GetModuleHandle GetModuleHandleA
-#define LoadImage LoadImageA
-#define GetObject GetObjectA
-#define RegisterClass RegisterClassA
-#define CreateWindowEx CreateWindowExA
-#define CreateWindow CreateWindowA
-#define PeekMessage PeekMessageA
-#define GetMessage GetMessageA
-#define DispatchMessage DispatchMessageA
-#define DefWindowProc DefWindowProcA
-#define LoadCursor LoadCursorA
-#define LoadIcon LoadIconA
-#define FindResource FindResourceA
-#define DeleteFile DeleteFileA
-#define wsprintf wsprintfA
-#define CreateDirectory CreateDirectoryA
-#endif
-
 #ifdef __cplusplus
 }
 
