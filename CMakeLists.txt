@@ -105,7 +105,14 @@ target_include_directories(free-api PRIVATE
 
 target_include_directories(free-api PRIVATE external)
 
-option(FREE_API_BUILD_TESTS "Build free-api tests" ON)
+# Disable tests by default under Emscripten: they cannot run in the browser
+# and would only add build overhead. Explicitly pass -DFREE_API_BUILD_TESTS=ON
+# to override.
+if(EMSCRIPTEN)
+    option(FREE_API_BUILD_TESTS "Build free-api tests" OFF)
+else()
+    option(FREE_API_BUILD_TESTS "Build free-api tests" ON)
+endif()
 
 if(FREE_API_BUILD_TESTS)
     enable_testing()
