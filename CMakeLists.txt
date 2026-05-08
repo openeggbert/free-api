@@ -7,11 +7,13 @@ project(free-api
 
 include(GNUInstallDirs)
 
-find_package(SDL3 REQUIRED)
-find_package(SDL3_image REQUIRED)
-find_package(SDL3_mixer REQUIRED)
+if(NOT TARGET SDL3::SDL3 OR NOT TARGET SDL3_image::SDL3_image OR NOT TARGET SDL3_mixer::SDL3_mixer)
+    message(FATAL_ERROR
+        "SDL targets are missing. Configure vendored SDL first (see free-eggbert/cmake/ThirdPartySDL.cmake), "
+        "or provide SDL targets from the parent project.")
+endif()
 
-add_library(free-api)
+add_library(free-api STATIC)
 add_library(free-api::free-api ALIAS free-api)
 
 set_target_properties(free-api PROPERTIES
