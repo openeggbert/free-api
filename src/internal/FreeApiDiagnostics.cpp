@@ -6,8 +6,8 @@
 
 #include <cstring>
 #include <cstdio>
-#include <fcntl.h>
-#include <unistd.h>
+
+#include "platform/PlatformProcessInfo.hpp"
 
 namespace FreeApi::Internal {
 
@@ -82,29 +82,7 @@ bool FreeApiGdiDebugEnabled()
 
 long FreeApiReadRssKB()
 {
-#if defined(__linux__)
-    int fd = open("/proc/self/status", O_RDONLY);
-    if (fd < 0) return 0;
-    char buffer[4096];
-    ssize_t bytes = read(fd, buffer, sizeof(buffer) - 1);
-    close(fd);
-    if (bytes <= 0) return 0;
-    buffer[bytes] = '\0';
-    long rss = 0;
-    const char* line = buffer;
-    while (*line) {
-        if (std::strncmp(line, "VmRSS:", 6) == 0) {
-            std::sscanf(line + 6, "%ld", &rss);
-            break;
-        }
-        const char* next = std::strchr(line, '\n');
-        if (!next) break;
-        line = next + 1;
-    }
-    return rss;
-#else
-    return 0;
-#endif
+    return FreeApi::Platform::ReadRssKB();
 }
 
 void FreeApiDiagSnapshot(const char* tag)

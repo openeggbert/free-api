@@ -9,7 +9,7 @@
 #include <cctype>
 #include <string>
 #include <unordered_map>
-#include <unistd.h>
+#include <filesystem>
 
 extern "C" {
 
@@ -137,9 +137,12 @@ BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurity
     }
 
     /* WinAPI expects ERROR_ALREADY_EXISTS if the directory exists. */
-    if (::access(path.c_str(), 0) == 0) {
-        SetLastError(ERROR_ALREADY_EXISTS);
-        return FALSE;
+    {
+        std::error_code ec;
+        if (std::filesystem::exists(path, ec)) {
+            SetLastError(ERROR_ALREADY_EXISTS);
+            return FALSE;
+        }
     }
 
     SDL_Log("free-api CreateDirectoryA: failed to create '%s' (orig: '%s'): %s",

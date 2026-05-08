@@ -89,12 +89,16 @@ target_sources(free-api PRIVATE
 
     # CRT compatibility
     src/crt_io.cpp
+    src/crt_direct.cpp
 
     # Startup bridge
     src/winmain_bridge.cpp
 
     # MIDI backend
-    src/MidiMusic.cpp)
+    src/MidiMusic.cpp
+
+    # Platform abstraction
+    src/platform/PlatformProcessInfo.cpp)
 
 target_include_directories(free-api PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src)

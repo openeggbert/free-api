@@ -43,10 +43,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 /* -------------------------------------------------------------------------- */
@@ -221,7 +221,8 @@ static std::string NormalizeMidiPath(const char* raw)
     if (!raw) return {};
 
     auto fileExists = [](const std::string& path) -> bool {
-        return ::access(path.c_str(), F_OK) == 0;
+        std::error_code ec;
+        return std::filesystem::exists(path, ec);
     };
 
     /* Step 1 – convert backslashes. */
