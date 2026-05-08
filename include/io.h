@@ -21,6 +21,33 @@
 extern "C" {
 #endif
 
+#if defined(_WIN32)
+/*
+ * Our compatibility <io.h> shadows MinGW's <io.h> on Windows. MinGW's <io.h>
+ * normally exposes _access() (and an inline access() via <unistd.h>) plus
+ * F_OK/R_OK/W_OK/X_OK. Re-declare them here so legacy game code keeps working
+ * with these classic POSIX names. On non-Windows platforms we let the system
+ * <unistd.h> provide them and don't redefine anything here.
+ */
+#  ifndef F_OK
+#    define F_OK 0
+#  endif
+#  ifndef X_OK
+#    define X_OK 1
+#  endif
+#  ifndef W_OK
+#    define W_OK 2
+#  endif
+#  ifndef R_OK
+#    define R_OK 4
+#  endif
+
+/** @brief CRT _access (resolved against msvcrt at link time). */
+int _access(const char* path, int mode);
+/** @brief POSIX access() wrapper (implemented in crt_io.cpp on Windows). */
+int access(const char* path, int mode);
+#endif /* _WIN32 */
+
 /** @brief Low-level file open; declared in windows.h. @note Status: PARTIAL */
 int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite);
 /** @brief Low-level file read; declared in windows.h. @note Status: PARTIAL */

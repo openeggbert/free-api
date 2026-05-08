@@ -60,11 +60,17 @@ extern "C" {
  */
 /** @{ */
 
-/** @brief Program path pointer expected by old CRT startup code. stdlib.h (Visual Studio) does contain_pgmptr, but stdlib.h (GCC) does not contain it.
-  * @note Status: PARTIAL
+/** @brief Program path pointer expected by old CRT startup code.
   *
+  * On MSVC and MinGW, <stdlib.h> already provides `_pgmptr` (MinGW exposes it
+  * as `(*__p__pgmptr())` from msvcrt). We therefore only declare it ourselves
+  * on non-Windows hosts where it does not exist. free-api populates it on all
+  * platforms (see src/winmain_bridge.cpp).
+  * @note Status: PARTIAL
   */
+#if !defined(_WIN32)
 extern char* _pgmptr;
+#endif
 
 #include <rpcndr.h>
 

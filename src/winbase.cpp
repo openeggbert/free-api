@@ -1,5 +1,22 @@
 #include "windows.h"
 
+/*
+ * On Windows / MinGW, every symbol defined below (Sleep, GetTickCount,
+ * GlobalMemoryStatus, CloseHandle, OutputDebugStringA/W, GetModuleHandleA)
+ * is already exported by kernel32.dll. Defining them again in this static
+ * library produces:
+ *
+ *     multiple definition of `Sleep'
+ *
+ * at link time as soon as libkernel32.a is pulled in for any other import.
+ *
+ * The purpose of this translation unit is to *emulate* the WinAPI on
+ * non-Windows hosts; on real Windows we must defer to kernel32. Therefore
+ * the entire body is compiled out on _WIN32, mirroring the same pattern
+ * already used in direct.h, io.h and crt_io.cpp.
+ */
+#if !defined(_WIN32)
+
 #include <chrono>
 #include <thread>
 #include <cstdio>
@@ -64,3 +81,5 @@ HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName) {
 }
 
 } // extern "C"
+
+#endif // !_WIN32

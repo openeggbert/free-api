@@ -3,37 +3,93 @@
 #include "internal/FreeApiPath.hpp"
 
 #include <SDL3/SDL.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <cerrno>
+
+#include <cstdio>
 #include <cstring>
 #include <cctype>
-#include <cstdio>
 #include <string>
+#include <unordered_map>
 
 extern "C" {
 
+static int g_nextFileHandle = 3;
+static std::unordered_map<int, FILE*> g_openFiles;
+
+static std::string NormalizePathA(LPCSTR path)
+{
+    if (!path) {
+        return {};
+    }
+
+    std::string result(path);
+
+    if (result.size() >= 2 &&
+        std::isalpha(static_cast<unsigned char>(result[0])) &&
+        result[1] == ':') {
+        result.erase(0, 2);
+    }
+
+    for (char& c : result) {
+        if (c == '\\') {
+            c = '/';
+        }
+    }
+
+    while (!result.empty() && result.front() == '/') {
+        result.erase(result.begin());
+    }
+
+    return result;
+}
+
 int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite)
 {
-    int flags = O_RDONLY;
     (void)iReadWrite;
-    return open(lpPathName, flags);
+
+    if (!lpPathName) {
+        return -1;
+    }
+
+    std::string path = NormalizePathA(lpPathName);
+    FILE* file = fopen(path.c_str(), "rb");
+
+    if (!file) {
+        SDL_Log("free-api _lopen: failed to open '%s' (orig: '%s')",
+                path.c_str(), lpPathName);
+        return -1;
+    }
+
+    int handle = g_nextFileHandle++;
+    g_openFiles[handle] = file;
+    return handle;
 }
 
 UINT WINAPI _lread(int hFile, LPVOID lpBuffer, UINT uBytes)
 {
-    if (!lpBuffer) {
+    if (!lpBuffer || uBytes == 0) {
         return 0;
     }
 
-    ssize_t bytesRead = read(hFile, lpBuffer, uBytes);
-    return bytesRead > 0 ? static_cast<UINT>(bytesRead) : 0;
+    auto it = g_openFiles.find(hFile);
+    if (it == g_openFiles.end() || !it->second) {
+        return 0;
+    }
+
+    size_t bytesRead = std::fread(lpBuffer, 1, static_cast<size_t>(uBytes), it->second);
+    return static_cast<UINT>(bytesRead);
 }
 
 int WINAPI _lclose(int hFile)
 {
-    return close(hFile);
+    auto it = g_openFiles.find(hFile);
+    if (it == g_openFiles.end() || !it->second) {
+        return -1;
+    }
+
+    int result = std::fclose(it->second);
+    g_openFiles.erase(it);
+
+    return result == 0 ? 0 : -1;
 }
 
 BOOL WINAPI DeleteFileA(LPCSTR lpFileName)
@@ -41,35 +97,32 @@ BOOL WINAPI DeleteFileA(LPCSTR lpFileName)
     if (!lpFileName) {
         return FALSE;
     }
-    return remove(lpFileName) == 0 ? TRUE : FALSE;
+
+    std::string path = NormalizePathA(lpFileName);
+    return std::remove(path.c_str()) == 0 ? TRUE : FALSE;
 }
 
 BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes)
 {
-    (void)lpSecurityAttributes; // security descriptors not supported on Linux
+    (void)lpSecurityAttributes;
+
     if (!lpPathName) {
         return FALSE;
     }
-    // Convert backslashes to forward slashes and remove drive letter
-    std::string path(lpPathName);
-    if (path.size() >= 2 && isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
-        path.erase(0, 2);
-    }
-    for (char& c : path) {
-        if (c == '\\') c = '/';
-    }
-    while (!path.empty() && (path[0] == '/' || path[0] == '\\')) {
-        path.erase(0, 1);
-    }
 
-    if (path.empty()) return TRUE; // Already exists (root)
+    std::string path = NormalizePathA(lpPathName);
 
-    // mkdir returns 0 on success, -1 on error (EEXIST is treated as success)
-    int rc = mkdir(path.c_str(), 0755);
-    if (rc == 0 || errno == EEXIST) {
+    if (path.empty()) {
         return TRUE;
     }
-    SDL_Log("free-api CreateDirectoryA: failed to create '%s' (orig: '%s'): %s", path.c_str(), lpPathName, strerror(errno));
+
+    if (SDL_CreateDirectory(path.c_str())) {
+        return TRUE;
+    }
+
+    SDL_Log("free-api CreateDirectoryA: failed to create '%s' (orig: '%s'): %s",
+            path.c_str(), lpPathName, SDL_GetError());
+
     return FALSE;
 }
 

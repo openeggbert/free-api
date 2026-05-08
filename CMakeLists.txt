@@ -23,15 +23,35 @@ set_target_properties(free-api PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR})
 
-target_include_directories(free-api PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-if(NOT WIN32)
-    target_include_directories(free-api PUBLIC
-            ${CMAKE_CURRENT_SOURCE_DIR}/include_non_windows
-    )
+# --- Compatibility headers exposure -----------------------------------------
+# These headers intentionally shadow legacy WinAPI/CRT names (windows.h, io.h,
+# direct.h, winbase.h, ...). They MUST NOT be globally visible to third_party
+# code (notably bundled SDL): if SDL/MinGW pick up our windows.h or io.h while
+# building, libstdc++ <cmath>/<cstdio> resolution can break in subtle ways.
+#
+# We therefore expose the compatibility include directory through a dedicated
+# INTERFACE target `freeapi_compat_headers`, which is linked only to our own
+# targets (free-api itself, free-direct, the game executable). Third-party
+# targets such as SDL3-shared, SDL3_image, SDL3_mixer must NOT link against it.
+if(NOT TARGET freeapi_compat_headers)
+    add_library(freeapi_compat_headers INTERFACE)
+    add_library(free-api::compat_headers ALIAS freeapi_compat_headers)
+    target_include_directories(freeapi_compat_headers INTERFACE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    if(NOT WIN32)
+        target_include_directories(freeapi_compat_headers INTERFACE
+                ${CMAKE_CURRENT_SOURCE_DIR}/include_non_windows)
+    endif()
+    message(STATUS
+        "free-api: compatibility headers exposed via target "
+        "'freeapi_compat_headers' (owner: free-api). This target is the ONLY "
+        "carrier of '${CMAKE_CURRENT_SOURCE_DIR}/include' and must never be "
+        "linked into SDL or other third_party targets.")
 endif()
+
+# free-api's own sources need the compatibility headers, and so do its
+# consumers (free-direct and the game), hence PUBLIC.
+target_link_libraries(free-api PUBLIC freeapi_compat_headers)
 target_link_libraries(free-api PRIVATE SDL3::SDL3 SDL3_image::SDL3_image SDL3_mixer::SDL3_mixer)
 
 target_sources(free-api PRIVATE
@@ -98,7 +118,7 @@ if(FREE_API_BUILD_TESTS)
     add_test(NAME test_input_pipeline COMMAND test_input_pipeline)
 endif()
 
-install(TARGETS free-api
+install(TARGETS free-api freeapi_compat_headers
         EXPORT free-api-targets
         DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
