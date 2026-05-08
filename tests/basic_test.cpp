@@ -28,15 +28,15 @@ static bool WriteMinimalMidi(const std::string& path)
         0x00, 0xFF, 0x2F, 0x00,
     };
 
-    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (fd < 0) {
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f) {
         std::cerr << "failed to create MIDI file: " << path << " errno=" << errno << "\n";
         return false;
     }
 
-    const ssize_t written = ::write(fd, kMidi, sizeof(kMidi));
-    ::close(fd);
-    return written == static_cast<ssize_t>(sizeof(kMidi));
+    const size_t written = fwrite(kMidi, 1, sizeof(kMidi), f);
+    fclose(f);
+    return written == sizeof(kMidi);
 }
 
 static int RunSleepSmokeTest()
@@ -56,29 +56,53 @@ static int RunSleepSmokeTest()
 
 static int RunMidiCaseFallbackRegression()
 {
-    char dirTemplate[] = "free-api-midi-case-XXXXXX";
-    char* tempDir = mkdtemp(dirTemplate);
+    char dirTemplate[] = "free-api-midi-case-test";
+    const char* tempDir = dirTemplate;
+
+#ifndef _WIN32
+    static char posixTemplate[] = "free-api-midi-case-XXXXXX";
+    tempDir = mkdtemp(posixTemplate);
     if (!tempDir) {
         std::cerr << "mkdtemp failed errno=" << errno << "\n";
         return 1;
     }
+#else
+    // On Windows, just try to create the directory directly.
+    // If it exists, we'll just use it.
+    (void)CreateDirectoryA(tempDir, NULL);
+#endif
 
     const std::string root(tempDir);
     const std::string upperDir = root + "/SOUND";
     const std::string upperFile = upperDir + "/MUSIC000.BLP";
     const std::string lowerRequested = root + "/sound/music000.blp";
 
+#ifdef _WIN32
+    if (!CreateDirectoryA(upperDir.c_str(), NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
+        std::cerr << "CreateDirectoryA failed: " << upperDir << " err=" << GetLastError() << "\n";
+        RemoveDirectoryA(root.c_str());
+        return 1;
+    }
+#else
     if (mkdir(upperDir.c_str(), 0700) != 0) {
         std::cerr << "mkdir failed: " << upperDir << " errno=" << errno << "\n";
         rmdir(root.c_str());
         return 1;
     }
+#endif
+
     if (!WriteMinimalMidi(upperFile)) {
+#ifdef _WIN32
+        RemoveDirectoryA(upperDir.c_str());
+        RemoveDirectoryA(root.c_str());
+#else
         rmdir(upperDir.c_str());
         rmdir(root.c_str());
+#endif
         return 1;
     }
 
+#ifndef _WIN32
     if (::access(lowerRequested.c_str(), F_OK) == 0) {
         std::cerr << "unexpected: lowercase path exists, regression scenario invalid" << std::endl;
         remove(upperFile.c_str());
@@ -86,8 +110,13 @@ static int RunMidiCaseFallbackRegression()
         rmdir(root.c_str());
         return 1;
     }
+#endif
 
+#ifdef _WIN32
+    SetEnvironmentVariableA("SDL_AUDIODRIVER", "dummy");
+#else
     setenv("SDL_AUDIODRIVER", "dummy", 1);
+#endif
 
     MCI_OPEN_PARMSA openParms{};
     openParms.wDeviceID = 0;
@@ -111,8 +140,13 @@ static int RunMidiCaseFallbackRegression()
     }
 
     remove(upperFile.c_str());
+#ifdef _WIN32
+    RemoveDirectoryA(upperDir.c_str());
+    RemoveDirectoryA(root.c_str());
+#else
     rmdir(upperDir.c_str());
     rmdir(root.c_str());
+#endif
     return rc;
 }
 

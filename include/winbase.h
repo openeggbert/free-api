@@ -108,8 +108,24 @@ HRSRC WINAPI FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType);
  */
 BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes);
 
+//#5441
+/** @brief Removes a directory. @note Status: PARTIAL */
+BOOL WINAPI RemoveDirectoryA(LPCSTR lpPathName);
+
 //#5509
 /** @brief Calls remove() directly; no backslash normalization. @note Status: PARTIAL */
 BOOL WINAPI DeleteFileA(LPCSTR lpFileName);
+
+//#6101
+/** @brief Sets an environment variable. @note Status: PARTIAL */
+BOOL WINAPI SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue);
+
+//#6234
+/** @brief Returns the last error code for the current thread. @note Status: PARTIAL */
+DWORD WINAPI GetLastError(void);
+
+//#6245
+/** @brief Sets the last error code for the current thread. @note Status: PARTIAL */
+void WINAPI SetLastError(DWORD dwErrCode);
 
 #endif //FREE_API_WINDOWS_WINBASE_H

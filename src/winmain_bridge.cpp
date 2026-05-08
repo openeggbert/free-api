@@ -21,30 +21,24 @@ extern "C" {
  *     strncpy(pName, _pgmptr, lg-1);
  * which then dereferences NULL and crashes with 0xC0000005.
  *
- * Repair it eagerly via _set_pgmptr() with the absolute module path obtained
- * from GetModuleFileNameA(). Done in a high-priority constructor so it runs
- * before any user code (main/WinMain) that may consume _pgmptr. We only set
- * it if msvcrt left it empty.
+ * On modern MinGW/msvcrt we could use _get_pgmptr/_set_pgmptr, but to ensure
+ * compatibility with all versions of the runtime and avoid linker issues,
+ * we can directly manipulate the exported `_pgmptr` if needed.
  */
 DWORD WINAPI GetModuleFileNameA(HMODULE hModule, LPSTR lpFilename, DWORD nSize);
-errno_t _set_pgmptr(const char* _Pgm);
-errno_t _get_pgmptr(char** _Value);
 
 static char s_pgmptr_buffer[MAX_PATH] = {0};
 
 __attribute__((constructor(101)))
 static void free_api_init_pgmptr(void)
 {
-    char* current = NULL;
-    if (_get_pgmptr(&current) == 0 && current && current[0] != '\0') {
-        return; /* msvcrt already populated it */
-    }
+    /* Use GetModuleFileNameA to find our real path regardless of how we were started. */
     DWORD n = GetModuleFileNameA(NULL, s_pgmptr_buffer, (DWORD)sizeof(s_pgmptr_buffer));
-    if (n == 0 || n >= sizeof(s_pgmptr_buffer)) {
-        return;
+    if (n > 0 && n < sizeof(s_pgmptr_buffer)) {
+        s_pgmptr_buffer[n] = '\0';
+        /* We can't easily call _set_pgmptr if it's not in the import lib.
+         * But we can at least ensure s_pgmptr_buffer is ready. */
     }
-    s_pgmptr_buffer[n] = '\0';
-    (void)_set_pgmptr(s_pgmptr_buffer);
 }
 #else
 char* _pgmptr = nullptr;
@@ -56,17 +50,22 @@ int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** 
         return -1;
     }
 
-    if (argc > 0 && argv && argv[0]) {
 #if defined(_WIN32)
-        /* Prefer the full module path obtained from the OS; fall back to argv[0]
-         * only if the GetModuleFileNameA constructor failed. */
-        if (s_pgmptr_buffer[0] == '\0') {
+    /* If msvcrt's _pgmptr is empty, try to use our buffer. */
+    if (_pgmptr == NULL || _pgmptr[0] == '\0') {
+        if (s_pgmptr_buffer[0] != '\0') {
+            /* This might still fail if _pgmptr is a macro expanding to (*__p__pgmptr())
+             * which is how it's often implemented in MinGW. */
+             _pgmptr = s_pgmptr_buffer;
+        } else if (argc > 0 && argv && argv[0]) {
             _pgmptr = argv[0];
         }
-#else
-        _pgmptr = argv[0];
-#endif
     }
+#else
+    if (argc > 0 && argv && argv[0]) {
+        _pgmptr = argv[0];
+    }
+#endif
 
     std::string commandLine = BuildCommandLine(argc, argv);
     return entryPoint(NULL, NULL, commandLine.empty() ? NULL : commandLine.data(), SW_SHOW);

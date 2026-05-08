@@ -106,7 +106,7 @@ option(FREE_API_BUILD_TESTS "Build free-api tests" ON)
 if(FREE_API_BUILD_TESTS)
     enable_testing()
     add_executable(basic_test tests/basic_test.cpp)
-    target_link_libraries(basic_test PRIVATE free-api)
+    target_link_libraries(basic_test PRIVATE free-api SDL3::SDL3)
     add_test(NAME basic_test COMMAND basic_test)
 
     # End-to-end input pipeline test: injects SDL events and verifies WinAPI translation

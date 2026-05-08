@@ -9,8 +9,23 @@
 #include <cctype>
 #include <string>
 #include <unordered_map>
+#include <unistd.h>
 
 extern "C" {
+
+#if !defined(_WIN32)
+static thread_local DWORD g_lastError = 0;
+
+DWORD WINAPI GetLastError(void)
+{
+    return g_lastError;
+}
+
+void WINAPI SetLastError(DWORD dwErrCode)
+{
+    g_lastError = dwErrCode;
+}
+#endif
 
 static int g_nextFileHandle = 3;
 static std::unordered_map<int, FILE*> g_openFiles;
@@ -107,6 +122,7 @@ BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurity
     (void)lpSecurityAttributes;
 
     if (!lpPathName) {
+        SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
     }
 
@@ -120,10 +136,34 @@ BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurity
         return TRUE;
     }
 
+    /* WinAPI expects ERROR_ALREADY_EXISTS if the directory exists. */
+    if (::access(path.c_str(), 0) == 0) {
+        SetLastError(ERROR_ALREADY_EXISTS);
+        return FALSE;
+    }
+
     SDL_Log("free-api CreateDirectoryA: failed to create '%s' (orig: '%s'): %s",
             path.c_str(), lpPathName, SDL_GetError());
 
     return FALSE;
+}
+
+BOOL WINAPI RemoveDirectoryA(LPCSTR lpPathName)
+{
+    if (!lpPathName) {
+        return FALSE;
+    }
+
+    std::string path = NormalizePathA(lpPathName);
+    return SDL_RemovePath(path.c_str()) ? TRUE : FALSE;
+}
+
+BOOL WINAPI SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue)
+{
+    if (!lpName) {
+        return FALSE;
+    }
+    return SDL_SetEnvironmentVariable(SDL_GetEnvironment(), lpName, lpValue ? lpValue : "", true) ? TRUE : FALSE;
 }
 
 HRSRC WINAPI FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType)
