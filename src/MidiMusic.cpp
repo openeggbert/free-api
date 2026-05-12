@@ -534,6 +534,8 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
         auto* parms = reinterpret_cast<MCI_OPEN_PARMSA*>(dwParam);
         if (!parms) return MCIERR_INTERNAL;
 
+        //todo fix sigsegv
+        return MCIERR_INTERNAL;
         const char* devType = parms->lpstrDeviceType ? parms->lpstrDeviceType : "";
 
         /* Decline CD audio — the game handles this branch already. */
