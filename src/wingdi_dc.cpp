@@ -40,6 +40,7 @@ BOOL FreeApiDestroySurfaceDC(HDC hdc)
     return TRUE;
 }
 
+
 void FreeApiSetWindowFullscreen(HWND hwnd, bool fullscreen)
 {
     if (!hwnd) return;

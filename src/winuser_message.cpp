@@ -103,15 +103,38 @@ BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFil
         return FALSE;
     }
 
+#if defined(__ANDROID__)
+    // Throttled: only log once per second to avoid per-message spam.
+    {
+        static uint64_t lastLogTicks = 0;
+        uint64_t now = SDL_GetTicks();
+        if (now - lastLogTicks >= 1000) {
+            SDL_Log("FREEAPI_ANDROID: GetMessage loop alive");
+            lastLogTicks = now;
+        }
+    }
+#endif
+
     while (true) {
         if (PeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, PM_REMOVE)) {
             if (lpMsg->message == WM_QUIT) {
+#if defined(__ANDROID__)
+                SDL_Log("FREEAPI_ANDROID: GetMessage returning FALSE (WM_QUIT wParam=%u)",
+                        (unsigned)lpMsg->wParam);
+#endif
                 return FALSE;
             }
             return TRUE;
         }
 
+#if defined(__ANDROID__)
+        // On Android use SDL_WaitEventTimeout so the Android event system gets
+        // proper CPU time and lifecycle events are delivered promptly.
+        // SDL_Delay(1) in a tight spin-loop is not appropriate for Android.
+        SDL_WaitEventTimeout(NULL, 10);
+#else
         SDL_Delay(1);
+#endif
     }
 }
 
@@ -167,12 +190,20 @@ LRESULT WINAPI DefWindowProcA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
     (void)lParam;
 
     if (Msg == WM_CLOSE) {
+#if defined(__ANDROID__)
+        SDL_Log("FREEAPI_ANDROID: DefWindowProcA WM_CLOSE -> DestroyWindow + PostQuitMessage hwnd=%p",
+                (void*)hWnd);
+#endif
         DestroyWindow(hWnd);
         PostQuitMessage(0);
         return 0;
     }
 
     if (Msg == WM_DESTROY) {
+#if defined(__ANDROID__)
+        SDL_Log("FREEAPI_ANDROID: DefWindowProcA WM_DESTROY -> PostQuitMessage hwnd=%p",
+                (void*)hWnd);
+#endif
         PostQuitMessage(0);
         return 0;
     }
@@ -182,6 +213,9 @@ LRESULT WINAPI DefWindowProcA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 
 void WINAPI PostQuitMessage(int nExitCode)
 {
+#if defined(__ANDROID__)
+    SDL_Log("FREEAPI_ANDROID: PostQuitMessage called nExitCode=%d", nExitCode);
+#endif
     PushMessage(NULL, WM_QUIT, static_cast<WPARAM>(nExitCode), 0);
 }
 
@@ -198,7 +232,13 @@ BOOL WINAPI WaitMessage(void)
         if (!g_messageQueue.empty()) return TRUE;
     }
 
+#if defined(__ANDROID__)
+    // On Android, yield to the event system via SDL_WaitEventTimeout instead
+    // of a blind sleep, then pump any newly arrived events.
+    SDL_WaitEventTimeout(NULL, 10);
+#else
     SDL_Delay(1);
+#endif
     PumpSdlEvents();
     return TRUE;
 }

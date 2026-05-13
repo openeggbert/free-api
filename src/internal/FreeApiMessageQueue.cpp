@@ -208,14 +208,55 @@ void PumpSdlEvents()
     const bool diagEnabled = FreeApiDiagnosticsFastEnabled();
     while (SDL_PollEvent(&event)) {
         if (diagEnabled) g_diagSdlEventsProcessed.fetch_add(1, std::memory_order_relaxed);
+
+        // Convert mouse/touch coordinates from window space to renderer logical
+        // space. When SDL_SetRenderLogicalPresentation is active (e.g. letterbox
+        // mode), this remaps window pixels to the game's logical resolution.
+        if (event.type == SDL_EVENT_MOUSE_MOTION ||
+            event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+            event.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+            event.type == SDL_EVENT_FINGER_DOWN ||
+            event.type == SDL_EVENT_FINGER_UP ||
+            event.type == SDL_EVENT_FINGER_MOTION) {
+            // Capture raw coordinates before conversion for diagnostic logging.
+            float rawX = 0, rawY = 0;
+            static int inputDiagCount = 0;
+            if (event.type == SDL_EVENT_MOUSE_MOTION) { rawX = event.motion.x; rawY = event.motion.y; }
+            else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) { rawX = event.button.x; rawY = event.button.y; }
+            // Find the renderer associated with this event's window.
+            SDL_Window* evtWin = SDL_GetWindowFromEvent(&event);
+            if (evtWin) {
+                SDL_Renderer* ren = SDL_GetRenderer(evtWin);
+                if (ren) {
+                    SDL_ConvertEventToRenderCoordinates(ren, &event);
+                }
+            }
+            // FREE_DIRECT_INPUT diagnostic for first 20 events.
+            if (inputDiagCount < 20) {
+                float mappedX = 0, mappedY = 0;
+                if (event.type == SDL_EVENT_MOUSE_MOTION) { mappedX = event.motion.x; mappedY = event.motion.y; }
+                else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) { mappedX = event.button.x; mappedY = event.button.y; }
+                SDL_Log("FREE_DIRECT_INPUT: raw=%.1f,%.1f mapped=%.1f,%.1f evtType=0x%X evtWin=%p ren=%p",
+                        rawX, rawY, mappedX, mappedY, event.type,
+                        (void*)evtWin, evtWin ? (void*)SDL_GetRenderer(evtWin) : nullptr);
+                inputDiagCount++;
+            }
+        }
         switch (event.type) {
             case SDL_EVENT_QUIT:
                 InputLog("SDL_EVENT_QUIT -> WM_QUIT");
+#if defined(__ANDROID__)
+                SDL_Log("FREEAPI_ANDROID: SDL event SDL_EVENT_QUIT translated to WM_QUIT");
+#endif
                 PushMessage(NULL, WM_QUIT, 0, 0);
                 break;
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
                 HWND hwnd = FindWindowById(event.window.windowID);
                 InputLog("SDL_EVENT_WINDOW_CLOSE_REQUESTED hwnd=%p -> WM_CLOSE", (void*)hwnd);
+#if defined(__ANDROID__)
+                SDL_Log("FREEAPI_ANDROID: SDL event SDL_EVENT_WINDOW_CLOSE_REQUESTED windowID=%u hwnd=%p translated to WM_CLOSE",
+                        (unsigned)event.window.windowID, (void*)hwnd);
+#endif
                 PushMessage(hwnd, WM_CLOSE, 0, 0);
                 break;
             }
@@ -223,6 +264,10 @@ void PumpSdlEvents()
                 HWND hwnd = FindWindowById(event.window.windowID);
                 if (hwnd) g_focusWindow = hwnd;
                 InputLog("SDL_EVENT_WINDOW_FOCUS_GAINED hwnd=%p -> WM_ACTIVATEAPP(1)", (void*)hwnd);
+#if defined(__ANDROID__)
+                SDL_Log("FREEAPI_ANDROID: SDL event SDL_EVENT_WINDOW_FOCUS_GAINED windowID=%u hwnd=%p translated to WM_ACTIVATEAPP(1)",
+                        (unsigned)event.window.windowID, (void*)hwnd);
+#endif
                 PushMessage(hwnd, WM_ACTIVATEAPP, 1, 0);
                 break;
             }
@@ -235,6 +280,10 @@ void PumpSdlEvents()
                 // configurable delay or a user-controlled flag.
                 HWND hwnd = FindWindowById(event.window.windowID);
                 InputLog("SDL_EVENT_WINDOW_FOCUS_LOST hwnd=%p -> suppressed WM_ACTIVATEAPP(0)", (void*)hwnd);
+#if defined(__ANDROID__)
+                SDL_Log("FREEAPI_ANDROID: SDL event SDL_EVENT_WINDOW_FOCUS_LOST windowID=%u hwnd=%p suppressed (WM_ACTIVATEAPP(0) not sent)",
+                        (unsigned)event.window.windowID, (void*)hwnd);
+#endif
                 (void)hwnd;
                 break;
             }
@@ -283,17 +332,9 @@ void PumpSdlEvents()
                     (unsigned)event.motion.windowID, (void*)hwnd);
                 if (!hwnd) break;
 
+                // Coordinates are already in logical space after SDL_ConvertEventToRenderCoordinates.
                 int x = (int)event.motion.x;
                 int y = (int)event.motion.y;
-
-                const auto it = g_freeApiWindowStates.find(hwnd);
-                if (it != g_freeApiWindowStates.end()) {
-                    int pw, ph;
-                    if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hwnd), &pw, &ph) && pw > 0 && ph > 0) {
-                        x = x * it->second.width / pw;
-                        y = y * it->second.height / ph;
-                    }
-                }
 
                 // lParam encodes client-area x/y
                 LPARAM lp = (LPARAM)(((WORD)(DWORD_PTR)y << 16) | ((WORD)(DWORD_PTR)x));
@@ -310,17 +351,9 @@ void PumpSdlEvents()
                     (unsigned)event.button.windowID, (void*)hwnd);
                 if (!hwnd) break;
 
+                // Coordinates are already in logical space after SDL_ConvertEventToRenderCoordinates.
                 int x = (int)event.button.x;
                 int y = (int)event.button.y;
-
-                const auto it = g_freeApiWindowStates.find(hwnd);
-                if (it != g_freeApiWindowStates.end()) {
-                    int pw, ph;
-                    if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hwnd), &pw, &ph) && pw > 0 && ph > 0) {
-                        x = x * it->second.width / pw;
-                        y = y * it->second.height / ph;
-                    }
-                }
 
                 LPARAM lp = (LPARAM)(((WORD)(DWORD_PTR)y << 16) | ((WORD)(DWORD_PTR)x));
                 bool isDown = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
