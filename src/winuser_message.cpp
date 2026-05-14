@@ -103,18 +103,6 @@ BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFil
         return FALSE;
     }
 
-#if defined(__ANDROID__)
-    // Throttled: only log once per second to avoid per-message spam.
-    {
-        static uint64_t lastLogTicks = 0;
-        uint64_t now = SDL_GetTicks();
-        if (now - lastLogTicks >= 1000) {
-            SDL_Log("FREEAPI_ANDROID: GetMessage loop alive");
-            lastLogTicks = now;
-        }
-    }
-#endif
-
     while (true) {
         if (PeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, PM_REMOVE)) {
             if (lpMsg->message == WM_QUIT) {
@@ -124,6 +112,26 @@ BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFil
 #endif
                 return FALSE;
             }
+#if defined(__ANDROID__)
+            // FREEAPI_ANDROID_PERF: throttled once-per-second diagnostics — not per-message.
+            {
+                static uint64_t s_calls = 0;
+                static uint64_t s_timers = 0;
+                static uint64_t s_lastMs = 0;
+                s_calls++;
+                if (lpMsg->message == WM_TIMER) s_timers++;
+                const uint64_t nowMs = SDL_GetTicks();
+                if (s_lastMs == 0) s_lastMs = nowMs;
+                if (nowMs - s_lastMs >= 1000) {
+                    SDL_Log("FREEAPI_ANDROID_PERF: GetMessage calls/s=%llu wm_timer/s=%llu wait_ms=10",
+                            (unsigned long long)s_calls,
+                            (unsigned long long)s_timers);
+                    s_calls = 0;
+                    s_timers = 0;
+                    s_lastMs = nowMs;
+                }
+            }
+#endif
             return TRUE;
         }
 

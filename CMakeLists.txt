@@ -129,6 +129,17 @@ if(FREE_API_BUILD_TESTS)
     )
     target_link_libraries(test_input_pipeline PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_input_pipeline COMMAND test_input_pipeline)
+
+    if(NOT WIN32)
+        add_executable(test_timeb tests/test_timeb.cpp)
+        set_target_properties(test_timeb PROPERTIES
+                CXX_STANDARD 20
+                CXX_STANDARD_REQUIRED YES
+                CXX_EXTENSIONS NO
+        )
+        target_link_libraries(test_timeb PRIVATE freeapi_compat_headers)
+        add_test(NAME test_timeb COMMAND test_timeb)
+    endif()
 endif()
 
 install(TARGETS free-api freeapi_compat_headers
