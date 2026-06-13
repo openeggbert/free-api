@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System &amp; File Utilities — Free API Reference</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="api-reference.html" class="active">API Reference</a>
+      <a href="integration.html">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<div class="api-subnav">
+  <div class="api-subnav-inner">
+    <a href="api-reference.html">Index</a>
+    <a href="api-types.html">Types &amp; Handles</a>
+    <a href="api-winuser.html">Window &amp; Input</a>
+    <a href="api-wingdi.html">GDI</a>
+    <a href="api-winbase.html" class="active">System &amp; Files</a>
+    <a href="api-io.html">File I/O</a>
+    <a href="api-mmsystem.html">Multimedia</a>
+  </div>
+</div>
+
+<main class="main">
+
+  <section style="padding-bottom:0;border:none;">
+    <div class="section-label">winbase.h · synchapi.h · sysinfoapi.h · debugapi.h · windows.h</div>
+    <h1 class="section-title">System &amp; File Utilities</h1>
+    <p class="section-sub">
+      Timing, debug output, error codes, memory helpers, directory and file operations,
+      environment variables, the WinMain entry-point bridge, and the transparent
+      fopen path normaliser.
+    </p>
+  </section>
+
+  <!-- ── Timing ── -->
+  <section id="timing">
+    <div class="section-label">synchapi.h · sysinfoapi.h</div>
+    <h2 class="section-title">Timing &amp; synchronisation</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Header</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>Sleep(DWORD dwMilliseconds)</code></td>
+            <td>synchapi.h</td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Suspends the calling thread for the specified number of milliseconds. Implemented via POSIX <code>usleep(ms * 1000)</code>. A value of 0 yields the thread.</td>
+          </tr>
+          <tr>
+            <td><code>GetTickCount(void)</code></td>
+            <td>sysinfoapi.h</td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Returns milliseconds elapsed since the process started, via <code>SDL_GetTicks()</code>. Wraps after ~49.7 days (32-bit overflow). For timing deltas, always subtract two values.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — timing patterns</div>
+      <pre>
+<span class="cm">// Frame-rate limiter: cap at 20 fps</span>
+DWORD frameStart = GetTickCount();
+GameUpdate();
+GameRender();
+DWORD elapsed = GetTickCount() - frameStart;
+<span class="kw">if</span> (elapsed &lt; 50) Sleep(50 - elapsed);   <span class="cm">// wait remainder of 50 ms frame</span>
+
+<span class="cm">// Measure elapsed time</span>
+DWORD t0 = GetTickCount();
+DoWork();
+DWORD ms = GetTickCount() - t0;
+printf(<span class="st">"Took %lu ms\n"</span>, (unsigned long)ms);
+
+<span class="cm">// Simple delay</span>
+Sleep(200);   <span class="cm">// pause 200 ms</span>
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Debug ── -->
+  <section id="debug">
+    <div class="section-label">debugapi.h</div>
+    <h2 class="section-title">Debug output</h2>
+
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>void WINAPI OutputDebugString(LPCSTR lpOutputString);</pre>
+    </div>
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0 16px;">
+      On Free API, <code>OutputDebugString</code> is implemented via <code>SDL_Log</code>,
+      so output appears in the terminal / logcat depending on platform.
+      On a real Windows build with a debugger attached it would also appear in the
+      debugger output window.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">C++ — debug logging</div>
+      <pre>
+OutputDebugString(<span class="st">"Game initialised\n"</span>);
+
+<span class="cm">// Build a formatted string first (OutputDebugString has no printf formatting)</span>
+<span class="kw">char</span> buf[256];
+snprintf(buf, <span class="kw">sizeof</span>(buf), <span class="st">"Score: %d, Level: %d\n"</span>, score, level);
+OutputDebugString(buf);
+
+<span class="cm">// Or use wsprintfA (Win32 printf variant, 1024-byte buffer)</span>
+wsprintfA(buf, <span class="st">"HP: %d/%d"</span>, hp, maxHp);
+OutputDebugString(buf);
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Error codes ── -->
+  <section id="errors">
+    <div class="section-label">winbase.h</div>
+    <h2 class="section-title">Error codes</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>GetLastError(void)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Returns the last error code set for the calling thread. In Free API, this mirrors <code>errno</code> after POSIX calls. Not all Free API functions set the last error.</td>
+          </tr>
+          <tr>
+            <td><code>SetLastError(DWORD dwErrCode)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Sets the thread-local last error code.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — checking for errors</div>
+      <pre>
+<span class="kw">if</span> (!CreateDirectoryA(<span class="st">"saves"</span>, NULL)) {
+    DWORD err = GetLastError();
+    <span class="kw">char</span> buf[128];
+    snprintf(buf, <span class="kw">sizeof</span>(buf), <span class="st">"CreateDirectory failed, error %lu\n"</span>,
+             (unsigned long)err);
+    OutputDebugString(buf);
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Memory helpers ── -->
+  <section id="memory">
+    <div class="section-label">winbase.h</div>
+    <h2 class="section-title">Memory macros &amp; GlobalMemoryStatus</h2>
+
+    <h3 style="font-size:.95rem;margin-bottom:8px;">Memory macros (HEADER_ONLY)</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Macro</th><th>Expands to</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>ZeroMemory(dst, len)</code></td><td><code>memset(dst, 0, len)</code></td><td>Fill a buffer with zeros. Equivalent to C++ value-initialisation.</td></tr>
+          <tr><td><code>FillMemory(dst, len, fill)</code></td><td><code>memset(dst, fill, len)</code></td><td>Fill a buffer with a byte value.</td></tr>
+          <tr><td><code>CopyMemory(dst, src, len)</code></td><td><code>memmove(dst, src, len)</code></td><td>Copy bytes; memmove handles overlapping regions correctly.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — memory helper examples</div>
+      <pre>
+WNDCLASSA wc;
+ZeroMemory(&amp;wc, <span class="kw">sizeof</span>(wc));   <span class="cm">// clear struct (same as = {})</span>
+
+<span class="kw">char</span> buf[256];
+FillMemory(buf, <span class="kw">sizeof</span>(buf), 0xFF);  <span class="cm">// fill with 0xFF</span>
+
+BYTE src[64], dst[64];
+CopyMemory(dst, src, <span class="kw">sizeof</span>(src));  <span class="cm">// copy 64 bytes</span>
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">GlobalMemoryStatus</h3>
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer);</pre>
+    </div>
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0 16px;">
+      Fills a <code>MEMORYSTATUS</code> structure with approximate memory statistics.
+      On Linux, reads <code>/proc/meminfo</code>. On other platforms, values are
+      approximations. Do not rely on these values for precise resource decisions.
+    </p>
+    <div class="code-block">
+      <div class="code-header">C++ — check available memory</div>
+      <pre>
+MEMORYSTATUS ms;
+ms.dwLength = <span class="kw">sizeof</span>(ms);
+GlobalMemoryStatus(&amp;ms);
+
+<span class="cm">// dwMemoryLoad: 0-100% memory load estimate</span>
+<span class="cm">// dwTotalPhys / dwAvailPhys: total and free physical RAM in bytes</span>
+printf(<span class="st">"RAM load: %lu%%  Free: %lu MB\n"</span>,
+       (unsigned long)ms.dwMemoryLoad,
+       (unsigned long)(ms.dwAvailPhys / (1024*1024)));
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── File & directory ops ── -->
+  <section id="fileops">
+    <div class="section-label">winbase.h</div>
+    <h2 class="section-title">File &amp; directory operations</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>CreateDirectoryA(path, sa)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Creates a single directory. Path is normalised (drive letter removed, backslashes → slashes, leading slashes stripped). Calls <code>mkdir(path, 0755)</code>. Treats EEXIST as success. Does <em>not</em> create missing parent directories. Security attributes (<code>sa</code>) are ignored.</td>
+          </tr>
+          <tr>
+            <td><code>RemoveDirectoryA(path)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Calls POSIX <code>rmdir</code>. Fails if the directory is not empty.</td>
+          </tr>
+          <tr>
+            <td><code>DeleteFileA(path)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Calls POSIX <code>remove</code>. Returns TRUE on success. No backslash normalisation applied.</td>
+          </tr>
+          <tr>
+            <td><code>SetEnvironmentVariableA(name, value)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Calls POSIX <code>setenv(name, value, 1)</code>. Pass NULL for <code>value</code> to unset.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — directory and file operations</div>
+      <pre>
+<span class="cm">// Create save directory (safe to call if already exists)</span>
+CreateDirectoryA(<span class="st">"saves"</span>, NULL);
+
+<span class="cm">// Create with Windows-style path (drive + backslashes)</span>
+CreateDirectoryA(<span class="st">"C:\\MyGame\\Saves"</span>, NULL);
+<span class="cm">// → internally treated as "MyGame/Saves" relative to CWD</span>
+
+<span class="cm">// Delete a save file</span>
+<span class="kw">if</span> (!DeleteFileA(<span class="st">"saves/slot1.sav"</span>)) {
+    OutputDebugString(<span class="st">"Delete failed\n"</span>);
+}
+
+<span class="cm">// Set a custom SoundFont path at runtime</span>
+SetEnvironmentVariableA(<span class="st">"FREE_API_SOUNDFONT"</span>, <span class="st">"/usr/share/sounds/sf2/FluidR3_GM.sf2"</span>);
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">Low-level file I/O (_lopen / _lread / _lclose)</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>_lopen(path, iReadWrite)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Opens file read-only via POSIX <code>open(O_RDONLY)</code>. The <code>iReadWrite</code> mode is ignored — only reading is supported. Returns a file descriptor (int), or -1 on error.</td></tr>
+          <tr><td><code>_lread(hFile, buf, n)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Reads up to <code>n</code> bytes into <code>buf</code> via POSIX <code>read</code>. Returns bytes actually read, or HFILE_ERROR on error.</td></tr>
+          <tr><td><code>_lclose(hFile)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Closes the file descriptor via POSIX <code>close</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — _lopen / _lread pattern</div>
+      <pre>
+<span class="kw">int</span> fh = _lopen(<span class="st">"data/level01.dat"</span>, OF_READ);
+<span class="kw">if</span> (fh == -1) { OutputDebugString(<span class="st">"open failed\n"</span>); <span class="kw">return</span>; }
+
+BYTE header[16];
+UINT read = _lread(fh, header, <span class="kw">sizeof</span>(header));
+<span class="cm">// ... process data ...</span>
+
+_lclose(fh);
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Resource stubs ── -->
+  <section id="resources">
+    <div class="section-label">winbase.h — resource stubs</div>
+    <h2 class="section-title">Win32 resource stubs</h2>
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:16px;">
+      Win32 embedded resources (icons, strings, bitmaps compiled into the EXE) are
+      not supported. All resource functions compile cleanly and return NULL/0 so that
+      code using them does not crash.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Returns</th></tr></thead>
+        <tbody>
+          <tr><td><code>GetModuleHandleA(LPCSTR name)</code></td><td><span class="badge badge-stub">STUB</span></td><td>NULL</td></tr>
+          <tr><td><code>FindResourceA(hMod, name, type)</code></td><td><span class="badge badge-stub">STUB</span></td><td>NULL</td></tr>
+          <tr><td><code>LoadResource(hMod, hRes)</code></td><td><span class="badge badge-stub">STUB</span></td><td>NULL</td></tr>
+          <tr><td><code>LockResource(hRes)</code></td><td><span class="badge badge-stub">STUB</span></td><td>NULL</td></tr>
+          <tr><td><code>SizeofResource(hMod, hRes)</code></td><td><span class="badge badge-stub">STUB</span></td><td>0</td></tr>
+          <tr><td><code>FreeResource(hRes)</code></td><td><span class="badge badge-stub">STUB</span></td><td>FALSE</td></tr>
+          <tr><td><code>UnlockResource(hRes)</code></td><td><span class="badge badge-stub">STUB</span></td><td>FALSE</td></tr>
+          <tr><td><code>LoadStringA(hInst, uID, buf, cch)</code></td><td><span class="badge badge-stub">STUB</span></td><td>0</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── WinMain bridge ── -->
+  <section id="winmain">
+    <div class="section-label">windows.h — entry point</div>
+    <h2 class="section-title">WinMain bridge</h2>
+    <p class="section-sub">
+      Win32 games use <code>WinMain</code> instead of <code>main</code>. Free API
+      provides a macro and a helper function to bridge the two.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Symbol</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>FREE_API_IMPLEMENT_WINMAIN()</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>C++ macro that generates a <code>main(int argc, char** argv)</code> which calls <code>FreeApiRunWinMain(&amp;WinMain, argc, argv)</code>. Only defined when <code>_WIN32</code> is <em>not</em> defined (non-Windows builds). On Windows, the real WinMain startup code is used instead.</td>
+          </tr>
+          <tr>
+            <td><code>FreeApiRunWinMain(entryPoint, argc, argv)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Sets <code>_pgmptr = argv[0]</code>, builds <code>lpCmdLine</code> by joining <code>argv[1..]</code> with spaces, then calls <code>entryPoint(NULL, NULL, lpCmdLine, SW_SHOW)</code>.</td>
+          </tr>
+          <tr>
+            <td><code>_pgmptr</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Declared <code>extern char*</code> on non-Windows. Set to <code>argv[0]</code> by <code>FreeApiRunWinMain</code>. Some legacy games read this to locate their executable directory.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — usage of FREE_API_IMPLEMENT_WINMAIN</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+
+<span class="cm">// This macro generates:
+//   int main(int argc, char** argv) {
+//       return FreeApiRunWinMain(&amp;WinMain, argc, argv);
+//   }
+// Followed immediately by the WinMain body you provide.</span>
+
+FREE_API_IMPLEMENT_WINMAIN()
+{
+    <span class="cm">// hInstance   = NULL (not needed)</span>
+    <span class="cm">// hPrevInstance = NULL</span>
+    <span class="cm">// lpCmdLine   = command-line args joined by spaces</span>
+    <span class="cm">// nCmdShow    = SW_SHOW (5)</span>
+
+    WNDCLASSA wc = {};
+    wc.lpfnWndProc   = MyWindowProc;
+    wc.lpszClassName = <span class="st">"GameWindow"</span>;
+    RegisterClass(&amp;wc);
+
+    HWND hwnd = CreateWindowA(<span class="st">"GameWindow"</span>, <span class="st">"My Game"</span>,
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        100, 100, 800, 600, NULL, NULL, hInstance, NULL);
+
+    MSG msg;
+    <span class="kw">while</span> (GetMessage(&amp;msg, NULL, 0, 0)) {
+        TranslateMessage(&amp;msg);
+        DispatchMessage(&amp;msg);
+    }
+    <span class="kw">return</span> (int)msg.wParam;
+}
+      </pre>
+    </div>
+
+    <div class="callout">
+      <strong>Manual bridge</strong>
+      If you need to keep <code>main()</code> separate (e.g. for SDL3 Android support),
+      call <code>FreeApiRunWinMain</code> directly and forward-declare <code>WinMain</code>:
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — manual bridge in a separate translation unit</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+
+<span class="kw">int</span> WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, <span class="kw">int</span>);  <span class="cm">// forward declaration</span>
+
+<span class="kw">int</span> main(<span class="kw">int</span> argc, <span class="kw">char</span>** argv)
+{
+    <span class="kw">return</span> FreeApiRunWinMain(&amp;WinMain, argc, argv);
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── fopen wrapper ── -->
+  <section id="fopen">
+    <div class="section-label">windows.h — path normaliser</div>
+    <h2 class="section-title">fopen path-normalisation wrapper</h2>
+    <p class="section-sub">
+      Legacy Win32 games hard-code backslash paths and sometimes include a Windows
+      drive letter. This wrapper is applied transparently via a <code>#define fopen</code>
+      in every C++ translation unit that includes <code>&lt;windows.h&gt;</code>.
+    </p>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:16px;">The wrapper performs these steps in order:</p>
+    <ol style="font-size:.875rem;color:var(--text-muted);padding-left:24px;display:flex;flex-direction:column;gap:6px;">
+      <li>Remove Windows drive letter — <code>"C:\path"</code> → <code>"\path"</code></li>
+      <li>Convert all <code>\</code> to <code>/</code></li>
+      <li>Strip any remaining leading slashes so the path is relative</li>
+      <li>Call <code>::fopen(normalized_path, mode)</code></li>
+      <li>On failure, retry with the basename uppercased (case-sensitive filesystem fallback)</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-header">C++ — all these paths work on Linux thanks to the wrapper</div>
+      <pre>
+<span class="cm">// Original Win32 game code — unchanged, works on Linux:</span>
+FILE* f1 = fopen(<span class="st">"data\\config.def"</span>, <span class="st">"r"</span>);
+<span class="cm">// → opens "data/config.def"</span>
+
+FILE* f2 = fopen(<span class="st">"C:\\MyGame\\DATA\\LEVEL01.BLP"</span>, <span class="st">"rb"</span>);
+<span class="cm">// → tries "MyGame/DATA/LEVEL01.BLP"</span>
+<span class="cm">// → if missing, retries "MyGame/DATA/level01.BLP" (uppercase fallback)</span>
+
+FILE* f3 = fopen(<span class="st">"PLANET\\data\\map.blp"</span>, <span class="st">"rb"</span>);
+<span class="cm">// → opens "PLANET/data/map.blp"</span>
+      </pre>
+    </div>
+
+    <div class="callout warn">
+      <strong>C-only files</strong>
+      The fopen wrapper is a C++ inline function and only applies to files compiled as
+      C++. Pure C translation units that include <code>&lt;windows.h&gt;</code> do not
+      get the wrapper. In practice, all game files are C++.
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API — MIT License · <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+  <p style="margin-top:8px;"><a href="api-wingdi.html">← GDI</a> &nbsp;·&nbsp; <a href="api-io.html">File I/O →</a></p>
+</footer>
+</body>
+</html>

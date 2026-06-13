@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Window &amp; Input — Free API Reference</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="api-reference.html" class="active">API Reference</a>
+      <a href="integration.html">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<div class="api-subnav">
+  <div class="api-subnav-inner">
+    <a href="api-reference.html">Index</a>
+    <a href="api-types.html">Types &amp; Handles</a>
+    <a href="api-winuser.html" class="active">Window &amp; Input</a>
+    <a href="api-wingdi.html">GDI</a>
+    <a href="api-winbase.html">System &amp; Files</a>
+    <a href="api-io.html">File I/O</a>
+    <a href="api-mmsystem.html">Multimedia</a>
+  </div>
+</div>
+
+<main class="main">
+
+  <section style="padding-bottom:0;border:none;">
+    <div class="section-label">winuser.h · windows.h</div>
+    <h1 class="section-title">Window Management &amp; Input</h1>
+    <p class="section-sub">
+      This page covers the complete WinUser subset: window class registration,
+      window creation and lifetime, the WinAPI message loop, keyboard and mouse
+      input, cursor control, user-mode timers, and geometry helpers.
+    </p>
+  </section>
+
+  <!-- ── Window class ── -->
+  <section id="wndclass">
+    <div class="section-label">Window class</div>
+    <h2 class="section-title">WNDCLASSA &amp; RegisterClassA</h2>
+    <p class="section-sub">
+      Before creating a window you must register a window class. The class defines the
+      window procedure that will receive messages.
+    </p>
+
+    <h3 style="font-size:.95rem;margin-bottom:8px;">WNDCLASSA structure</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Type</th><th>Used by Free API?</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>lpfnWndProc</code></td><td><code>WNDPROC</code></td><td>Yes</td><td>Mandatory. The message handler function called by <code>DispatchMessageA</code>.</td></tr>
+          <tr><td><code>lpszClassName</code></td><td><code>LPCSTR</code></td><td>Yes</td><td>Name used in <code>CreateWindowA</code> to look up this class.</td></tr>
+          <tr><td><code>hInstance</code></td><td><code>HINSTANCE</code></td><td>Stored, ignored</td><td>Pass NULL or the value from WinMain; not used internally.</td></tr>
+          <tr><td><code>style</code></td><td><code>UINT</code></td><td>Ignored</td><td><code>CS_VREDRAW</code>, <code>CS_HREDRAW</code> defined but not acted upon.</td></tr>
+          <tr><td><code>hIcon</code>, <code>hCursor</code>, <code>hbrBackground</code></td><td>handles</td><td>Stored, ignored</td><td>Icon / cursor / background paint not implemented.</td></tr>
+          <tr><td><code>lpszMenuName</code></td><td><code>LPCSTR</code></td><td>Ignored</td><td>Menus not supported.</td></tr>
+          <tr><td><code>cbClsExtra</code>, <code>cbWndExtra</code></td><td><code>int</code></td><td>Ignored</td><td>Extra bytes — not allocated.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">RegisterClassA</h3>
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>ATOM WINAPI RegisterClassA(const WNDCLASSA* lpWndClass);</pre>
+    </div>
+    <p style="color:var(--text-muted);font-size:.875rem;margin:8px 0 16px;">
+      Stores the class-name → WNDPROC mapping in an internal table.
+      Returns a non-zero atom on success, 0 on failure (e.g. NULL lpWndClass or NULL lpszClassName).
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">C++ — register a window class</div>
+      <pre>
+WNDCLASSA wc = {};                       <span class="cm">// zero-init all fields</span>
+wc.lpfnWndProc   = MyWindowProc;        <span class="cm">// required</span>
+wc.hInstance     = hInstance;
+wc.lpszClassName = <span class="st">"GameWindow"</span>;        <span class="cm">// required</span>
+wc.style         = CS_HREDRAW | CS_VREDRAW;
+
+ATOM a = RegisterClass(&amp;wc);
+<span class="kw">if</span> (!a) {
+    OutputDebugString(<span class="st">"RegisterClass failed!"</span>);
+    <span class="kw">return</span> -1;
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Window creation ── -->
+  <section id="create">
+    <div class="section-label">Window lifecycle</div>
+    <h2 class="section-title">Creating and managing windows</h2>
+
+    <h3 style="font-size:.95rem;margin-bottom:8px;">CreateWindowExA / CreateWindowA</h3>
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>
+HWND WINAPI CreateWindowExA(
+    DWORD   dwExStyle,     <span class="cm">// extended style, e.g. WS_EX_TOPMOST</span>
+    LPCSTR  lpClassName,   <span class="cm">// class name from RegisterClassA</span>
+    LPCSTR  lpWindowName,  <span class="cm">// title bar text</span>
+    DWORD   dwStyle,       <span class="cm">// window style flags</span>
+    int     X, int Y,      <span class="cm">// initial position</span>
+    int     nWidth, int nHeight, <span class="cm">// initial size</span>
+    HWND    hWndParent,    <span class="cm">// parent (ignored: child semantics not supported)</span>
+    HMENU   hMenu,         <span class="cm">// NULL</span>
+    HINSTANCE hInstance,
+    LPVOID  lpParam        <span class="cm">// passed in WM_CREATE's CREATESTRUCT.lpCreateParams</span>
+);
+
+<span class="cm">// Convenience macro (no extended style):</span>
+HWND WINAPI CreateWindowA(lpClassName, lpWindowName, dwStyle,
+                          X, Y, nWidth, nHeight,
+                          hWndParent, hMenu, hInstance, lpParam);
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:16px 0 8px;">Window style flags</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Constant</th><th>Value</th><th>Behaviour in Free API</th></tr></thead>
+        <tbody>
+          <tr><td><code>WS_OVERLAPPEDWINDOW</code></td><td>0x00CF0000</td><td>Standard window with title bar and borders (default for most games).</td></tr>
+          <tr><td><code>WS_POPUP</code></td><td>0x80000000</td><td>Borderless window — SDL window created without decorations.</td></tr>
+          <tr><td><code>WS_POPUPWINDOW</code></td><td>0x80880000</td><td>Popup with border.</td></tr>
+          <tr><td><code>WS_CAPTION</code></td><td>0x00C00000</td><td>Title bar.</td></tr>
+          <tr><td><code>WS_VISIBLE</code></td><td>0x10000000</td><td>Window is shown immediately (equivalent to ShowWindow(SW_SHOW)).</td></tr>
+          <tr><td><code>WS_CHILD</code></td><td>0x40000000</td><td>Parsed but child-window coordinate semantics are not implemented.</td></tr>
+          <tr><td><code>WS_EX_TOPMOST</code></td><td>0x00000008</td><td>Extended style: always-on-top SDL hint set.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — create a game window</div>
+      <pre>
+<span class="cm">// Full-screen-like popup window (no title bar)</span>
+HWND hwnd = CreateWindowEx(
+    0,                   <span class="cm">// no extended styles</span>
+    <span class="st">"GameWindow"</span>,        <span class="cm">// class name registered above</span>
+    <span class="st">"Speedy Blupi"</span>,      <span class="cm">// window title</span>
+    WS_POPUP | WS_VISIBLE,
+    0, 0,                <span class="cm">// top-left corner</span>
+    640, 480,            <span class="cm">// resolution</span>
+    NULL, NULL, hInstance, NULL);
+
+<span class="kw">if</span> (!hwnd) {
+    OutputDebugString(<span class="st">"CreateWindow failed"</span>);
+    <span class="kw">return</span> -1;
+}
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">ShowWindow, DestroyWindow, UpdateWindow</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>ShowWindow(HWND, SW_SHOW)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Raises and shows the SDL window. <code>SW_HIDE</code> hides it.</td></tr>
+          <tr><td><code>DestroyWindow(HWND)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Sends <code>WM_DESTROY</code>, destroys the SDL window, removes the HWND from the registry.</td></tr>
+          <tr><td><code>UpdateWindow(HWND)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Presents / raises the SDL window.</td></tr>
+          <tr><td><code>MoveWindow(HWND, x, y, w, h, repaint)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Repositions and resizes via SDL. repaint is ignored.</td></tr>
+          <tr><td><code>SetWindowTextA(HWND, LPCSTR)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Sets the SDL window title.</td></tr>
+          <tr><td><code>GetClientRect(HWND, RECT*)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Returns <code>{0, 0, w, h}</code> from SDL window size.</td></tr>
+          <tr><td><code>AdjustWindowRect(RECT*, style, menu)</code></td><td><span class="badge badge-stub">STUB</span></td><td>Returns TRUE without modifying the rect.</td></tr>
+          <tr><td><code>InvalidateRect(HWND, RECT*, erase)</code></td><td><span class="badge badge-stub">STUB</span></td><td>Returns TRUE; no WM_PAINT queued.</td></tr>
+          <tr><td><code>GetSystemMetrics(nIndex)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Supports <code>SM_CXSCREEN</code>, <code>SM_CYSCREEN</code> (display size), <code>SM_CYCAPTION</code> (returns 19).</td></tr>
+          <tr><td><code>SetFocus(HWND)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Raises the SDL window.</td></tr>
+          <tr><td><code>MessageBoxA(HWND, text, caption, type)</code></td><td><span class="badge badge-stub">STUB</span></td><td>Logs to SDL log; returns <code>IDOK</code> (1).</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Message loop ── -->
+  <section id="messageloop">
+    <div class="section-label">Message loop</div>
+    <h2 class="section-title">WinAPI message loop</h2>
+    <p class="section-sub">
+      The message loop is the heart of any Win32 application. Free API translates
+      SDL3 events into WM_* messages and delivers them through the same
+      PeekMessage → DispatchMessage → WNDPROC pipeline as real Windows.
+    </p>
+
+    <div class="arch-diagram">
+      <pre>
+Game calls <span class="hl">PeekMessageA()</span> each frame
+    │
+    ├─ SDL_PumpEvents()          <span class="cm">pull OS events into SDL internal queue</span>
+    ├─ PumpSdlEvents()           <span class="cm">translate SDL events → Free API WM_* queue</span>
+    │
+    └─ dequeue one message or return FALSE
+              │
+              ▼
+        <span class="hl">TranslateMessage()</span>        <span class="cm">WM_KEYDOWN → WM_CHAR for printable keys</span>
+              │
+              ▼
+        <span class="hl">DispatchMessageA()</span>        <span class="cm">look up HWND → WNDPROC, call it</span>
+              │
+              ▼
+        <span class="hl2">Your WNDPROC</span>(hWnd, uMsg, wParam, lParam)
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">Loop functions</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>PeekMessageA(MSG*, HWND, min, max, flags)</code></td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Pumps SDL on every call (prevents input starvation). Returns TRUE and fills MSG if a message is available. flags: <code>PM_REMOVE</code> dequeues the message; <code>PM_NOREMOVE</code> peeks without removing.</td>
+          </tr>
+          <tr>
+            <td><code>GetMessageA(MSG*, HWND, min, max)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Blocks until a message arrives (busy-waits with 1 ms sleep). Returns FALSE when <code>WM_QUIT</code> is dequeued.</td>
+          </tr>
+          <tr>
+            <td><code>TranslateMessage(MSG*)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>When <code>msg.message == WM_KEYDOWN</code> and wParam is a printable ASCII character, posts a <code>WM_CHAR</code> message. Required for name-entry screens.</td>
+          </tr>
+          <tr>
+            <td><code>DispatchMessageA(MSG*)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Looks up the WNDPROC for <code>msg.hwnd</code> and calls it. Falls back to <code>DefWindowProcA</code> if not found.</td>
+          </tr>
+          <tr>
+            <td><code>PostMessageA(HWND, Msg, wParam, lParam)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Enqueues a message into the global mutex-protected queue. Thread-safe — can be called from a multimedia timer callback.</td>
+          </tr>
+          <tr>
+            <td><code>PostQuitMessage(nExitCode)</code></td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Posts <code>WM_QUIT</code> with the given exit code as wParam. Causes <code>GetMessageA</code> to return FALSE.</td>
+          </tr>
+          <tr>
+            <td><code>WaitMessage()</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Busy-waits with 1 ms sleeps until the queue has at least one message.</td>
+          </tr>
+          <tr>
+            <td><code>DefWindowProcA(HWND, Msg, wParam, lParam)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Default handler. Handles <code>WM_CLOSE</code> by posting <code>WM_QUIT</code>. All other messages return 0.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — two common message loop patterns</div>
+      <pre>
+<span class="cm">// Pattern 1: PeekMessage loop (non-blocking, good for games that render every frame)</span>
+MSG msg = {};
+<span class="kw">while</span> (msg.message != WM_QUIT) {
+    <span class="kw">if</span> (PeekMessage(&amp;msg, NULL, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&amp;msg);
+        DispatchMessage(&amp;msg);
+    } <span class="kw">else</span> {
+        GameUpdate();  <span class="cm">// called every frame when no messages are pending</span>
+        GameRender();
+    }
+}
+
+<span class="cm">// Pattern 2: GetMessage loop (blocking, good for event-driven apps)</span>
+MSG msg;
+<span class="kw">while</span> (GetMessage(&amp;msg, NULL, 0, 0)) {
+    TranslateMessage(&amp;msg);
+    DispatchMessage(&amp;msg);
+}
+<span class="kw">return</span> (int)msg.wParam;  <span class="cm">// exit code from PostQuitMessage</span>
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">Win32 message constants</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Constant</th><th>Value</th><th>When sent</th><th>wParam / lParam</th></tr></thead>
+        <tbody>
+          <tr><td><code>WM_NULL</code></td><td>0x0000</td><td>No-op message.</td><td>—</td></tr>
+          <tr><td><code>WM_CREATE</code></td><td>0x0001</td><td>Window just created (inside <code>CreateWindowA</code>).</td><td>lParam = CREATESTRUCT*</td></tr>
+          <tr><td><code>WM_DESTROY</code></td><td>0x0002</td><td>Window is being destroyed.</td><td>—</td></tr>
+          <tr><td><code>WM_CLOSE</code></td><td>0x0010</td><td>User closed the window (title bar X).</td><td>—</td></tr>
+          <tr><td><code>WM_QUIT</code></td><td>0x0012</td><td>Posted by <code>PostQuitMessage</code>; terminates the loop.</td><td>wParam = exit code</td></tr>
+          <tr><td><code>WM_ACTIVATEAPP</code></td><td>0x001C</td><td>App focus changed. Focus-lost is suppressed.</td><td>wParam=1 (activated)</td></tr>
+          <tr><td><code>WM_KEYDOWN</code></td><td>0x0100</td><td>Key pressed.</td><td>wParam = VK_* code</td></tr>
+          <tr><td><code>WM_KEYUP</code></td><td>0x0101</td><td>Key released.</td><td>wParam = VK_* code</td></tr>
+          <tr><td><code>WM_CHAR</code></td><td>0x0102</td><td>Printable character (from TranslateMessage or SDL_EVENT_TEXT_INPUT).</td><td>wParam = char code</td></tr>
+          <tr><td><code>WM_SYSKEYDOWN</code></td><td>0x0104</td><td>System key pressed (F10 on Windows parity).</td><td>wParam = VK_F10</td></tr>
+          <tr><td><code>WM_SYSKEYUP</code></td><td>0x0105</td><td>System key released.</td><td>wParam = VK_F10</td></tr>
+          <tr><td><code>WM_TIMER</code></td><td>0x0113</td><td>User timer fired (from <code>SetTimer</code>).</td><td>wParam = timer ID</td></tr>
+          <tr><td><code>WM_MOUSEMOVE</code></td><td>0x0200</td><td>Mouse cursor moved.</td><td>lParam=(y&lt;&lt;16)|x; wParam=MK_*</td></tr>
+          <tr><td><code>WM_LBUTTONDOWN</code></td><td>0x0201</td><td>Left button pressed.</td><td>lParam=(y&lt;&lt;16)|x; wParam=MK_*</td></tr>
+          <tr><td><code>WM_LBUTTONUP</code></td><td>0x0202</td><td>Left button released.</td><td>same</td></tr>
+          <tr><td><code>WM_RBUTTONDOWN</code></td><td>0x0204</td><td>Right button pressed.</td><td>same</td></tr>
+          <tr><td><code>WM_RBUTTONUP</code></td><td>0x0205</td><td>Right button released.</td><td>same</td></tr>
+          <tr><td><code>WM_MBUTTONDOWN</code></td><td>0x0207</td><td>Middle button pressed.</td><td>same</td></tr>
+          <tr><td><code>WM_MBUTTONUP</code></td><td>0x0208</td><td>Middle button released.</td><td>same</td></tr>
+          <tr><td><code>WM_MOUSEWHEEL</code></td><td>0x020A</td><td>Scroll wheel moved.</td><td>wParam high word = delta (WHEEL_DELTA=120)</td></tr>
+          <tr><td><code>WM_USER</code></td><td>0x0400</td><td>Base for app-defined messages.</td><td>Application-defined</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Keyboard ── -->
+  <section id="keyboard">
+    <div class="section-label">Keyboard input</div>
+    <h2 class="section-title">Keyboard — VK_* virtual-key codes</h2>
+    <p class="section-sub">
+      SDL3 key events are translated to <code>WM_KEYDOWN</code> / <code>WM_KEYUP</code> messages
+      with a <code>VK_*</code> code in <code>wParam</code>. The full set used by Speedy Blupi
+      and Planet Blupi is implemented.
+    </p>
+
+    <div class="two-col">
+      <div class="api-table-wrap">
+        <table>
+          <thead><tr><th>Constant</th><th>Value</th><th>Key</th></tr></thead>
+          <tbody>
+            <tr><td><code>VK_BACK</code></td><td>0x08</td><td>Backspace</td></tr>
+            <tr><td><code>VK_TAB</code></td><td>0x09</td><td>Tab</td></tr>
+            <tr><td><code>VK_RETURN</code></td><td>0x0D</td><td>Enter / Return</td></tr>
+            <tr><td><code>VK_SHIFT</code></td><td>0x10</td><td>Shift (either)</td></tr>
+            <tr><td><code>VK_CONTROL</code></td><td>0x11</td><td>Ctrl (either)</td></tr>
+            <tr><td><code>VK_MENU</code></td><td>0x12</td><td>Alt (either)</td></tr>
+            <tr><td><code>VK_PAUSE</code></td><td>0x13</td><td>Pause / Break</td></tr>
+            <tr><td><code>VK_ESCAPE</code></td><td>0x1B</td><td>Escape</td></tr>
+            <tr><td><code>VK_SPACE</code></td><td>0x20</td><td>Space bar</td></tr>
+            <tr><td><code>VK_PRIOR</code></td><td>0x21</td><td>Page Up</td></tr>
+            <tr><td><code>VK_NEXT</code></td><td>0x22</td><td>Page Down</td></tr>
+            <tr><td><code>VK_END</code></td><td>0x23</td><td>End</td></tr>
+            <tr><td><code>VK_HOME</code></td><td>0x24</td><td>Home</td></tr>
+            <tr><td><code>VK_LEFT</code></td><td>0x25</td><td>Left arrow</td></tr>
+            <tr><td><code>VK_UP</code></td><td>0x26</td><td>Up arrow</td></tr>
+            <tr><td><code>VK_RIGHT</code></td><td>0x27</td><td>Right arrow</td></tr>
+            <tr><td><code>VK_DOWN</code></td><td>0x28</td><td>Down arrow</td></tr>
+            <tr><td><code>VK_INSERT</code></td><td>0x2D</td><td>Insert</td></tr>
+            <tr><td><code>VK_DELETE</code></td><td>0x2E</td><td>Delete</td></tr>
+            <tr><td><code>0x30</code>–<code>0x39</code></td><td>—</td><td>Digits 0–9 (ASCII value)</td></tr>
+            <tr><td><code>0x41</code>–<code>0x5A</code></td><td>—</td><td>Letters A–Z (uppercase ASCII)</td></tr>
+            <tr><td><code>VK_F1</code>–<code>VK_F9</code></td><td>0x70–0x78</td><td>Function keys F1–F9</td></tr>
+            <tr><td><code>VK_F10</code></td><td>0x79</td><td>F10 — uses WM_SYSKEYDOWN/UP</td></tr>
+            <tr><td><code>VK_F11</code></td><td>0x7A</td><td>F11</td></tr>
+            <tr><td><code>VK_F12</code></td><td>0x7B</td><td>F12</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <div class="code-block">
+          <div class="code-header">C++ — keyboard handler in WNDPROC</div>
+          <pre>
+<span class="kw">case</span> WM_KEYDOWN:
+    <span class="kw">switch</span> (wParam) {
+
+    <span class="cm">// Navigation</span>
+    <span class="kw">case</span> VK_LEFT:   MovePlayerLeft();  <span class="kw">break</span>;
+    <span class="kw">case</span> VK_RIGHT:  MovePlayerRight(); <span class="kw">break</span>;
+    <span class="kw">case</span> VK_UP:     MovePlayerUp();    <span class="kw">break</span>;
+    <span class="kw">case</span> VK_DOWN:   MovePlayerDown();  <span class="kw">break</span>;
+
+    <span class="cm">// Actions</span>
+    <span class="kw">case</span> VK_SPACE:  Jump();   <span class="kw">break</span>;
+    <span class="kw">case</span> VK_RETURN: Action(); <span class="kw">break</span>;
+
+    <span class="cm">// Function keys</span>
+    <span class="kw">case</span> VK_F1:  ShowHelp();  <span class="kw">break</span>;
+    <span class="kw">case</span> VK_F5:  QuickSave(); <span class="kw">break</span>;
+    <span class="kw">case</span> VK_F9:  QuickLoad(); <span class="kw">break</span>;
+
+    <span class="cm">// Letters: wParam is uppercase ASCII</span>
+    <span class="kw">case</span> <span class="st">'P'</span>:  TogglePause();  <span class="kw">break</span>;
+    <span class="kw">case</span> <span class="st">'M'</span>:  ToggleMusic();  <span class="kw">break</span>;
+
+    <span class="cm">// Quit</span>
+    <span class="kw">case</span> VK_ESCAPE: PostQuitMessage(0); <span class="kw">break</span>;
+    }
+    <span class="kw">return</span> 0;
+
+<span class="kw">case</span> WM_CHAR:
+    <span class="cm">// Character input (name entry screen)</span>
+    HandleCharacterInput((char)wParam);
+    <span class="kw">return</span> 0;
+          </pre>
+        </div>
+
+        <div class="callout" style="margin-top:16px;">
+          <strong>F10 special case</strong>
+          On real Windows, F10 triggers <code>WM_SYSKEYDOWN</code> / <code>WM_SYSKEYUP</code>
+          instead of the normal WM_KEYDOWN/UP. Free API replicates this behaviour
+          exactly so games that check for F10 work correctly.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Mouse ── -->
+  <section id="mouse">
+    <div class="section-label">Mouse input</div>
+    <h2 class="section-title">Mouse events &amp; cursor</h2>
+
+    <h3 style="font-size:.95rem;margin-bottom:8px;">Mouse button state flags (wParam)</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Flag</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>MK_LBUTTON</code></td><td>0x0001</td><td>Left mouse button is currently held down.</td></tr>
+          <tr><td><code>MK_RBUTTON</code></td><td>0x0002</td><td>Right mouse button is currently held down.</td></tr>
+          <tr><td><code>MK_SHIFT</code></td><td>0x0004</td><td>Shift key is held.</td></tr>
+          <tr><td><code>MK_CONTROL</code></td><td>0x0008</td><td>Ctrl key is held.</td></tr>
+          <tr><td><code>MK_MBUTTON</code></td><td>0x0010</td><td>Middle mouse button is currently held down.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — mouse handler in WNDPROC</div>
+      <pre>
+<span class="kw">case</span> WM_MOUSEMOVE: {
+    <span class="kw">int</span> x = LOWORD(lParam);                  <span class="cm">// cursor X in client coords</span>
+    <span class="kw">int</span> y = HIWORD(lParam);                  <span class="cm">// cursor Y in client coords</span>
+    BOOL lBtn = (wParam &amp; MK_LBUTTON) != 0; <span class="cm">// left button held?</span>
+    BOOL shift = (wParam &amp; MK_SHIFT) != 0;
+    OnMouseMove(x, y, lBtn, shift);
+    <span class="kw">return</span> 0;
+}
+
+<span class="kw">case</span> WM_LBUTTONDOWN: {
+    <span class="kw">int</span> x = LOWORD(lParam);
+    <span class="kw">int</span> y = HIWORD(lParam);
+    OnLeftClick(x, y);
+    <span class="kw">return</span> 0;
+}
+
+<span class="kw">case</span> WM_LBUTTONUP:
+    OnLeftRelease(LOWORD(lParam), HIWORD(lParam));
+    <span class="kw">return</span> 0;
+
+<span class="kw">case</span> WM_RBUTTONDOWN:
+    OnRightClick(LOWORD(lParam), HIWORD(lParam));
+    <span class="kw">return</span> 0;
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">Cursor functions</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>GetCursorPos(LPPOINT lpPoint)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Reads screen-space cursor position via <code>SDL_GetGlobalMouseState</code>. Returns TRUE on success.</td></tr>
+          <tr><td><code>SetCursorPos(int X, int Y)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Warps cursor to screen position via <code>SDL_WarpMouseGlobal</code>. Returns TRUE on success.</td></tr>
+          <tr><td><code>ClientToScreen(HWND, LPPOINT)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Converts client coordinates to screen coordinates by adding the SDL window's screen position.</td></tr>
+          <tr><td><code>ScreenToClient(HWND, LPPOINT)</code></td><td><span class="badge badge-partial">PARTIAL</span></td><td>Converts screen coordinates to client coordinates by subtracting the SDL window's screen position.</td></tr>
+          <tr><td><code>ShowCursor(BOOL)</code></td><td><span class="badge badge-stub">STUB</span></td><td>Returns a display counter; does not actually hide/show the SDL cursor.</td></tr>
+          <tr><td><code>SetCursor(HCURSOR)</code></td><td><span class="badge badge-stub">STUB</span></td><td>Returns NULL.</td></tr>
+          <tr><td><code>LoadCursorA(hInst, name)</code></td><td><span class="badge badge-stub">STUB</span></td><td>Returns NULL. Pass IDC_ARROW or any value — it is ignored.</td></tr>
+          <tr><td><code>LoadIconA(hInst, name)</code></td><td><span class="badge badge-stub">STUB</span></td><td>Returns NULL.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — cursor position in client coordinates</div>
+      <pre>
+POINT pt;
+GetCursorPos(&amp;pt);           <span class="cm">// pt is in screen (global) coordinates</span>
+ScreenToClient(hwnd, &amp;pt);   <span class="cm">// convert to client-area coordinates</span>
+
+<span class="kw">if</span> (pt.x &gt;= 0 &amp;&amp; pt.y &gt;= 0 &amp;&amp; pt.x &lt; 640 &amp;&amp; pt.y &lt; 480) {
+    <span class="cm">// cursor is inside the window client area</span>
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── User timers ── -->
+  <section id="timers">
+    <div class="section-label">User timers</div>
+    <h2 class="section-title">SetTimer / KillTimer</h2>
+    <p class="section-sub">
+      User-mode timers deliver <code>WM_TIMER</code> messages through the normal message
+      queue. They are polled by <code>PeekMessageA</code> — no separate thread is involved.
+      For high-frequency timers, see <a href="api-mmsystem.html#mmtimers">multimedia timers</a>.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">Signatures</div>
+      <pre>
+UINT_PTR WINAPI SetTimer(
+    HWND     hWnd,       <span class="cm">// window to receive WM_TIMER</span>
+    UINT_PTR nIDEvent,   <span class="cm">// timer ID (0 = auto-assign unique ID)</span>
+    UINT     uElapse,    <span class="cm">// interval in milliseconds</span>
+    void*    lpTimerFunc <span class="cm">// ignored — always use NULL</span>
+);
+
+BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent);
+      </pre>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin:12px 0;">
+      <strong>Behaviour:</strong> <code>SetTimer</code> stores the timer in an internal list.
+      Each call to <code>PeekMessageA</code> / <code>GetMessageA</code> checks whether any
+      timer has elapsed and, if so, enqueues a <code>WM_TIMER</code> message with
+      <code>wParam = timer ID</code>. <code>lpTimerFunc</code> is always ignored — route
+      timer actions through the WNDPROC instead.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">C++ — user timer example</div>
+      <pre>
+<span class="pp">#define</span> TIMER_ANIMATION  1
+<span class="pp">#define</span> TIMER_AUTOSAVE   2
+
+<span class="cm">// In WM_CREATE:</span>
+SetTimer(hWnd, TIMER_ANIMATION, 50, NULL);    <span class="cm">// 20 Hz animation tick</span>
+SetTimer(hWnd, TIMER_AUTOSAVE,  30000, NULL); <span class="cm">// auto-save every 30 s</span>
+
+<span class="cm">// In WNDPROC:</span>
+<span class="kw">case</span> WM_TIMER:
+    <span class="kw">switch</span> (wParam) {
+    <span class="kw">case</span> TIMER_ANIMATION: AnimationStep(); <span class="kw">break</span>;
+    <span class="kw">case</span> TIMER_AUTOSAVE:  AutoSave();      <span class="kw">break</span>;
+    }
+    <span class="kw">return</span> 0;
+
+<span class="cm">// In WM_DESTROY:</span>
+KillTimer(hWnd, TIMER_ANIMATION);
+KillTimer(hWnd, TIMER_AUTOSAVE);
+PostQuitMessage(0);
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Geometry helpers ── -->
+  <section id="geometry">
+    <div class="section-label">Geometry helpers</div>
+    <h2 class="section-title">RECT operations (inline)</h2>
+    <p class="section-sub">
+      These functions are defined as inline functions in the header and require no library linkage.
+    </p>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>SetRect(RECT*, l, t, r, b)</code></td><td>Fills all four fields. Returns TRUE, FALSE on NULL pointer.</td></tr>
+          <tr><td><code>IntersectRect(dst, src1, src2)</code></td><td>Sets dst to the intersection of src1 and src2. Returns FALSE if the intersection is empty.</td></tr>
+          <tr><td><code>UnionRect(dst, src1, src2)</code></td><td>Sets dst to the bounding rectangle that contains both src1 and src2. Returns TRUE.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — RECT helpers</div>
+      <pre>
+RECT r1, r2, result;
+SetRect(&amp;r1, 0, 0, 100, 100);
+SetRect(&amp;r2, 50, 50, 200, 200);
+
+<span class="kw">if</span> (IntersectRect(&amp;result, &amp;r1, &amp;r2)) {
+    <span class="cm">// result = {50, 50, 100, 100}</span>
+}
+
+RECT bound;
+UnionRect(&amp;bound, &amp;r1, &amp;r2);
+<span class="cm">// bound = {0, 0, 200, 200}</span>
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">wsprintfA</h3>
+    <div class="code-block">
+      <div class="code-header">Signature &amp; usage</div>
+      <pre>
+int WINAPIV wsprintfA(LPSTR lpOut, LPCSTR lpFmt, ...);
+
+<span class="cm">// 1024-byte fixed internal buffer — do not use for long strings</span>
+<span class="kw">char</span> buf[64];
+wsprintfA(buf, <span class="st">"Score: %d  Level: %d"</span>, score, level);
+      </pre>
+    </div>
+    <p style="color:var(--text-muted);font-size:.875rem;">
+      Implemented via <code>vsnprintf</code> with a 1024-byte stack buffer.
+      The output is truncated if longer than 1023 characters.
+      For modern code, prefer <code>snprintf</code>.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API — MIT License · <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+  <p style="margin-top:8px;"><a href="api-types.html">← Types &amp; Handles</a> &nbsp;·&nbsp; <a href="api-wingdi.html">GDI →</a></p>
+</footer>
+</body>
+</html>

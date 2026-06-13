@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Integration Guide — Free API</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="api-reference.html">API Reference</a>
+      <a href="integration.html" class="active">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<main class="main">
+
+  <section style="padding-bottom:0;border:none;">
+    <div class="section-label">Integration Guide</div>
+    <h1 class="section-title">Integrating Free API into your application</h1>
+    <p class="section-sub">
+      Step-by-step guide for porting a legacy Win32 game or application to use
+      Free API so it can compile and run natively on Linux, macOS, Android, and Web.
+    </p>
+  </section>
+
+  <!-- Prerequisites -->
+  <section id="prereqs">
+    <div class="section-label">Prerequisites</div>
+    <h2 class="section-title">Prerequisites</h2>
+    <ul style="list-style:none;display:flex;flex-direction:column;gap:10px;font-size:.9rem;">
+      <li style="display:flex;gap:10px;"><span style="color:var(--accent);">▸</span> <span><strong>CMake 3.23+</strong> — the build system used by Free API.</span></li>
+      <li style="display:flex;gap:10px;"><span style="color:var(--accent);">▸</span> <span><strong>C++20 compiler</strong> — GCC 12+, Clang 14+, or MSVC 2022+.</span></li>
+      <li style="display:flex;gap:10px;"><span style="color:var(--accent);">▸</span> <span><strong>SDL3, SDL3_image, SDL3_mixer</strong> — either vendored (recommended) or installed system-wide.</span></li>
+      <li style="display:flex;gap:10px;"><span style="color:var(--accent);">▸</span> <span><strong>SoundFont .sf2 file</strong> — required for MIDI music playback (see MIDI section below).</span></li>
+    </ul>
+  </section>
+
+  <!-- Step 1: Add as subdirectory -->
+  <section id="step1">
+    <div class="section-label">Step 1</div>
+    <h2 class="section-title">Add Free API to your CMake project</h2>
+    <p class="section-sub">
+      The recommended approach is to include Free API as a Git submodule and add it
+      as a CMake subdirectory.
+    </p>
+
+    <h3 style="font-size:.95rem;margin-bottom:10px;">Add as a Git submodule</h3>
+    <div class="code-block">
+      <div class="code-header">bash</div>
+      <pre>
+<span class="cm"># Inside your game repository</span>
+git submodule add https://github.com/openeggbert/free-api.git external/free-api
+git submodule update --init --recursive
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Configure CMakeLists.txt</h3>
+    <div class="code-block">
+      <div class="code-header">CMakeLists.txt</div>
+      <pre>
+cmake_minimum_required(VERSION 3.23)
+project(MyGame CXX)
+
+<span class="cm"># SDL3 must be available before free-api is added.</span>
+<span class="cm"># If using the free-eggbert vendored SDL, include ThirdPartySDL.cmake first.</span>
+<span class="cm"># Otherwise install SDL3 via your package manager.</span>
+find_package(SDL3 REQUIRED)
+find_package(SDL3_image REQUIRED)
+find_package(SDL3_mixer REQUIRED)
+
+<span class="cm"># Disable tests when embedding free-api</span>
+set(FREE_API_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(external/free-api)
+
+add_executable(MyGame
+    src/main.cpp
+    <span class="cm"># ... your source files</span>
+)
+
+set_target_properties(MyGame PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+)
+
+target_link_libraries(MyGame PRIVATE
+    free-api::free-api          <span class="cm"># the library itself</span>
+    free-api::compat_headers    <span class="cm"># drop-in windows.h, io.h, etc.</span>
+)
+      </pre>
+    </div>
+
+    <div class="callout">
+      <strong>Two separate targets</strong>
+      <code>free-api::free-api</code> links the compiled <code>.a</code> library.
+      <code>free-api::compat_headers</code> is an interface-only target that adds the
+      <code>include/</code> directory (and <code>include_non_windows/</code> on
+      non-Windows hosts) to your include path. Both are required.
+    </div>
+
+    <div class="callout warn">
+      <strong>Do not add compat_headers globally</strong>
+      The compatibility headers must not be visible to SDL3 or other third-party
+      libraries — they would break. Apply <code>free-api::compat_headers</code> only
+      as a <code>PRIVATE</code> dependency of your game executable or library.
+    </div>
+  </section>
+
+  <!-- Step 2: Entry point -->
+  <section id="step2">
+    <div class="section-label">Step 2</div>
+    <h2 class="section-title">Entry point — WinMain bridge</h2>
+    <p class="section-sub">
+      Win32 games use <code>WinMain</code> instead of <code>main</code>.
+      Free API provides a macro that creates a standard <code>main</code> that
+      calls your <code>WinMain</code> transparently.
+    </p>
+
+    <h3 style="font-size:.95rem;margin-bottom:10px;">Option A — use the macro (recommended, no source changes)</h3>
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:12px;">
+      If your source file already contains a <code>WinMain</code> function, simply
+      add the macro call at the top of the file (or in a separate translation unit):
+    </p>
+    <div class="code-block">
+      <div class="code-header">main.cpp</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+
+<span class="cm">// Generates a standard main() that calls WinMain.</span>
+<span class="cm">// Only active on non-Windows platforms.</span>
+FREE_API_IMPLEMENT_WINMAIN()
+{
+    <span class="cm">// Original WinMain body</span>
+    WNDCLASSA wc = {};
+    wc.lpfnWndProc   = MyWindowProc;
+    wc.hInstance     = hInstance;
+    wc.lpszClassName = <span class="st">"MyGameClass"</span>;
+    RegisterClass(&amp;wc);
+
+    HWND hwnd = CreateWindowA(
+        <span class="st">"MyGameClass"</span>, <span class="st">"My Game"</span>,
+        WS_OVERLAPPEDWINDOW, 100, 100, 800, 600,
+        NULL, NULL, hInstance, NULL);
+    ShowWindow(hwnd, SW_SHOW);
+
+    MSG msg;
+    <span class="kw">while</span> (GetMessage(&amp;msg, NULL, 0, 0)) {
+        TranslateMessage(&amp;msg);
+        DispatchMessage(&amp;msg);
+    }
+    <span class="kw">return</span> (int)msg.wParam;
+}
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Option B — manual bridge</h3>
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:12px;">
+      For finer control, call <code>FreeApiRunWinMain</code> directly:
+    </p>
+    <div class="code-block">
+      <div class="code-header">main_bridge.cpp</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+
+<span class="cm">// Forward-declare WinMain from the game's original source</span>
+<span class="kw">int</span> WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, <span class="kw">int</span>);
+
+<span class="kw">int</span> main(<span class="kw">int</span> argc, <span class="kw">char</span>** argv)
+{
+    <span class="kw">return</span> FreeApiRunWinMain(&amp;WinMain, argc, argv);
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- Step 3: Window procedure -->
+  <section id="step3">
+    <div class="section-label">Step 3</div>
+    <h2 class="section-title">Writing a window procedure</h2>
+    <p class="section-sub">
+      The window procedure (WNDPROC) works identically to Win32.
+      Free API delivers all events through the same WM_* message constants.
+    </p>
+    <div class="code-block">
+      <div class="code-header">C++ — WNDPROC example</div>
+      <pre>
+LRESULT CALLBACK MyWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    <span class="kw">switch</span> (uMsg) {
+
+    <span class="kw">case</span> WM_CREATE:
+        <span class="cm">// Window was just created; initialise game state here</span>
+        <span class="kw">return</span> 0;
+
+    <span class="kw">case</span> WM_DESTROY:
+        PostQuitMessage(0);
+        <span class="kw">return</span> 0;
+
+    <span class="kw">case</span> WM_KEYDOWN:
+        <span class="kw">switch</span> (wParam) {
+        <span class="kw">case</span> VK_ESCAPE:  PostQuitMessage(0); <span class="kw">break</span>;
+        <span class="kw">case</span> VK_LEFT:    <span class="cm">/* move player left */</span> <span class="kw">break</span>;
+        <span class="kw">case</span> VK_RIGHT:   <span class="cm">/* move player right */</span> <span class="kw">break</span>;
+        <span class="kw">case</span> VK_SPACE:   <span class="cm">/* fire */</span> <span class="kw">break</span>;
+        }
+        <span class="kw">return</span> 0;
+
+    <span class="kw">case</span> WM_MOUSEMOVE: {
+        <span class="kw">int</span> x = LOWORD(lParam);  <span class="cm">// cursor X in client coords</span>
+        <span class="kw">int</span> y = HIWORD(lParam);  <span class="cm">// cursor Y in client coords</span>
+        <span class="cm">// BOOL lBtn = (wParam &amp; MK_LBUTTON) != 0;</span>
+        <span class="kw">return</span> 0;
+    }
+
+    <span class="kw">case</span> WM_LBUTTONDOWN:
+        <span class="cm">/* handle left click */</span>
+        <span class="kw">return</span> 0;
+
+    <span class="kw">case</span> WM_TIMER:
+        <span class="cm">/* periodic WM_TIMER from SetTimer */</span>
+        <span class="kw">return</span> 0;
+
+    }
+    <span class="kw">return</span> DefWindowProcA(hWnd, uMsg, wParam, lParam);
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- Step 4: GDI rendering -->
+  <section id="step4">
+    <div class="section-label">Step 4</div>
+    <h2 class="section-title">Rendering with the GDI bitmap subset</h2>
+    <p class="section-sub">
+      Free API implements just enough GDI to blit pre-rendered bitmaps to the window.
+      This is the pattern used by Speedy Blupi and Planet Blupi.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">C++ — load BMP and blit to window</div>
+      <pre>
+<span class="cm">// Load a BMP file from disk</span>
+HBITMAP hBmp = (HBITMAP)LoadImageA(
+    NULL, <span class="st">"data/sprites.bmp"</span>,
+    IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+
+<span class="cm">// Create a memory DC and select the bitmap into it</span>
+HDC hdcMem = CreateCompatibleDC(NULL);
+HGDIOBJ hOld = SelectObject(hdcMem, hBmp);
+
+<span class="cm">// Get a surface DC for the window (returned by the game engine internals)</span>
+<span class="cm">// In Free API, the window DC is obtained through the message pump.</span>
+<span class="cm">// A common pattern is to keep a global HDC set up during WM_CREATE.</span>
+HDC hdcWindow = GetWindowDC(hWnd);  <span class="cm">// if available in your integration</span>
+
+<span class="cm">// Blit: copy 64×64 sprite at (srcX, srcY) to window at (dstX, dstY)</span>
+StretchBlt(
+    hdcWindow, dstX, dstY, 64, 64,
+    hdcMem,    srcX, srcY, 64, 64,
+    SRCCOPY);
+
+<span class="cm">// Cleanup</span>
+SelectObject(hdcMem, hOld);
+DeleteDC(hdcMem);
+DeleteObject(hBmp);
+      </pre>
+    </div>
+
+    <div class="callout warn">
+      <strong>StretchBlt limitations</strong>
+      Only <code>SRCCOPY</code> from a memory DC (with selected bitmap) to a surface
+      DC is implemented. Raster operations other than SRCCOPY, pattern brushes,
+      transparent blits, and alpha-blended blits are not supported.
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Reading / writing individual pixels</h3>
+    <div class="code-block">
+      <div class="code-header">C++</div>
+      <pre>
+<span class="cm">// Read a pixel colour from a memory DC</span>
+COLORREF col = GetPixel(hdcMem, x, y);
+BYTE r = GetRValue(col);
+BYTE g = GetGValue(col);
+BYTE b = GetBValue(col);
+
+<span class="cm">// Write a pixel</span>
+SetPixel(hdcMem, x, y, RGB(255, 0, 0));  <span class="cm">// bright red</span>
+      </pre>
+    </div>
+  </section>
+
+  <!-- Step 5: MIDI music -->
+  <section id="step5">
+    <div class="section-label">Step 5</div>
+    <h2 class="section-title">MIDI music playback</h2>
+    <p class="section-sub">
+      Free API implements MCI MIDI playback using TinySoundFont + TinyMidiLoader
+      over an SDL3 audio stream. No system MIDI driver is required.
+    </p>
+
+    <h3 style="font-size:.95rem;margin-bottom:10px;">Provide a SoundFont</h3>
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:12px;">
+      Place a SoundFont 2 file at one of these locations (first found wins):
+    </p>
+    <ol style="font-size:.875rem;color:var(--text-muted);padding-left:20px;display:flex;flex-direction:column;gap:6px;">
+      <li>Set the environment variable: <code>FREE_API_SOUNDFONT=/path/to/file.sf2</code></li>
+      <li>Place at <code>assets/soundfont/default.sf2</code> relative to the working directory</li>
+      <li>Place at <code>soundfont/default.sf2</code> relative to the working directory</li>
+    </ol>
+    <div class="callout info" style="margin-top:16px;">
+      <strong>Free SoundFonts</strong>
+      <em>GeneralUser GS</em> (freely redistributable, ~30 MB) — download from schristiancollins.com.<br>
+      <em>FluidR3_GM</em> — available as the <code>fluid-soundfont-gm</code> Debian/Ubuntu package.
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Playing MIDI music — MCI API</h3>
+    <div class="code-block">
+      <div class="code-header">C++ — open and play a MIDI file</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;mmsystem.h&gt;</span>
+
+MCIDEVICEID g_mciDevice = 0;
+
+<span class="kw">void</span> PlayMusic(<span class="kw">const</span> <span class="kw">char</span>* midiPath, HWND hWndNotify)
+{
+    <span class="cm">// Close any currently open device</span>
+    <span class="kw">if</span> (g_mciDevice) {
+        mciSendCommand(g_mciDevice, MCI_CLOSE, 0, 0);
+        g_mciDevice = 0;
+    }
+
+    MCI_OPEN_PARMS op = {};
+    op.lpstrDeviceType  = <span class="st">"sequencer"</span>;
+    op.lpstrElementName = midiPath;
+
+    MCIERROR err = mciSendCommand(0, MCI_OPEN,
+        MCI_OPEN_TYPE | MCI_OPEN_ELEMENT,
+        (DWORD_PTR)&amp;op);
+
+    <span class="kw">if</span> (err != MMSYSERR_NOERROR) {
+        <span class="kw">char</span> msg[128];
+        mciGetErrorString(err, msg, <span class="kw">sizeof</span>(msg));
+        OutputDebugString(msg);
+        <span class="kw">return</span>;
+    }
+
+    g_mciDevice = op.wDeviceID;
+
+    MCI_PLAY_PARMS pp = {};
+    pp.dwCallback = (DWORD_PTR)hWndNotify;  <span class="cm">// window to receive MM_MCINOTIFY</span>
+
+    mciSendCommand(g_mciDevice, MCI_PLAY, MCI_NOTIFY, (DWORD_PTR)&amp;pp);
+}
+
+<span class="kw">void</span> StopMusic()
+{
+    <span class="kw">if</span> (g_mciDevice) {
+        mciSendCommand(g_mciDevice, MCI_CLOSE, 0, 0);
+        g_mciDevice = 0;
+    }
+}
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Handling MM_MCINOTIFY</h3>
+    <div class="code-block">
+      <div class="code-header">C++ — detect song end in WNDPROC</div>
+      <pre>
+<span class="kw">case</span> MM_MCINOTIFY:
+    <span class="kw">if</span> (wParam == MCI_NOTIFY_SUCCESSFUL) {
+        <span class="cm">// Song finished — loop or play next track</span>
+        PlayMusic(<span class="st">"data/music/level2.mid"</span>, hWnd);
+    }
+    <span class="kw">return</span> 0;
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Setting MIDI volume</h3>
+    <div class="code-block">
+      <div class="code-header">C++</div>
+      <pre>
+<span class="cm">// Open a dummy MIDI output handle</span>
+HMIDIOUT hmo;
+midiOutOpen(&amp;hmo, MIDI_MAPPER, 0, 0, 0);
+
+<span class="cm">// Set volume: high word = right channel, low word = left channel (0–0xFFFF)</span>
+DWORD vol = 0xC000C000;  <span class="cm">// ~75% volume both channels</span>
+midiOutSetVolume(hmo, vol);
+
+midiOutClose(hmo);
+      </pre>
+    </div>
+  </section>
+
+  <!-- Step 6: Multimedia timers -->
+  <section id="step6">
+    <div class="section-label">Step 6</div>
+    <h2 class="section-title">Multimedia timers (MMTIMER)</h2>
+    <p class="section-sub">
+      Games that need sub-message-loop timing use <code>timeSetEvent</code> to fire a
+      callback at a precise interval. Free API implements this with SDL3 timers on a
+      private thread.
+    </p>
+    <div class="code-block">
+      <div class="code-header">C++ — periodic timer callback</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;mmsystem.h&gt;</span>
+
+UINT g_timerId = 0;
+
+<span class="kw">void</span> CALLBACK TimerProc(UINT uTimerID, UINT uMsg,
+                         DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2)
+{
+    HWND hWnd = (HWND)dwUser;
+    <span class="cm">// Post a custom update message to the main window</span>
+    PostMessage(hWnd, WM_USER + 1, 0, 0);
+}
+
+<span class="kw">void</span> StartGameTimer(HWND hWnd)
+{
+    <span class="cm">// Fire every 50 ms (20 Hz), 1 ms resolution</span>
+    g_timerId = timeSetEvent(50, 1, TimerProc, (DWORD_PTR)hWnd, TIME_PERIODIC);
+}
+
+<span class="kw">void</span> StopGameTimer()
+{
+    <span class="kw">if</span> (g_timerId) {
+        timeKillEvent(g_timerId);
+        g_timerId = 0;
+    }
+}
+      </pre>
+    </div>
+    <div class="callout">
+      <strong>Thread safety</strong>
+      The callback fires on an SDL timer thread. Free API's internal message queue is
+      mutex-protected, so calling <code>PostMessage</code> from the callback is safe.
+      Do not call other Win32-like APIs from the callback unless you know they are
+      thread-safe.
+    </div>
+  </section>
+
+  <!-- Step 7: File paths -->
+  <section id="step7">
+    <div class="section-label">Step 7</div>
+    <h2 class="section-title">Cross-platform file paths</h2>
+    <p class="section-sub">
+      Legacy Win32 games hard-code backslash paths and sometimes drive letters.
+      Free API handles this transparently.
+    </p>
+
+    <h3 style="font-size:.95rem;margin-bottom:10px;">Automatic fopen normalisation</h3>
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:12px;">
+      Every C++ translation unit that includes <code>&lt;windows.h&gt;</code> gets a
+      <code>fopen</code> wrapper that converts paths automatically. You do not need to
+      change game source files:
+    </p>
+    <div class="code-block">
+      <div class="code-header">C++ — these paths work transparently on Linux</div>
+      <pre>
+<span class="cm">// All of these are handled by the fopen wrapper:</span>
+FILE* f1 = fopen(<span class="st">"data\\config.def"</span>, <span class="st">"r"</span>);       <span class="cm">// backslash → slash</span>
+FILE* f2 = fopen(<span class="st">"C:\\game\\data\\map.dat"</span>, <span class="st">"rb"</span>); <span class="cm">// drive + backslash → relative</span>
+FILE* f3 = fopen(<span class="st">"DATA\\LEVEL01.BLP"</span>, <span class="st">"rb"</span>);      <span class="cm">// uppercase fallback</span>
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Directory creation</h3>
+    <div class="code-block">
+      <div class="code-header">C++</div>
+      <pre>
+<span class="cm">// Creates the directory; backslashes and drive letters are handled</span>
+CreateDirectoryA(<span class="st">"savegames"</span>, NULL);
+CreateDirectoryA(<span class="st">"C:\\MyGame\\saves"</span>, NULL);  <span class="cm">// becomes "MyGame/saves" relative</span>
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">File search (directory listing)</h3>
+    <div class="code-block">
+      <div class="code-header">C++ — _findfirst/_findnext pattern</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;io.h&gt;</span>
+
+<span class="kw">struct</span> _finddata_t fd;
+intptr_t handle = _findfirst(<span class="st">"levels\\*.blp"</span>, &amp;fd);
+<span class="kw">if</span> (handle != -1) {
+    <span class="kw">do</span> {
+        printf(<span class="st">"Found: %s\n"</span>, fd.name);
+    } <span class="kw">while</span> (_findnext(handle, &amp;fd) == 0);
+    _findclose(handle);
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- Step 8: Input pipeline -->
+  <section id="step8">
+    <div class="section-label">Step 8</div>
+    <h2 class="section-title">Input pipeline details</h2>
+    <p class="section-sub">
+      Understanding how SDL3 events flow into the WinAPI message queue helps
+      diagnose and debug input issues.
+    </p>
+
+    <div class="arch-diagram">
+      <pre>
+SDL3 OS events
+      │
+      ▼
+<span class="hl">PeekMessageA()</span>  ←  called every frame by game's message loop
+      │
+      ├─ SDL_PumpEvents()     <span class="cm">— pull OS events into SDL queue</span>
+      ├─ PumpSdlEvents()      <span class="cm">— translate SDL events → WM_* messages</span>
+      │       │
+      │       ├─ SDL_EVENT_MOUSE_MOTION    → <span class="hl2">WM_MOUSEMOVE</span>  lParam=(y&lt;&lt;16|x)
+      │       ├─ SDL_EVENT_MOUSE_BUTTON_*  → <span class="hl2">WM_LBUTTONDOWN/UP</span> etc.
+      │       ├─ SDL_EVENT_KEY_DOWN/UP     → <span class="hl2">WM_KEYDOWN / WM_KEYUP</span>
+      │       ├─ SDL_EVENT_TEXT_INPUT      → <span class="hl2">WM_CHAR</span>
+      │       └─ SDL_EVENT_WINDOW_*       → <span class="hl2">WM_ACTIVATEAPP</span> etc.
+      │
+      └─ dequeue next WM_* message → returned to caller
+            │
+            ▼
+      <span class="hl">DispatchMessageA()</span>  →  WNDPROC(hWnd, uMsg, wParam, lParam)
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Key design decisions</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Behaviour</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td><code>PeekMessageA</code> pumps SDL on <em>every</em> call</td><td>Prevents input starvation when other messages are ahead in the queue. Real Windows does the same.</td></tr>
+          <tr><td><code>WM_ACTIVATEAPP(0)</code> is suppressed</td><td>SDL environments often deliver spurious <code>FOCUS_LOST</code> at startup. Sending deactivation would freeze games that guard rendering behind <code>g_bActive</code>.</td></tr>
+          <tr><td>Mouse/keyboard routed by SDL windowID</td><td>Events go to the HWND matching the SDL windowID; if no match, fall back to active/first window so startup events are not lost.</td></tr>
+          <tr><td>F10 uses <code>WM_SYSKEYDOWN/UP</code></td><td>Matches Windows behaviour where F10 activates the menu bar (many games test for this explicitly).</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Step 9: Testing -->
+  <section id="testing">
+    <div class="section-label">Step 9</div>
+    <h2 class="section-title">Testing &amp; debugging</h2>
+
+    <h3 style="font-size:.95rem;margin-bottom:10px;">Run the built-in tests</h3>
+    <div class="code-block">
+      <div class="code-header">bash</div>
+      <pre>
+cmake -B build -DFREE_API_BUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+      </pre>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin:12px 0;">Included tests:</p>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Test binary</th><th>What it verifies</th></tr></thead>
+        <tbody>
+          <tr><td><code>basic_test</code></td><td>Basic compilation and symbol linkage.</td></tr>
+          <tr><td><code>test_input_pipeline</code></td><td>End-to-end input pipeline: injects SDL events programmatically and verifies WM_MOUSEMOVE, WM_LBUTTONDOWN/UP, WM_RBUTTONDOWN, WM_KEYDOWN/UP flow correctly to a WNDPROC.</td></tr>
+          <tr><td><code>test_timeb</code></td><td>Verifies <code>sys/timeb.h</code> / <code>_ftime</code> compatibility (non-Windows only).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Enable debug logging</h3>
+    <div class="code-block">
+      <div class="code-header">bash — input debug</div>
+      <pre>FREE_API_DEBUG_INPUT=1 ./MyGame</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-header">bash — MIDI debug</div>
+      <pre>FREE_API_DEBUG_MIDI=1 ./MyGame</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-header">bash — specify SoundFont</div>
+      <pre>FREE_API_SOUNDFONT=/usr/share/sounds/sf2/FluidR3_GM.sf2 ./MyGame</pre>
+    </div>
+  </section>
+
+  <!-- Limitations -->
+  <section id="limitations">
+    <div class="section-label">Limitations</div>
+    <h2 class="section-title">Known limitations &amp; unsupported areas</h2>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Area</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Real GDI drawing (lines, text, brushes, pens)</td><td><span class="badge badge-stub">UNSUPPORTED</span></td><td>Only bitmap blitting is implemented.</td></tr>
+          <tr><td>Win32 resources (LoadResource, FindResource)</td><td><span class="badge badge-stub">UNSUPPORTED</span></td><td>Stubs return NULL. Use file-based asset loading instead.</td></tr>
+          <tr><td>Common dialogs (COMMDLG)</td><td><span class="badge badge-stub">UNSUPPORTED</span></td><td>commdlg.h header exists but functions are stubs.</td></tr>
+          <tr><td>CD audio (MCI cdaudio)</td><td><span class="badge badge-stub">UNSUPPORTED</span></td><td>Gracefully declined. Use MIDI or WAV instead.</td></tr>
+          <tr><td>MIDI looping</td><td><span class="badge badge-partial">TODO</span></td><td>Playback stops at end-of-song; loop flag in MCI_PLAY is not yet implemented.</td></tr>
+          <tr><td>Concurrent MIDI tracks</td><td><span class="badge badge-partial">TODO</span></td><td>Only one track at a time is supported.</td></tr>
+          <tr><td>Child window semantics</td><td><span class="badge badge-stub">UNSUPPORTED</span></td><td>WS_CHILD is parsed but parent/child coordinate transforms are not implemented.</td></tr>
+          <tr><td>Unicode APIs (*W variants)</td><td><span class="badge badge-stub">UNSUPPORTED</span></td><td>Only ANSI (*A) variants are implemented.</td></tr>
+          <tr><td>Joystick</td><td><span class="badge badge-stub">STUB</span></td><td>joyGetNumDevs returns 0; joyGetPosEx is a no-op.</td></tr>
+          <tr><td>Palettes / DIB sections</td><td><span class="badge badge-stub">UNSUPPORTED</span></td><td>256-colour palette games may not render correctly.</td></tr>
+          <tr><td>Security descriptors</td><td><span class="badge badge-stub">IGNORED</span></td><td>SECURITY_ATTRIBUTES parameter is always ignored.</td></tr>
+          <tr><td>Web audio autoplay</td><td><span class="badge badge-partial">PARTIAL</span></td><td>Browsers require a user gesture before audio plays. MIDI may be silent until the user clicks.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Complete example -->
+  <section id="example">
+    <div class="section-label">Complete Example</div>
+    <h2 class="section-title">Minimal working game skeleton</h2>
+    <p class="section-sub">A self-contained example that shows window creation, input handling, bitmap rendering, and MIDI playback.</p>
+
+    <div class="code-block">
+      <div class="code-header">game.cpp — complete skeleton</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;mmsystem.h&gt;</span>
+
+<span class="kw">static</span> HWND      g_hWnd      = NULL;
+<span class="kw">static</span> HDC       g_hdcMem   = NULL;
+<span class="kw">static</span> HBITMAP   g_hBmp     = NULL;
+<span class="kw">static</span> MCIDEVICEID g_music  = 0;
+
+<span class="kw">void</span> Render()
+{
+    <span class="kw">if</span> (!g_hdcMem || !g_hBmp) <span class="kw">return</span>;
+
+    RECT rc; GetClientRect(g_hWnd, &amp;rc);
+    HDC hdcWin = (HDC)GetWindowDC(g_hWnd); <span class="cm">// game-specific DC</span>
+
+    StretchBlt(hdcWin, 0, 0, rc.right, rc.bottom,
+               g_hdcMem, 0, 0, 320, 200, SRCCOPY);
+}
+
+LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    <span class="kw">switch</span> (msg) {
+    <span class="kw">case</span> WM_CREATE:
+        g_hBmp  = (HBITMAP)LoadImageA(NULL, <span class="st">"data/title.bmp"</span>,
+                      IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+        g_hdcMem = CreateCompatibleDC(NULL);
+        SelectObject(g_hdcMem, g_hBmp);
+        {
+            MCI_OPEN_PARMS op = {};
+            op.lpstrDeviceType  = <span class="st">"sequencer"</span>;
+            op.lpstrElementName = <span class="st">"data/music/theme.mid"</span>;
+            <span class="kw">if</span> (!mciSendCommand(0, MCI_OPEN,
+                    MCI_OPEN_TYPE | MCI_OPEN_ELEMENT, (DWORD_PTR)&amp;op)) {
+                g_music = op.wDeviceID;
+                MCI_PLAY_PARMS pp = { (DWORD_PTR)hWnd };
+                mciSendCommand(g_music, MCI_PLAY, MCI_NOTIFY, (DWORD_PTR)&amp;pp);
+            }
+        }
+        <span class="kw">return</span> 0;
+
+    <span class="kw">case</span> WM_DESTROY:
+        <span class="kw">if</span> (g_music) mciSendCommand(g_music, MCI_CLOSE, 0, 0);
+        <span class="kw">if</span> (g_hdcMem) DeleteDC(g_hdcMem);
+        <span class="kw">if</span> (g_hBmp)   DeleteObject(g_hBmp);
+        PostQuitMessage(0);
+        <span class="kw">return</span> 0;
+
+    <span class="kw">case</span> WM_KEYDOWN:
+        <span class="kw">if</span> (wp == VK_ESCAPE) DestroyWindow(hWnd);
+        <span class="kw">return</span> 0;
+
+    <span class="kw">case</span> MM_MCINOTIFY:
+        <span class="kw">if</span> (wp == MCI_NOTIFY_SUCCESSFUL &amp;&amp; g_music) {
+            MCI_PLAY_PARMS pp = { (DWORD_PTR)hWnd };
+            mciSendCommand(g_music, MCI_PLAY, MCI_NOTIFY, (DWORD_PTR)&amp;pp);
+        }
+        <span class="kw">return</span> 0;
+    }
+    <span class="kw">return</span> DefWindowProcA(hWnd, msg, wp, lp);
+}
+
+FREE_API_IMPLEMENT_WINMAIN()
+{
+    WNDCLASSA wc = {};
+    wc.lpfnWndProc   = WndProc;
+    wc.hInstance     = hInstance;
+    wc.lpszClassName = <span class="st">"GameWindow"</span>;
+    RegisterClass(&amp;wc);
+
+    g_hWnd = CreateWindowA(
+        <span class="st">"GameWindow"</span>, <span class="st">"My Game"</span>,
+        WS_OVERLAPPEDWINDOW, 100, 100, 800, 600,
+        NULL, NULL, hInstance, NULL);
+    ShowWindow(g_hWnd, SW_SHOW);
+
+    MSG msg;
+    <span class="kw">while</span> (PeekMessage(&amp;msg, NULL, 0, 0, PM_REMOVE)) {
+        <span class="kw">if</span> (msg.message == WM_QUIT) <span class="kw">break</span>;
+        TranslateMessage(&amp;msg);
+        DispatchMessage(&amp;msg);
+        Render();
+    }
+    <span class="kw">return</span> (int)msg.wParam;
+}
+      </pre>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API is an open-source project by the <a href="https://github.com/openeggbert">OpenEggbert</a> community &mdash; MIT License.</p>
+  <p style="margin-top:8px;"><a href="index.html">Overview</a> &nbsp;·&nbsp; <a href="api-reference.html">API Reference</a> &nbsp;·&nbsp; <a href="integration.html">Integration Guide</a> &nbsp;·&nbsp; <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+</footer>
+
+</body>
+</html>

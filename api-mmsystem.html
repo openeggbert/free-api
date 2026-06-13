@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multimedia — MIDI, MCI &amp; Timers — Free API Reference</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="api-reference.html" class="active">API Reference</a>
+      <a href="integration.html">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<div class="api-subnav">
+  <div class="api-subnav-inner">
+    <a href="api-reference.html">Index</a>
+    <a href="api-types.html">Types &amp; Handles</a>
+    <a href="api-winuser.html">Window &amp; Input</a>
+    <a href="api-wingdi.html">GDI</a>
+    <a href="api-winbase.html">System &amp; Files</a>
+    <a href="api-io.html">File I/O</a>
+    <a href="api-mmsystem.html" class="active">Multimedia</a>
+  </div>
+</div>
+
+<main class="main">
+
+  <section style="padding-bottom:0;border:none;">
+    <div class="section-label">mmsystem.h · digitalv.h</div>
+    <h1 class="section-title">Multimedia — MIDI, MCI &amp; Timers</h1>
+    <p class="section-sub">
+      Free API implements MIDI music playback via TinySoundFont + TinyMidiLoader over
+      an SDL3 audio stream, the MCI command API for sequencer devices, multimedia
+      periodic timers, and MIDI output volume control.
+    </p>
+    <div class="callout">
+      <strong>Include</strong>
+      <code>mmsystem.h</code> is included automatically by <code>&lt;windows.h&gt;</code>.
+      You only need <code>#include &lt;mmsystem.h&gt;</code> explicitly if you are not
+      including <code>&lt;windows.h&gt;</code>.
+    </div>
+  </section>
+
+  <!-- ── MIDI architecture ── -->
+  <section id="architecture">
+    <div class="section-label">Architecture</div>
+    <h2 class="section-title">MIDI playback architecture</h2>
+
+    <div class="arch-diagram">
+      <pre>
+Game calls <span class="hl">mciSendCommand(MCI_OPEN)</span>
+    │
+    ├─ TinyMidiLoader parses .mid file (Type 0 or Type 1)
+    ├─ TinySoundFont loads .sf2 SoundFont for synthesis
+    └─ SDL3 audio device opened (one shared device for all tracks)
+
+Game calls <span class="hl">mciSendCommand(MCI_PLAY)</span>
+    │
+    ├─ Mixer thread starts
+    │     ├─ advances MIDI time tick by tick
+    │     ├─ sends Note On/Off, Program Change, Control Change to TinySoundFont
+    │     └─ TinySoundFont synthesises stereo float PCM
+    └─ SDL3 audio stream feeds PCM to OS audio driver
+
+Song ends → <span class="hl2">MM_MCINOTIFY</span> posted to notification window
+
+Game calls <span class="hl">mciSendCommand(MCI_CLOSE)</span>
+    └─ stops mixer thread, frees MIDI data
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">Vendored libraries</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Library</th><th>File</th><th>Version</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>TinySoundFont</td><td><code>external/tsf.h</code></td><td>v0.9</td><td>SoundFont 2 synthesiser — converts MIDI events to PCM audio. MIT license by Bernhard Schelling.</td></tr>
+          <tr><td>TinyMidiLoader</td><td><code>external/tml.h</code></td><td>v0.7</td><td>MIDI file parser (Type 0 and Type 1). MIT license by Bernhard Schelling.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── SoundFont ── -->
+  <section id="soundfont">
+    <div class="section-label">SoundFont</div>
+    <h2 class="section-title">SoundFont 2 (.sf2) requirement</h2>
+    <p class="section-sub">
+      MIDI synthesis requires a SoundFont 2 file that maps MIDI instrument numbers
+      to audio samples. No SoundFont is bundled with Free API (copyright reasons).
+    </p>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:12px;">
+      Free API searches for a SoundFont in this order (first found wins):
+    </p>
+    <ol style="font-size:.875rem;color:var(--text-muted);padding-left:24px;display:flex;flex-direction:column;gap:8px;">
+      <li><strong>Environment variable:</strong> <code>FREE_API_SOUNDFONT=/path/to/file.sf2</code></li>
+      <li><strong>Relative path:</strong> <code>assets/soundfont/default.sf2</code></li>
+      <li><strong>Relative path:</strong> <code>soundfont/default.sf2</code></li>
+    </ol>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin:16px 0;">
+      If no SoundFont is found, <code>MCI_OPEN</code> still succeeds but playback is
+      silent. A warning is printed to the SDL log:
+    </p>
+    <div class="code-block">
+      <div class="code-header">SDL log warning (no SoundFont)</div>
+      <pre>[midi] WARNING: No SoundFont found. Music will be silent.
+Set FREE_API_SOUNDFONT=/path/to/file.sf2 or place default.sf2
+in assets/soundfont/ or soundfont/.</pre>
+    </div>
+
+    <div class="callout info">
+      <strong>Free SoundFonts suitable for testing</strong>
+      <strong>GeneralUser GS</strong> (~30 MB, freely redistributable) — schristiancollins.com<br>
+      <strong>FluidR3_GM</strong> — Debian/Ubuntu: <code>sudo apt install fluid-soundfont-gm</code><br>
+      Path on Debian: <code>/usr/share/sounds/sf2/FluidR3_GM.sf2</code>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">bash — set SoundFont via environment variable</div>
+      <pre>
+<span class="cm"># One-shot</span>
+FREE_API_SOUNDFONT=/usr/share/sounds/sf2/FluidR3_GM.sf2 ./MyGame
+
+<span class="cm"># Or export for the session</span>
+export FREE_API_SOUNDFONT=/usr/share/sounds/sf2/FluidR3_GM.sf2
+./MyGame
+      </pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — set SoundFont path from code</div>
+      <pre>
+<span class="cm">// Must be called before the first MCI_OPEN for it to take effect</span>
+SetEnvironmentVariableA(<span class="st">"FREE_API_SOUNDFONT"</span>,
+    <span class="st">"/usr/share/sounds/sf2/FluidR3_GM.sf2"</span>);
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── MCI types ── -->
+  <section id="types">
+    <div class="section-label">mmsystem.h — types</div>
+    <h2 class="section-title">MCI types and result codes</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>Underlying</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>MMRESULT</code></td><td>UINT</td><td><span class="badge badge-implemented">IMPLEMENTED</span></td><td>Return type for WinMM API functions.</td></tr>
+          <tr><td><code>MCIDEVICEID</code></td><td>UINT</td><td><span class="badge badge-partial">PARTIAL</span></td><td>Identifies an open MCI device (sequencer). Assigned by MCI_OPEN, freed by MCI_CLOSE.</td></tr>
+          <tr><td><code>MCIERROR</code></td><td>DWORD</td><td><span class="badge badge-partial">PARTIAL</span></td><td>Error code returned by <code>mciSendCommandA</code>.</td></tr>
+          <tr><td><code>HMIDIOUT</code></td><td>HANDLE</td><td><span class="badge badge-stub">STUB</span></td><td>Opaque MIDI output device handle. Real audio goes through MCI; this is a dummy wrapper for volume control.</td></tr>
+          <tr><td><code>LPTIMECALLBACK</code></td><td>function pointer</td><td><span class="badge badge-partial">PARTIAL</span></td><td>Type of callback passed to <code>timeSetEvent</code>. Signature: <code>void CALLBACK f(UINT, UINT, DWORD_PTR, DWORD_PTR, DWORD_PTR)</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">Result code constants</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Constant</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>MMSYSERR_NOERROR</code></td><td>0</td><td>Success.</td></tr>
+          <tr><td><code>MCIERR_INVALID_DEVICE_ID</code></td><td>259</td><td>The MCI device ID is not valid.</td></tr>
+          <tr><td><code>MCIERR_UNSUPPORTED_FUNCTION</code></td><td>268</td><td>The device type or command is not supported (e.g. cdaudio).</td></tr>
+          <tr><td><code>MCIERR_INTERNAL</code></td><td>305</td><td>Internal Free API error (e.g. TinyMidiLoader parse failure).</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── MCI structures ── -->
+  <section id="structs">
+    <div class="section-label">mmsystem.h — structures</div>
+    <h2 class="section-title">MCI parameter structures</h2>
+
+    <div class="code-block">
+      <div class="code-header">MCI_OPEN_PARMSA — open a device</div>
+      <pre>
+<span class="kw">typedef struct</span> _MCI_OPEN_PARMSA {
+    DWORD_PTR  dwCallback;      <span class="cm">// notification window (ignored for MCI_OPEN)</span>
+    MCIDEVICEID wDeviceID;      <span class="cm">// filled by Free API on MCI_OPEN success</span>
+    LPCSTR     lpstrDeviceType; <span class="cm">// "sequencer" for MIDI files</span>
+    LPCSTR     lpstrElementName;<span class="cm">// path to the MIDI file</span>
+    LPCSTR     lpstrAlias;      <span class="cm">// optional alias (ignored)</span>
+} MCI_OPEN_PARMSA;
+typedef MCI_OPEN_PARMSA MCI_OPEN_PARMS;
+      </pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">MCI_PLAY_PARMS — start playback</div>
+      <pre>
+<span class="kw">typedef struct</span> _MCI_PLAY_PARMS {
+    DWORD_PTR dwCallback; <span class="cm">// HWND to receive MM_MCINOTIFY when song ends</span>
+    DWORD_PTR dwFrom;     <span class="cm">// start position (ignored — always starts from 0)</span>
+    DWORD_PTR dwTo;       <span class="cm">// end position (ignored)</span>
+} MCI_PLAY_PARMS;
+      </pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">MCI_SET_PARMS — set device parameters</div>
+      <pre>
+<span class="kw">typedef struct</span> _MCI_SET_PARMS {
+    DWORD_PTR dwCallback;   <span class="cm">// ignored</span>
+    DWORD     dwTimeFormat; <span class="cm">// ignored (no-op)</span>
+    DWORD     dwAudio;      <span class="cm">// ignored</span>
+} MCI_SET_PARMS;
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── MCI_OPEN ── -->
+  <section id="mci-open">
+    <div class="section-label">MCI commands</div>
+    <h2 class="section-title">MCI_OPEN — open a MIDI file</h2>
+
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>
+MCIERROR WINAPI mciSendCommandA(
+    MCIDEVICEID mciId,      <span class="cm">// 0 for MCI_OPEN</span>
+    UINT        uMsg,       <span class="cm">// MCI_OPEN</span>
+    DWORD_PTR   fdwCommand, <span class="cm">// flags: MCI_OPEN_TYPE | MCI_OPEN_ELEMENT</span>
+    DWORD_PTR   dwParam     <span class="cm">// pointer to MCI_OPEN_PARMS</span>
+);
+<span class="cm">// #define mciSendCommand mciSendCommandA</span>
+      </pre>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0;">
+      <code>MCI_OPEN</code> with <code>lpstrDeviceType = "sequencer"</code> loads the MIDI file
+      specified by <code>lpstrElementName</code> into memory via TinyMidiLoader.
+      On success, <code>op.wDeviceID</code> is filled with a non-zero ID that must be used
+      in subsequent MCI_PLAY and MCI_CLOSE calls.
+    </p>
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0 16px;">
+      Specifying <code>lpstrDeviceType = "cdaudio"</code> returns
+      <code>MCIERR_UNSUPPORTED_FUNCTION</code> gracefully — it will not crash.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Flag</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>MCI_OPEN_TYPE</code></td><td>0x00002000</td><td>lpstrDeviceType is a string (required for "sequencer").</td></tr>
+          <tr><td><code>MCI_OPEN_TYPE_ID</code></td><td>0x00001000</td><td>lpstrDeviceType is an integer ID (alternative form, not used by Blupi).</td></tr>
+          <tr><td><code>MCI_OPEN_ELEMENT</code></td><td>0x00000200</td><td>lpstrElementName is a file path.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — open a MIDI file</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>   <span class="cm">// includes mmsystem.h</span>
+
+MCIDEVICEID g_musicId = 0;
+
+BOOL OpenMidiFile(<span class="kw">const</span> <span class="kw">char</span>* path)
+{
+    <span class="cm">// Close any previously open track</span>
+    <span class="kw">if</span> (g_musicId) {
+        mciSendCommand(g_musicId, MCI_CLOSE, 0, 0);
+        g_musicId = 0;
+    }
+
+    MCI_OPEN_PARMS op = {};
+    op.lpstrDeviceType  = <span class="st">"sequencer"</span>;
+    op.lpstrElementName = path;
+
+    MCIERROR err = mciSendCommand(0, MCI_OPEN,
+        MCI_OPEN_TYPE | MCI_OPEN_ELEMENT,
+        (DWORD_PTR)&amp;op);
+
+    <span class="kw">if</span> (err != MMSYSERR_NOERROR) {
+        <span class="kw">char</span> msg[256];
+        mciGetErrorString(err, msg, <span class="kw">sizeof</span>(msg));
+        OutputDebugString(msg);
+        <span class="kw">return</span> FALSE;
+    }
+
+    g_musicId = op.wDeviceID;
+    <span class="kw">return</span> TRUE;
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── MCI_PLAY ── -->
+  <section id="mci-play">
+    <div class="section-label">MCI commands</div>
+    <h2 class="section-title">MCI_PLAY — start playback</h2>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:16px;">
+      Starts the SDL3 audio stream and launches the mixer thread. Playback runs
+      asynchronously — <code>mciSendCommand</code> returns immediately.
+      When the song ends, <code>MM_MCINOTIFY</code> is posted to the window specified
+      in <code>dwCallback</code>.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Flag</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>MCI_NOTIFY</code></td><td>0x00000001</td><td>Post <code>MM_MCINOTIFY</code> to <code>op.dwCallback</code> (HWND) when song ends. Recommended.</td></tr>
+          <tr><td><code>MCI_WAIT</code></td><td>0x00000002</td><td>Wait for operation to complete — NOT IMPLEMENTED. Behaves like MCI_NOTIFY.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — play and loop music</div>
+      <pre>
+<span class="kw">void</span> PlayMusic(HWND hWndNotify)
+{
+    MCI_PLAY_PARMS pp = {};
+    pp.dwCallback = (DWORD_PTR)hWndNotify;
+
+    mciSendCommand(g_musicId, MCI_PLAY, MCI_NOTIFY, (DWORD_PTR)&amp;pp);
+}
+
+<span class="cm">// In WNDPROC — handle end-of-song notification:</span>
+<span class="kw">case</span> MM_MCINOTIFY:
+    <span class="kw">if</span> (wParam == MCI_NOTIFY_SUCCESSFUL &amp;&amp; g_musicId) {
+        <span class="cm">// Song finished — restart for looping</span>
+        MCI_PLAY_PARMS pp = { (DWORD_PTR)hWnd };
+        mciSendCommand(g_musicId, MCI_PLAY, MCI_NOTIFY, (DWORD_PTR)&amp;pp);
+    }
+    <span class="kw">return</span> 0;
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── MCI_CLOSE ── -->
+  <section id="mci-close">
+    <div class="section-label">MCI commands</div>
+    <h2 class="section-title">MCI_CLOSE — stop and free</h2>
+
+    <div class="code-block">
+      <div class="code-header">C++ — stop and close the music track</div>
+      <pre>
+<span class="kw">void</span> StopMusic()
+{
+    <span class="kw">if</span> (g_musicId) {
+        mciSendCommand(g_musicId, MCI_CLOSE, 0, 0);
+        g_musicId = 0;
+    }
+}
+
+<span class="cm">// Always close in WM_DESTROY:</span>
+<span class="kw">case</span> WM_DESTROY:
+    StopMusic();
+    PostQuitMessage(0);
+    <span class="kw">return</span> 0;
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── MCI constants ── -->
+  <section id="mci-constants">
+    <div class="section-label">MCI constants</div>
+    <h2 class="section-title">All MCI constants</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Constant</th><th>Value</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>MCI_OPEN</code></td><td>0x0803</td><td>Open a device.</td></tr>
+          <tr><td><code>MCI_CLOSE</code></td><td>0x0804</td><td>Close a device.</td></tr>
+          <tr><td><code>MCI_PLAY</code></td><td>0x0806</td><td>Start playback.</td></tr>
+          <tr><td><code>MCI_SET</code></td><td>0x080D</td><td>Set device parameters (accepted as no-op).</td></tr>
+          <tr><td><code>MCI_NOTIFY</code></td><td>0x00000001L</td><td>Post notification when done.</td></tr>
+          <tr><td><code>MCI_WAIT</code></td><td>0x00000002L</td><td>Wait flag (not implemented).</td></tr>
+          <tr><td><code>MCI_OPEN_TYPE</code></td><td>0x00002000L</td><td>lpstrDeviceType is a string.</td></tr>
+          <tr><td><code>MCI_OPEN_TYPE_ID</code></td><td>0x00001000L</td><td>lpstrDeviceType is an ID.</td></tr>
+          <tr><td><code>MCI_OPEN_ELEMENT</code></td><td>0x00000200L</td><td>lpstrElementName is a file path.</td></tr>
+          <tr><td><code>MCI_SET_TIME_FORMAT</code></td><td>0x00000400L</td><td>Set time format (no-op).</td></tr>
+          <tr><td><code>MCI_FORMAT_TMSF</code></td><td>10</td><td>Track/Minute/Second/Frame format constant.</td></tr>
+          <tr><td><code>MCI_TRACK</code></td><td>0x00000010L</td><td>Track flag for position.</td></tr>
+          <tr><td><code>MM_MCINOTIFY</code></td><td>0x03B9</td><td>Message posted by MCI to the notification window when an operation completes.</td></tr>
+          <tr><td><code>MCI_NOTIFY_SUCCESSFUL</code></td><td>0x0001</td><td>wParam value in MM_MCINOTIFY when operation succeeded.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── midiOut ── -->
+  <section id="midiout">
+    <div class="section-label">mmsystem.h — MIDI output</div>
+    <h2 class="section-title">MIDI output — midiOutOpen, midiOutSetVolume, midiOutClose</h2>
+    <p class="section-sub">
+      The MIDI output API is used primarily to control playback volume. Real note
+      output is not implemented — use MCI for actual playback.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>midiOutGetNumDevs(void)</code></td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Returns 1 if the SDL3 audio subsystem is available, 0 otherwise. Games use this to check whether any MIDI device is present before calling midiOutOpen.</td>
+          </tr>
+          <tr>
+            <td><code>midiOutOpen(phmo, uDeviceID, dwCallback, dwInstance, fdwOpen)</code></td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Allocates a dummy handle and writes it to *phmo. Accepts any uDeviceID (typically 0 or MIDI_MAPPER). Returns MMSYSERR_NOERROR on success.</td>
+          </tr>
+          <tr>
+            <td><code>midiOutSetVolume(hmo, dwVolume)</code></td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Sets playback volume. <code>dwVolume</code> is a packed 32-bit value: low 16 bits = left channel, high 16 bits = right channel (range 0x0000–0xFFFF). The average of both channels is mapped to a 0.0–1.0 linear gain applied to TinySoundFont.</td>
+          </tr>
+          <tr>
+            <td><code>midiOutClose(hmo)</code></td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Releases the dummy handle. Returns MMSYSERR_NOERROR.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — MIDI volume control</div>
+      <pre>
+<span class="kw">void</span> SetMusicVolume(<span class="kw">int</span> percent)  <span class="cm">// 0-100</span>
+{
+    <span class="kw">if</span> (midiOutGetNumDevs() == 0) <span class="kw">return</span>;
+
+    HMIDIOUT hmo;
+    <span class="kw">if</span> (midiOutOpen(&amp;hmo, 0, 0, 0, 0) != MMSYSERR_NOERROR) <span class="kw">return</span>;
+
+    <span class="cm">// Scale 0-100% to 0x0000-0xFFFF</span>
+    WORD vol = (WORD)((percent * 0xFFFF) / 100);
+    DWORD packed = (DWORD)vol | ((DWORD)vol &lt;&lt; 16);  <span class="cm">// same for L and R</span>
+
+    midiOutSetVolume(hmo, packed);
+    midiOutClose(hmo);
+}
+
+<span class="cm">// Examples:</span>
+SetMusicVolume(100);   <span class="cm">// full volume</span>
+SetMusicVolume(50);    <span class="cm">// half volume</span>
+SetMusicVolume(0);     <span class="cm">// muted</span>
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── mciGetErrorString ── -->
+  <section id="mcierror">
+    <div class="section-label">MCI error handling</div>
+    <h2 class="section-title">mciGetErrorString — human-readable error text</h2>
+
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>
+BOOL WINAPI mciGetErrorStringA(MCIERROR mcierr, LPSTR pszText, UINT cchText);
+<span class="cm">// #define mciGetErrorString mciGetErrorStringA</span>
+      </pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — error handling pattern</div>
+      <pre>
+MCIERROR err = mciSendCommand(0, MCI_OPEN,
+    MCI_OPEN_TYPE | MCI_OPEN_ELEMENT,
+    (DWORD_PTR)&amp;op);
+
+<span class="kw">if</span> (err != MMSYSERR_NOERROR) {
+    <span class="kw">char</span> errorMsg[256];
+    mciGetErrorString(err, errorMsg, <span class="kw">sizeof</span>(errorMsg));
+
+    <span class="kw">char</span> fullMsg[512];
+    snprintf(fullMsg, <span class="kw">sizeof</span>(fullMsg),
+        <span class="st">"MCI error %lu: %s\n"</span>, (unsigned long)err, errorMsg);
+    OutputDebugString(fullMsg);
+    <span class="kw">return</span> FALSE;
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Multimedia timers ── -->
+  <section id="mmtimers">
+    <div class="section-label">mmsystem.h — multimedia timers</div>
+    <h2 class="section-title">timeSetEvent / timeKillEvent — high-frequency periodic timers</h2>
+    <p class="section-sub">
+      Multimedia timers fire a callback on a private SDL timer thread at precise
+      intervals — independent of the message loop. This is the mechanism Speedy Blupi
+      and Planet Blupi use for their main game tick.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">Signatures</div>
+      <pre>
+MMRESULT WINAPI timeSetEvent(
+    UINT           uDelay,      <span class="cm">// interval in milliseconds (minimum ~1 ms)</span>
+    UINT           uResolution, <span class="cm">// timer resolution request (0 = as accurate as possible)</span>
+    LPTIMECALLBACK lpTimeProc,  <span class="cm">// function called at each interval</span>
+    DWORD_PTR      dwUser,      <span class="cm">// user data passed to callback</span>
+    UINT           fuEvent      <span class="cm">// must be TIME_PERIODIC</span>
+);
+<span class="cm">// Returns timer ID (non-zero) on success, 0 on failure.</span>
+
+MMRESULT WINAPI timeKillEvent(UINT uTimerID);
+<span class="cm">// Returns MMSYSERR_NOERROR on success.</span>
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:16px 0 8px;">Callback signature</h3>
+    <div class="code-block">
+      <div class="code-header">LPTIMECALLBACK type</div>
+      <pre>
+<span class="kw">void</span> CALLBACK TimerCallback(
+    UINT      uTimerID,  <span class="cm">// same ID returned by timeSetEvent</span>
+    UINT      uMsg,      <span class="cm">// reserved (0)</span>
+    DWORD_PTR dwUser,    <span class="cm">// your dwUser value</span>
+    DWORD_PTR dw1,       <span class="cm">// reserved (0)</span>
+    DWORD_PTR dw2        <span class="cm">// reserved (0)</span>
+);
+      </pre>
+    </div>
+
+    <div class="callout warn">
+      <strong>Callback runs on a separate thread</strong>
+      The callback fires on an SDL timer thread, not the main game thread.
+      Free API's internal message queue is mutex-protected so calling
+      <code>PostMessage</code> from the callback is safe. Do not call other
+      Free API functions from the callback unless you have verified they are thread-safe.
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — periodic game tick via multimedia timer</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+
+UINT g_timerId = 0;
+
+<span class="cm">// Callback fires every 50 ms on a private SDL timer thread</span>
+<span class="kw">void</span> CALLBACK GameTimerCallback(UINT id, UINT msg,
+    DWORD_PTR user, DWORD_PTR dw1, DWORD_PTR dw2)
+{
+    HWND hWnd = (HWND)user;
+
+    <span class="cm">// Safe to PostMessage from a timer thread</span>
+    PostMessage(hWnd, WM_USER + 1, 0, 0);
+}
+
+<span class="kw">void</span> StartGameLoop(HWND hWnd)
+{
+    g_timerId = timeSetEvent(
+        50,                    <span class="cm">// 50 ms = 20 ticks/second</span>
+        1,                     <span class="cm">// 1 ms resolution</span>
+        GameTimerCallback,
+        (DWORD_PTR)hWnd,
+        TIME_PERIODIC
+    );
+    <span class="kw">if</span> (!g_timerId)
+        OutputDebugString(<span class="st">"timeSetEvent failed\n"</span>);
+}
+
+<span class="kw">void</span> StopGameLoop()
+{
+    <span class="kw">if</span> (g_timerId) {
+        timeKillEvent(g_timerId);
+        g_timerId = 0;
+    }
+}
+
+<span class="cm">// In WNDPROC — handle the tick message posted by the callback:</span>
+<span class="kw">case</span> WM_USER + 1:
+    GameUpdate();  <span class="cm">// runs on the main (message loop) thread</span>
+    GameRender();
+    <span class="kw">return</span> 0;
+      </pre>
+    </div>
+
+    <div class="api-table-wrap" style="margin-top:24px;">
+      <table>
+        <thead><tr><th>Constant</th><th>Value</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>TIME_PERIODIC</code></td><td>0x0001</td><td>Required flag — the timer fires repeatedly at the given interval.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Joystick stubs ── -->
+  <section id="joystick">
+    <div class="section-label">Joystick stubs</div>
+    <h2 class="section-title">Joystick API (stubs)</h2>
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:16px;">
+      Joystick support is not implemented. The functions compile cleanly and return
+      safe values so legacy code that probes for a joystick does not crash.
+    </p>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Returns</th></tr></thead>
+        <tbody>
+          <tr><td><code>joyGetNumDevs(void)</code></td><td><span class="badge badge-stub">STUB</span></td><td>0 — no joystick devices.</td></tr>
+          <tr><td><code>joyGetPosEx(uJoyID, JOYINFOEX*)</code></td><td><span class="badge badge-stub">STUB</span></td><td><code>MMSYSERR_NOERROR</code> with zeroed JOYINFOEX struct.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Debug ── -->
+  <section id="debug">
+    <div class="section-label">Debugging</div>
+    <h2 class="section-title">MIDI debug logging</h2>
+    <div class="code-block">
+      <div class="code-header">bash — enable per-call MIDI logging</div>
+      <pre>FREE_API_DEBUG_MIDI=1 ./MyGame</pre>
+    </div>
+    <p style="color:var(--text-muted);font-size:.875rem;margin-top:12px;">
+      With <code>FREE_API_DEBUG_MIDI=1</code> set, Free API logs every MCI / midiOut
+      call and all mixer-thread events (note on/off, program changes, timing) to the
+      SDL log. Useful for diagnosing why music does not play or sounds wrong.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API — MIT License · <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+  <p style="margin-top:8px;"><a href="api-io.html">← File I/O</a> &nbsp;·&nbsp; <a href="api-reference.html">Back to API Index</a></p>
+</footer>
+</body>
+</html>
