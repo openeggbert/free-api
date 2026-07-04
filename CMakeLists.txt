@@ -57,6 +57,84 @@ if(NOT TARGET SDL3::SDL3 OR NOT TARGET SDL3_image::SDL3_image OR NOT TARGET SDL3
             "before add_subdirectory(free-api).")
 endif()
 
+# --- Real UI string-table extraction (LoadStringA) --------------------------
+# Both target games source all on-screen UI text through LoadStringA, but
+# neither compiles a .rc file into its build, so the real STRINGTABLE data
+# already sitting in their own resource/*.rc files is otherwise unused.
+# cmake/ExtractStringTable.cmake is a narrow, STRINGTABLE-only extractor (not
+# a general .rc/.res compiler) that turns that data into a small generated
+# .cpp compiled into free-api, so LoadStringA can return real text instead of
+# a placeholder. Building free-api standalone (neither sibling game present)
+# simply yields an empty generated table, and LoadStringA falls back to its
+# documented placeholder behavior -- see docs/cmake-options.md.
+set(_free_api_string_table_rc "")
+set(_free_api_string_table_encoding "UTF-8")
+set(_free_api_string_table_headers "")
+
+# Prefer detecting which game is ACTUALLY building free-api right now via
+# the top-level project name (CMAKE_PROJECT_NAME), not just "does a sibling
+# directory happen to exist next to free-api" -- both target games are
+# always siblings of each other on a typical development machine, so sibling
+# *existence* alone cannot tell planetblupi's own build from free-eggbert's:
+# whichever one is the top-level project is unambiguous, since CMake sets
+# CMAKE_PROJECT_NAME from the first project() call in the whole configure run.
+if(CMAKE_PROJECT_NAME STREQUAL "SPEEDY_BLUPI_WINDOWS")
+    # free-eggbert is building us directly; CMAKE_SOURCE_DIR is its own root.
+    set(_free_api_string_table_rc "${CMAKE_SOURCE_DIR}/resource/Eggbert2.rc")
+    set(_free_api_string_table_encoding "UTF-16LE")
+    set(_free_api_string_table_headers "${CMAKE_SOURCE_DIR}/resource/resource.h")
+elseif(CMAKE_PROJECT_NAME STREQUAL "PLANET_BLUPI_WINDOWS")
+    # planetblupi is building us directly; CMAKE_SOURCE_DIR is its own root.
+    set(_free_api_string_table_rc "${CMAKE_SOURCE_DIR}/resource/blupi-e.rc")
+    set(_free_api_string_table_encoding "UTF-8")
+    set(_free_api_string_table_headers
+            "${CMAKE_SOURCE_DIR}/include/resource.h;${CMAKE_SOURCE_DIR}/include/resrc1.h")
+else()
+    # Standalone free-api build (its own project() call is the top-level
+    # one): fall back to a developer-convenience sibling lookup, purely for
+    # local iteration -- checked in order, first match wins.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../free-eggbert/resource/Eggbert2.rc")
+        set(_free_api_string_table_rc "${CMAKE_CURRENT_SOURCE_DIR}/../free-eggbert/resource/Eggbert2.rc")
+        set(_free_api_string_table_encoding "UTF-16LE")
+        set(_free_api_string_table_headers "${CMAKE_CURRENT_SOURCE_DIR}/../free-eggbert/resource/resource.h")
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../planetblupi/resource/blupi-e.rc")
+        set(_free_api_string_table_rc "${CMAKE_CURRENT_SOURCE_DIR}/../planetblupi/resource/blupi-e.rc")
+        set(_free_api_string_table_encoding "UTF-8")
+        set(_free_api_string_table_headers
+                "${CMAKE_CURRENT_SOURCE_DIR}/../planetblupi/include/resource.h;${CMAKE_CURRENT_SOURCE_DIR}/../planetblupi/include/resrc1.h")
+    endif()
+endif()
+
+set(FREE_API_GENERATED_STRINGS_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/FreeApiGeneratedStrings.cpp")
+
+if(_free_api_string_table_rc)
+    execute_process(
+            COMMAND ${CMAKE_COMMAND}
+                -DOUTPUT_CPP=${FREE_API_GENERATED_STRINGS_CPP}
+                -DRC_FILE=${_free_api_string_table_rc}
+                -DRC_ENCODING=${_free_api_string_table_encoding}
+                "-DRESOURCE_HEADERS=${_free_api_string_table_headers}"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake
+            RESULT_VARIABLE _free_api_string_table_result
+    )
+else()
+    execute_process(
+            COMMAND ${CMAKE_COMMAND}
+                -DOUTPUT_CPP=${FREE_API_GENERATED_STRINGS_CPP}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake
+            RESULT_VARIABLE _free_api_string_table_result
+    )
+endif()
+
+if(NOT _free_api_string_table_result EQUAL 0)
+    message(FATAL_ERROR "free-api: ExtractStringTable.cmake failed (result=${_free_api_string_table_result})")
+endif()
+
+unset(_free_api_string_table_rc)
+unset(_free_api_string_table_encoding)
+unset(_free_api_string_table_headers)
+unset(_free_api_string_table_result)
+
 add_library(free-api STATIC)
 add_library(free-api::free-api ALIAS free-api)
 
@@ -95,6 +173,8 @@ target_sources(free-api PRIVATE
         src/internal/FreeApiTimers.cpp
         src/internal/FreeApiPath.cpp
         src/internal/FreeApiSdlVideo.cpp
+        src/internal/FreeApiStringTable.cpp
+        ${FREE_API_GENERATED_STRINGS_CPP}
 
         src/winbase.cpp
         src/winbase_file.cpp
@@ -189,6 +269,24 @@ if(FREE_API_BUILD_TESTS)
     )
     target_link_libraries(test_file_regressions PRIVATE free-api)
     add_test(NAME test_file_regressions COMMAND test_file_regressions)
+
+    add_executable(test_loadstring_regressions tests/test_loadstring_regressions.cpp)
+    set_target_properties(test_loadstring_regressions PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_loadstring_regressions PRIVATE free-api)
+    add_test(NAME test_loadstring_regressions COMMAND test_loadstring_regressions)
+
+    add_executable(test_mci_avivideo_regressions tests/test_mci_avivideo_regressions.cpp)
+    set_target_properties(test_mci_avivideo_regressions PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_mci_avivideo_regressions PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_mci_avivideo_regressions COMMAND test_mci_avivideo_regressions)
 
     if(NOT WIN32)
         add_executable(test_timeb tests/test_timeb.cpp)

@@ -11,7 +11,15 @@
  *
  * Unsupported device types:
  * - "cdaudio": gracefully declined with MCIERR_UNSUPPORTED_FUNCTION.
- * - All other video/digital-video device types: declined.
+ * - "avivideo" (digital video / movie playback): intentionally, permanently
+ *   declined with MCIERR_UNSUPPORTED_FUNCTION. This is not a placeholder --
+ *   both target games' CMovie::Create() disables movie playback when this
+ *   open fails, and their StartMovie()/MovieToStart() then transition
+ *   straight to the post-movie phase, exactly as a completed movie would.
+ *   Cutscenes are silently and safely skipped end-to-end; there is no
+ *   crash, hang, or visible error to fix. See plan.md section 10 / NEXT.md
+ *   for the investigation, and tests/test_mci_avivideo_regressions.cpp for
+ *   the regression test locking this in.
  *
  * MCI_NOTIFY is supported for MCI_PLAY: MM_MCINOTIFY is posted to the
  * callback HWND when playback completes.
@@ -19,7 +27,8 @@
  * MCI_PLAY looping is not implemented (TODO).
  *
  * @note The implementation lives in src/winapi.cpp and src/MidiMusic.cpp.
- * @note Status: STUB (for digital video); PARTIAL (for MIDI/sequencer)
+ * @note Status: PARTIAL (MIDI/sequencer); "avivideo" is a deliberate,
+ *       evidenced permanent decline, not a gap -- see above.
  */
 #ifndef FREE_API_DIGITALV_H
 #define FREE_API_DIGITALV_H

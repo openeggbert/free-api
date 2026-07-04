@@ -1,4 +1,5 @@
 #include "windows.h"
+#include "internal/FreeApiGeneratedStrings.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -23,7 +24,21 @@ int WINAPI LoadStringA(HINSTANCE hInstance, UINT uID, LPSTR lpBuffer, int cchBuf
         return 0;
     }
 
-    int written = snprintf(lpBuffer, static_cast<size_t>(cchBufferMax), "RES_%u", uID);
+    // Both target games source all on-screen UI text through LoadStringA.
+    // Real text comes from a generated STRINGTABLE lookup (see
+    // cmake/ExtractStringTable.cmake); if this ID isn't found there --
+    // either a standalone build with no sibling game's .rc extracted, or an
+    // ID with no STRINGTABLE entry in the source .rc -- fall back to a
+    // placeholder rather than silently returning empty/garbage text.
+    const char* realText = FreeApi::Internal::FindGeneratedString(uID);
+
+    int written;
+    if (realText) {
+        written = snprintf(lpBuffer, static_cast<size_t>(cchBufferMax), "%s", realText);
+    } else {
+        written = snprintf(lpBuffer, static_cast<size_t>(cchBufferMax), "RES_%u", uID);
+    }
+
     if (written < 0) {
         lpBuffer[0] = '\0';
         return 0;

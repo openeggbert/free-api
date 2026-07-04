@@ -527,7 +527,18 @@ extern "C"{
 HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy, UINT fuLoad);
 
 //#7513
-/** @brief Loads string resource text. @note Status: STUB */
+/**
+ * @brief Loads string resource text.
+ *
+ * Both target games source all on-screen UI text through this function.
+ * Real text is resolved from a table generated at CMake configure time by
+ * cmake/ExtractStringTable.cmake, which extracts STRINGTABLE entries from
+ * whichever target game's own resource/*.rc file is found as a sibling
+ * directory (`../free-eggbert` or `../planetblupi`). If no sibling game is
+ * present (a standalone build), or if a specific ID has no STRINGTABLE
+ * entry in the source .rc, falls back to a placeholder string ("RES_<id>").
+ * @note Status: PARTIAL
+ */
 int WINAPI LoadStringA(HINSTANCE hInstance, UINT uID, LPSTR lpBuffer, int cchBufferMax);
 }
 

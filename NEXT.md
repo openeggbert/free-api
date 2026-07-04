@@ -8,6 +8,45 @@ or `../planetblupi`.
 
 ## Just completed
 
+* **MCI digital-video / AVI movie playback investigated and resolved —
+  formerly the single highest-risk item in `plan.md` §10.** Static trace of
+  both games' actual source (identical logic in each) shows this is already
+  a permanent, deliberate, safe decline, not a gap: `CMovie::initAVI()`'s
+  `MCI_OPEN(MCI_OPEN_TYPE)`-only probe correctly gets
+  `MCIERR_UNSUPPORTED_FUNCTION`, `CMovie::Create()` sets `m_bEnable=FALSE`,
+  and `CEvent::StartMovie()`/`MovieToStart()` then transition straight to
+  the post-movie phase — exactly what a completed movie would do. No crash,
+  no hang, no visible error; cutscenes are just silently skipped. Removed a
+  stale "TODO: segfault" comment in `src/winmm.cpp` that predated the guard
+  making that path unreachable. Documented in `docs/out-of-scope.md` (new)
+  and `digitalv.h`'s doc comment, locked in by
+  `tests/test_mci_avivideo_regressions.cpp`. No implementation was needed or
+  added — this required investigation only, per plan.md TASK-0095/0096.
+
+* **`LoadStringA` now returns real UI text** instead of a placeholder, for
+  both games. `cmake/ExtractStringTable.cmake` is a narrow, STRINGTABLE-only
+  extractor (not a general `.rc`/`.res` compiler) that pulls `ID -> text`
+  pairs out of whichever target game's own `resource/*.rc` is actually
+  driving the current build, and compiles them into a generated `.cpp`.
+  Real evidence found real data already sitting unused in both repos:
+  planetblupi's `resource/blupi-e.rc` (257 entries, ISO-8859) and
+  free-eggbert's `resource/Eggbert2.rc` (364 entries, UTF-16LE — an initial
+  `grep`-based estimate of "68" was itself wrong, corrupted by grep's
+  binary-file heuristic misfiring on the UTF-16LE encoding). Falls back to
+  the previous `"RES_<id>"` placeholder for any ID with no STRINGTABLE entry,
+  or in a standalone build with neither sibling game present.
+  **A real bug was found and fixed during verification**: the first version
+  picked whichever sibling directory happened to exist *on disk* next to
+  free-api, which is wrong — both target games are always siblings of each
+  other in a normal dev checkout, so that heuristic would silently compile
+  the *wrong* game's string table in whichever game *wasn't* checked first.
+  Fixed by keying off `CMAKE_PROJECT_NAME` (the actual top-level project
+  driving the current build) with the sibling-existence heuristic now used
+  only for a genuinely standalone free-api build. Verified by building
+  through both `../free-eggbert` and `../planetblupi` directly and
+  confirming each pulls in its *own* data. Covered by
+  `tests/test_loadstring_regressions.cpp`.
+
 * **`DestroyWindow` now dispatches `WM_DESTROY` synchronously** to the
   window's own `WndProc` before tearing the window down (matching real Win32
   semantics), and cleans up all of its registry entries
@@ -24,36 +63,7 @@ or `../planetblupi`.
 
 ## Queue, in priority order
 
-### 1. `LoadStringA` — biggest known functional gap
-
-Currently a `STUB` that returns placeholder text (`"RES_<id>"`), but **both**
-games source *all* on-screen UI text through it — tooltips, button labels,
-win/lose/error messages — via ~50-90+ call sites each. See plan.md
-`TASK-0074` (investigate exactly what's currently shown on-screen — it may
-already look broken) and `TASK-0075` (implement the narrowest possible real
-string-table backing, scoped only to IDs actually reachable in normal play —
-explicitly **not** a general `.rc`/`resource.h` parser). This needs a design
-decision (where does the real string data come from, since neither game's
-`.rc` file is compiled today) before implementation, so start with the
-investigation step.
-
-### 2. MCI digital-video / AVI movie playback — highest risk per plan.md §10
-
-Both games' `movie.cpp` drive a full `MCI_DGV_OPEN/STATUS/PLAY/PAUSE/CLOSE`
-sequence for in-game movies, including expecting a real, movable window
-handle back from `MCI_STATUS`/`MCI_DGV_STATUS_HWND` — but `mciSendCommandA`
-only genuinely implements the `"sequencer"` (MIDI) device type; digital-video
-is `STUB`. Movies may simply not work in either game today. Start with
-plan.md `TASK-0095` (run each game, trigger a movie/cutscene, observe
-whether it plays, is silently skipped, or errors — planetblupi's own source
-even has the AVI window-*show* call commented out, so it's unclear whether
-this is already inert independent of Free API). Only after that finding is
-in hand should `TASK-0096` (implement minimal support, or explicitly
-document it as a permanent, evidenced limitation) proceed. This is
-significant, possibly large scope — do not start implementing before the
-investigation confirms it's actually needed.
-
-### 3. Smaller cleanup batch
+### 1. Smaller cleanup batch
 
 * Gate the rest of the hot-path `SDL_Log` calls that `todo/free-api-performance-todo.md`
   already identifies (this pass only gated the `FREE_DIRECT_INPUT`
@@ -63,9 +73,10 @@ investigation confirms it's actually needed.
 * Apply the already-scoped `StretchBlt` fixes from the same TODO file (1:1
   fast path, scaled-path clipping semantics, avoid per-blit allocation) —
   `TASK-0065`/`TASK-0066`/`TASK-0068`.
-* Create the two scope docs from plan.md's governance milestone that don't
-  exist yet: `docs/target-games.md` and `docs/out-of-scope.md` (only
-  `docs/scope.md` and `docs/cmake-options.md` exist so far) — `TASK-0003`/`TASK-0004`.
+* Create `docs/target-games.md` from plan.md's governance milestone, the one
+  remaining doc that doesn't exist yet (`docs/scope.md`,
+  `docs/cmake-options.md`, and now `docs/out-of-scope.md` are all in place)
+  — `TASK-0003`.
 
 ## Explicitly not queued (per scope policy)
 

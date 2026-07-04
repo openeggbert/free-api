@@ -184,10 +184,16 @@ MMRESULT WINAPI midiOutClose(HMIDIOUT hmo)
 
 MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam)
 {
-    // TODO: MCI_OPEN with MCI_OPEN_TYPE only (no MCI_OPEN_ELEMENT) is an
-    // "open device class" call, used by CMovie::initAVI() for "avivideo".
-    // AVI video playback is not implemented; return an error so the game sets
-    // m_bEnable=FALSE and skips movie playback gracefully.
+    // MCI_OPEN with MCI_OPEN_TYPE only (no MCI_OPEN_ELEMENT) is an "open
+    // device class" call, used by CMovie::initAVI() in both target games
+    // for "avivideo". AVI digital-video playback is intentionally not
+    // implemented (see plan.md section 10 / NEXT.md for the investigation):
+    // both games' CMovie::Create() sets m_bEnable=FALSE when this open
+    // fails, and their CEvent::StartMovie()/MovieToStart() then immediately
+    // transition to the same phase a completed movie would -- cutscenes are
+    // silently and safely skipped end-to-end, with no crash or hang. This
+    // is a deliberate, permanent, evidenced decision, not a placeholder.
+    // Locked in by tests/test_mci_avivideo_regressions.cpp.
     //
     // IMPORTANT: Planet Blupi truncates the struct pointer to DWORD when passing
     // it to this function, which makes the pointer invalid on 64-bit Linux.
@@ -199,8 +205,6 @@ MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwComma
         return MCIERR_UNSUPPORTED_FUNCTION;
     }
 
-    //todo: segfault is happening here for the game Planet Blupi
-    //return MCIERR_UNSUPPORTED_FUNCTION;
     return MidiMusicSendCommand(mciId, uMsg, fdwCommand, dwParam);
 }
 
