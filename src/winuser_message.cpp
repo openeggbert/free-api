@@ -199,11 +199,14 @@ LRESULT WINAPI DefWindowProcA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 
     if (Msg == WM_CLOSE) {
 #if defined(__ANDROID__)
-        SDL_Log("FREEAPI_ANDROID: DefWindowProcA WM_CLOSE -> DestroyWindow + PostQuitMessage hwnd=%p",
+        SDL_Log("FREEAPI_ANDROID: DefWindowProcA WM_CLOSE -> DestroyWindow hwnd=%p",
                 (void*)hWnd);
 #endif
+        // DestroyWindow() now synchronously dispatches WM_DESTROY to the
+        // window's own procedure before returning, so quitting is posted
+        // from the WM_DESTROY handling below (or by the app's own WM_DESTROY
+        // handler, as both target games have) -- not redundantly here too.
         DestroyWindow(hWnd);
-        PostQuitMessage(0);
         return 0;
     }
 

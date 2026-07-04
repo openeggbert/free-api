@@ -8,6 +8,10 @@
  *    window styles both games use.
  *  - DefWindowProcA handles WM_CLOSE by destroying the window and causing
  *    the normal GetMessageA-returns-FALSE quit path.
+ *  - DestroyWindow synchronously dispatches WM_DESTROY to the window's own
+ *    WndProc before tearing the window down (both target games rely on this
+ *    to run their own WM_DESTROY handler -- killing their frame-pump timer
+ *    and other cleanup -- before quitting).
  *  - PeekMessageA(PM_NOREMOVE) does not remove the message from the queue.
  *  - PeekMessageA(PM_REMOVE) removes the message from the queue.
  *  - GetMessageA returns FALSE (0) on WM_QUIT.
@@ -139,6 +143,52 @@ static void TestDefWindowProcHandlesWmClose()
     }
 
     Check(sawQuit, "WM_CLOSE's default handling leads to WM_QUIT via DefWindowProcA");
+}
+
+static bool g_destroyReceived = false;
+static HWND g_destroyReceivedHwnd = nullptr;
+
+static LRESULT WINAPI DestroyTrackingWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_DESTROY) {
+        g_destroyReceived = true;
+        g_destroyReceivedHwnd = hwnd;
+    }
+    return DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+static void TestDestroyWindowDispatchesWmDestroySynchronously()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = DestroyTrackingWndProc;
+    wc.lpszClassName = "RegTest_DestroyDispatch";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_DestroyDispatch", "Test",
+                                 WS_POPUPWINDOW | WS_VISIBLE,
+                                 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for DestroyWindow dispatch test");
+    if (!hwnd) return;
+
+    DrainMessages();
+
+    g_destroyReceived = false;
+    g_destroyReceivedHwnd = nullptr;
+
+    // Both target games rely on DestroyWindow synchronously delivering
+    // WM_DESTROY to their own WndProc (to kill their frame-pump timer via
+    // KillTimer/timeKillEvent and run cleanup) before the window is actually
+    // torn down -- previously this never happened, so that cleanup code
+    // never ran on a normal WM_CLOSE-driven quit.
+    BOOL destroyed = DestroyWindow(hwnd);
+    Check(destroyed == TRUE, "DestroyWindow returns TRUE");
+    Check(g_destroyReceived,
+          "DestroyWindow synchronously dispatches WM_DESTROY to the window's own WndProc");
+    Check(g_destroyReceivedHwnd == hwnd, "WM_DESTROY is dispatched with the correct HWND");
+
+    DrainMessages();
 }
 
 static void TestPeekMessageNoRemoveAndRemove()
@@ -336,6 +386,7 @@ int main()
 
     TestAdjustWindowRectPreservesClientSize();
     TestDefWindowProcHandlesWmClose();
+    TestDestroyWindowDispatchesWmDestroySynchronously();
     TestPeekMessageNoRemoveAndRemove();
     TestGetMessageReturnsFalseOnQuit();
     TestMouseMoveLParamPackingAndModifierFlags();

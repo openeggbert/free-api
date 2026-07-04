@@ -164,7 +164,23 @@ BOOL WINAPI DestroyWindow(HWND hWnd)
         return FALSE;
     }
 
+    // Real Win32 semantics: DestroyWindow synchronously sends WM_DESTROY to
+    // the window's own procedure before the window is actually torn down.
+    // Both target games rely on this to run their own WM_DESTROY handler
+    // (killing their frame-pump timer via KillTimer/timeKillEvent, releasing
+    // game objects) before quitting -- without this dispatch, that cleanup
+    // never ran and the timer could keep firing after WinMain's message
+    // loop had already exited.
+    const auto procIt = g_windowProcedures.find(hWnd);
+    if (procIt != g_windowProcedures.end() && procIt->second) {
+        procIt->second(hWnd, WM_DESTROY, 0, 0);
+    }
+
     g_windowProcedures.erase(hWnd);
+    g_freeApiWindowStates.erase(hWnd);
+    if (g_focusWindow == hWnd) {
+        g_focusWindow = NULL;
+    }
     auto* sdlWin = reinterpret_cast<SDL_Window*>(hWnd);
     g_windowsById.erase(SDL_GetWindowID(sdlWin));
     SDL_DestroyWindow(sdlWin);
