@@ -15,6 +15,10 @@
  *  - WM_MOUSEMOVE's wParam carries MK_LBUTTON while the left button is held
  *    during a drag (required by planetblupi's CEvent::TreatEventBase, e.g.
  *    "fwKeys & MK_LBUTTON" checks driven directly by wParam).
+ *  - ShowCursor(FALSE)/ShowCursor(TRUE) actually hide/show the real OS
+ *    cursor via SDL and return the resulting WinAPI-style display counter
+ *    (both target games hide the OS cursor while drawing their own sprite).
+ *  - SetCursor stores and returns the previously-active cursor handle.
  *
  * Note on MK_SHIFT/MK_CONTROL: FreeApiMessageQueue.cpp's WM_MOUSEMOVE
  * translation now also ORs in MK_SHIFT/MK_CONTROL from SDL_GetKeyboardState()
@@ -294,6 +298,33 @@ static void TestMouseMoveLParamPackingAndModifierFlags()
     DrainMessages();
 }
 
+static void TestShowCursorHidesAndShowsRealCursor()
+{
+    // SDL_CursorVisible() reflects SDL_ShowCursor()/SDL_HideCursor() even
+    // under the "dummy" video driver used in headless test environments,
+    // so this can be verified directly rather than only smoke-tested.
+    const int afterHide = ShowCursor(FALSE);
+    Check(afterHide < 0, "ShowCursor(FALSE) decrements the display counter below zero");
+    Check(!SDL_CursorVisible(), "ShowCursor(FALSE) actually hides the real OS cursor");
+
+    const int afterShow = ShowCursor(TRUE);
+    Check(afterShow >= 0, "ShowCursor(TRUE) restores the display counter to >= 0");
+    Check(SDL_CursorVisible(), "ShowCursor(TRUE) actually shows the real OS cursor again");
+}
+
+static void TestSetCursorReturnsPreviousHandle()
+{
+    HCURSOR first = LoadCursorA(nullptr, "IDC_ARROW");
+    HCURSOR second = LoadCursorA(nullptr, "IDC_POINTER");
+    Check(first != nullptr && second != nullptr, "LoadCursorA returns non-null handles for SetCursor test");
+
+    HCURSOR previousBeforeAny = SetCursor(first);
+    (void)previousBeforeAny;
+
+    HCURSOR previous = SetCursor(second);
+    Check(previous == first, "SetCursor returns the previously-active cursor handle");
+}
+
 int main()
 {
     printf("[winuser-regressions] Starting\n");
@@ -308,6 +339,8 @@ int main()
     TestPeekMessageNoRemoveAndRemove();
     TestGetMessageReturnsFalseOnQuit();
     TestMouseMoveLParamPackingAndModifierFlags();
+    TestShowCursorHidesAndShowsRealCursor();
+    TestSetCursorReturnsPreviousHandle();
 
     SDL_Quit();
 

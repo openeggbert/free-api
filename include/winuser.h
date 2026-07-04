@@ -397,7 +397,16 @@ BOOL WINAPI AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
 int WINAPI MessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType);
 
 //#6242
-/** @brief Shows/hides cursor and returns display counter. @note Status: STUB */
+/**
+ * @brief Shows/hides the real OS cursor and returns the resulting display counter.
+ *
+ * Maintains a signed WinAPI-style display counter: each `ShowCursor(TRUE)`
+ * increments it, each `ShowCursor(FALSE)` decrements it, and the real OS
+ * cursor is shown via SDL whenever the counter is `>= 0` (matching real
+ * Win32 semantics). Both target games call this to hide the OS cursor while
+ * drawing their own software sprite cursor.
+ * @note Status: IMPLEMENTED
+ */
 int WINAPI ShowCursor(BOOL bShow);
 
 //#6248
@@ -405,7 +414,15 @@ int WINAPI ShowCursor(BOOL bShow);
 BOOL WINAPI SetCursorPos(int X, int Y);
 
 //#6255
-/** @brief Sets active cursor shape. @note Status: STUB */
+/**
+ * @brief Records the active cursor handle and returns the previously-active one.
+ *
+ * Does not decode or render real cursor shapes (`LoadCursorA` is a safe
+ * non-null-handle stub); only the previous handle is tracked, which is
+ * enough for both target games since they never inspect the cursor's
+ * visual shape, only whether a handle was set.
+ * @note Status: PARTIAL
+ */
 HCURSOR WINAPI SetCursor(HCURSOR hCursor);
 
 //#6261

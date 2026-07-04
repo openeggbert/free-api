@@ -56,15 +56,35 @@ BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint)
     return TRUE;
 }
 
+// Last cursor handle passed to SetCursor. Free API does not decode real
+// cursor shapes (LoadCursorA is a safe non-null-handle stub), so this is
+// only tracked for source-level compatibility with code that inspects the
+// previously-active handle -- it has no effect on what is actually shown.
+static HCURSOR g_currentCursor = nullptr;
+
 HCURSOR WINAPI SetCursor(HCURSOR hCursor)
 {
-    return hCursor;
+    const HCURSOR previous = g_currentCursor;
+    g_currentCursor = hCursor;
+    return previous;
 }
+
+// WinAPI-style signed display counter: each ShowCursor(TRUE) increments it,
+// each ShowCursor(FALSE) decrements it, and the real OS cursor is visible
+// whenever the counter is >= 0, matching real Win32 ShowCursor semantics.
+static int g_cursorShowCount = 0;
 
 int WINAPI ShowCursor(BOOL bShow)
 {
-    (void)bShow;
-    return 0;
+    g_cursorShowCount += bShow ? 1 : -1;
+
+    if (g_cursorShowCount >= 0) {
+        SDL_ShowCursor();
+    } else {
+        SDL_HideCursor();
+    }
+
+    return g_cursorShowCount;
 }
 
 BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint)

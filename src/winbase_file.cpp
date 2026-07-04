@@ -6,7 +6,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <cctype>
 #include <string>
 #include <unordered_map>
 #include <filesystem>
@@ -32,29 +31,7 @@ static std::unordered_map<int, FILE*> g_openFiles;
 
 static std::string NormalizePathA(LPCSTR path)
 {
-    if (!path) {
-        return {};
-    }
-
-    std::string result(path);
-
-    if (result.size() >= 2 &&
-        std::isalpha(static_cast<unsigned char>(result[0])) &&
-        result[1] == ':') {
-        result.erase(0, 2);
-    }
-
-    for (char& c : result) {
-        if (c == '\\') {
-            c = '/';
-        }
-    }
-
-    while (!result.empty() && result.front() == '/') {
-        result.erase(result.begin());
-    }
-
-    return result;
+    return FreeApi::Internal::NormalizeFilesystemPath(path);
 }
 
 int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite)

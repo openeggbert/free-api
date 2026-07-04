@@ -231,8 +231,10 @@ void PumpSdlEvents()
                     SDL_ConvertEventToRenderCoordinates(ren, &event);
                 }
             }
-            // FREE_DIRECT_INPUT diagnostic for first 20 events.
-            if (inputDiagCount < 20) {
+            // FREE_DIRECT_INPUT diagnostic for first 20 events. Gated behind
+            // g_debugInput (FREE_API_DEBUG_INPUT=1) so normal gameplay does
+            // not log on every mouse/touch event.
+            if (g_debugInput && inputDiagCount < 20) {
                 float mappedX = 0, mappedY = 0;
                 if (event.type == SDL_EVENT_MOUSE_MOTION) { mappedX = event.motion.x; mappedY = event.motion.y; }
                 else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) { mappedX = event.button.x; mappedY = event.button.y; }

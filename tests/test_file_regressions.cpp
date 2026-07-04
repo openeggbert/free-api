@@ -5,8 +5,12 @@
  * 3.8/6/7.
  *
  * Covers:
- *  - CreateDirectoryA actually creates a directory on disk.
- *  - _mkdir actually creates a directory on disk.
+ *  - CreateDirectoryA actually creates a directory on disk, with both a
+ *    plain forward-slash path and a backslash-containing path (e.g.
+ *    free-eggbert/planetblupi's "\User"-style Windows path literals).
+ *  - _mkdir actually creates a directory on disk, with both a plain
+ *    forward-slash path and a backslash-containing path such as
+ *    free-eggbert's own "_mkdir(\"\\User\")" call (event.cpp:4193).
  *  - Backslash-style paths (planetblupi's "image\\init.blp" convention) and
  *    forward-slash paths (its "data/config.def" convention) both resolve
  *    through the fopen wrapper, in the same run.
@@ -77,6 +81,25 @@ static void TestCreateDirectoryACreatesRealDirectory()
     rmdir(root.c_str());
 }
 
+static void TestCreateDirectoryAWithBackslashPath()
+{
+    std::string root = MakeTempRoot("createdir-bs");
+    Check(!root.empty(), "temp root created for CreateDirectoryA backslash test");
+    if (root.empty()) return;
+
+    // Windows-style backslash between an already-existing root and a new
+    // leaf directory, e.g. the shape of both games' "\User"-style literals.
+    const std::string requested = root + "\\user_data";
+    const std::string expected  = root + "/user_data";
+
+    BOOL created = CreateDirectoryA(requested.c_str(), nullptr);
+    Check(created == TRUE, "CreateDirectoryA reports success for a backslash-containing path");
+    Check(DirExists(expected), "CreateDirectoryA normalizes backslashes to the equivalent POSIX directory");
+
+    rmdir(expected.c_str());
+    rmdir(root.c_str());
+}
+
 static void TestMkdirCreatesRealDirectory()
 {
     std::string root = MakeTempRoot("mkdir");
@@ -89,6 +112,26 @@ static void TestMkdirCreatesRealDirectory()
     Check(DirExists(target), "_mkdir's target directory actually exists on disk");
 
     rmdir(target.c_str());
+    rmdir(root.c_str());
+}
+
+static void TestMkdirWithBackslashPath()
+{
+    std::string root = MakeTempRoot("mkdir-bs");
+    Check(!root.empty(), "temp root created for _mkdir backslash test");
+    if (root.empty()) return;
+
+    // Matches free-eggbert's own call shape: _mkdir("\User") relative to an
+    // existing directory (event.cpp:4193), just rooted at our temp dir
+    // instead of the real current working directory.
+    const std::string requested = root + "\\User";
+    const std::string expected  = root + "/User";
+
+    int rc = _mkdir(requested.c_str());
+    Check(rc == 0, "_mkdir returns success for a backslash-containing path");
+    Check(DirExists(expected), "_mkdir normalizes backslashes to the equivalent POSIX directory");
+
+    rmdir(expected.c_str());
     rmdir(root.c_str());
 }
 
@@ -141,7 +184,9 @@ int main()
     printf("[file-regressions] Starting\n");
 
     TestCreateDirectoryACreatesRealDirectory();
+    TestCreateDirectoryAWithBackslashPath();
     TestMkdirCreatesRealDirectory();
+    TestMkdirWithBackslashPath();
     TestBackslashAndForwardSlashPathsBothResolve();
 
     if (g_failures > 0) {

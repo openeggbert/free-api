@@ -8,6 +8,8 @@
 
 #if !defined(_WIN32)
 
+#include "internal/FreeApiPath.hpp"
+
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -25,7 +27,15 @@ char* _getcwd(char* buffer, int maxlen)
 
 int _mkdir(const char* path)
 {
-    return mkdir(path, 0777);
+    // Normalize Windows-style paths (e.g. free-eggbert's _mkdir("\User"))
+    // the same way CreateDirectoryA/_lopen do, so a leading backslash is
+    // treated as relative to the current working directory rather than
+    // escaping to the real filesystem root.
+    const std::string normalized = FreeApi::Internal::NormalizeFilesystemPath(path);
+    if (normalized.empty()) {
+        return -1;
+    }
+    return mkdir(normalized.c_str(), 0777);
 }
 
 } // extern "C"
