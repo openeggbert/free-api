@@ -370,7 +370,22 @@ BOOL WINAPI SetWindowTextA(HWND hWnd, LPCSTR lpString);
 BOOL WINAPI GetClientRect(HWND hWnd, LPRECT lpRect);
 
 //#6030
-/** @brief Adjusts window rectangle for styles. @note Status: STUB */
+/**
+ * @brief Adjusts a window rectangle for window styles.
+ *
+ * Free API's `CreateWindowExA`/`CreateWindowA` pass `nWidth`/`nHeight`
+ * directly to `SDL_CreateWindow`, and `GetClientRect` reports that same
+ * size back — i.e. Free API's window "size" already *is* the client area,
+ * with no separate outer-chrome dimension the way real Win32 has. Both
+ * target games call `AdjustWindowRect` once, at startup, then pass the
+ * resulting rect's width/height straight to `CreateWindow`/`CreateWindowExA`
+ * expecting the *client area* to end up matching their originally-requested
+ * size. Because Free API's window size already means "client size," leaving
+ * the rect unchanged is the behavior both games need; inflating it here (to
+ * mimic real Win32 caption/border growth) would make the resulting window
+ * larger than intended, since nothing downstream subtracts it back out.
+ * @note Status: IMPLEMENTED (intentional identity transform; see plan.md TASK-0030/0031)
+ */
 BOOL WINAPI AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
 
 //#6070

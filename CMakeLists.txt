@@ -7,21 +7,54 @@ project(free-api
 
 include(GNUInstallDirs)
 
-if(NOT TARGET SDL3::SDL3)
-    include("/rv/data/development/github.com/openeggbert/free-eggbert/cmake/ThirdPartySDL.cmake")
-    configure_vendored_sdl()
+# --- SDL3 acquisition --------------------------------------------------------
+# free-api needs SDL3::SDL3, SDL3_image::SDL3_image and SDL3_mixer::SDL3_mixer
+# as an internal backend detail. free-api never vendors SDL3 itself; it only
+# ever does one of the following, in order:
+#   1) Reuse targets a parent project already created before this repo was
+#      added via add_subdirectory() (e.g. ../free-eggbert or ../planetblupi
+#      building free-api as part of their own tree).
+#   2) Find a system-installed SDL3/SDL3_image/SDL3_mixer via find_package()
+#      when configured with -DFREE_API_USE_SYSTEM_SDL3=ON.
+#   3) As a developer convenience only, reuse one of the two target games'
+#      existing SDL3-vendoring CMake helper if that game happens to be
+#      checked out next to this repo (no absolute/machine-specific path).
+# See docs/cmake-options.md for details.
+option(FREE_API_USE_SYSTEM_SDL3
+        "Find SDL3/SDL3_image/SDL3_mixer via find_package() instead of a sibling game project's vendoring script"
+        OFF)
+
+if(NOT TARGET SDL3::SDL3 AND FREE_API_USE_SYSTEM_SDL3)
+    find_package(SDL3 REQUIRED)
+    find_package(SDL3_image REQUIRED)
+    find_package(SDL3_mixer REQUIRED)
 endif()
 
 if(NOT TARGET SDL3::SDL3)
-    message(FATAL_ERROR "Missing SDL3::SDL3 target even after configure_vendored_sdl().")
+    # Developer convenience only: if free-api is checked out next to one of
+    # its two target games, reuse that game's own SDL3 vendoring script
+    # instead of duplicating it here. This is optional; it is skipped
+    # entirely if neither sibling directory is present.
+    foreach(_free_api_sibling IN ITEMS free-eggbert planetblupi)
+        set(_free_api_sibling_sdl_cmake
+                "${CMAKE_CURRENT_SOURCE_DIR}/../${_free_api_sibling}/cmake/ThirdPartySDL.cmake")
+        if(EXISTS "${_free_api_sibling_sdl_cmake}")
+            include("${_free_api_sibling_sdl_cmake}")
+            configure_vendored_sdl()
+            break()
+        endif()
+    endforeach()
+    unset(_free_api_sibling_sdl_cmake)
 endif()
 
-if(NOT TARGET SDL3_image::SDL3_image)
-    message(FATAL_ERROR "Missing SDL3_image::SDL3_image target even after configure_vendored_sdl().")
-endif()
-
-if(NOT TARGET SDL3_mixer::SDL3_mixer)
-    message(FATAL_ERROR "Missing SDL3_mixer::SDL3_mixer target even after configure_vendored_sdl().")
+if(NOT TARGET SDL3::SDL3 OR NOT TARGET SDL3_image::SDL3_image OR NOT TARGET SDL3_mixer::SDL3_mixer)
+    message(FATAL_ERROR
+            "free-api requires SDL3::SDL3, SDL3_image::SDL3_image and SDL3_mixer::SDL3_mixer targets, "
+            "none of which were found. Either:\n"
+            "  - configure with -DFREE_API_USE_SYSTEM_SDL3=ON (requires SDL3/SDL3_image/SDL3_mixer dev packages), or\n"
+            "  - build free-api as a subdirectory of ../free-eggbert or ../planetblupi (either already provides SDL3), or\n"
+            "  - define the SDL3::SDL3 / SDL3_image::SDL3_image / SDL3_mixer::SDL3_mixer targets yourself "
+            "before add_subdirectory(free-api).")
 endif()
 
 add_library(free-api STATIC)
@@ -129,6 +162,33 @@ if(FREE_API_BUILD_TESTS)
     )
     target_link_libraries(test_input_pipeline PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_input_pipeline COMMAND test_input_pipeline)
+
+    add_executable(test_header_compile tests/test_header_compile.cpp)
+    set_target_properties(test_header_compile PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_header_compile PRIVATE freeapi_compat_headers)
+    add_test(NAME test_header_compile COMMAND test_header_compile)
+
+    add_executable(test_winuser_regressions tests/test_winuser_regressions.cpp)
+    set_target_properties(test_winuser_regressions PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_winuser_regressions PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_winuser_regressions COMMAND test_winuser_regressions)
+
+    add_executable(test_file_regressions tests/test_file_regressions.cpp)
+    set_target_properties(test_file_regressions PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_file_regressions PRIVATE free-api)
+    add_test(NAME test_file_regressions COMMAND test_file_regressions)
 
     if(NOT WIN32)
         add_executable(test_timeb tests/test_timeb.cpp)

@@ -338,9 +338,20 @@ void PumpSdlEvents()
 
                 // lParam encodes client-area x/y
                 LPARAM lp = (LPARAM)(((WORD)(DWORD_PTR)y << 16) | ((WORD)(DWORD_PTR)x));
+
+                // wParam must carry live MK_SHIFT/MK_CONTROL modifier state in
+                // addition to button-down state: planetblupi's WM_MOUSEMOVE
+                // handler (CEvent::PlayMove) reads wParam&MK_SHIFT every move
+                // to support shift-drag cell highlighting, not just at the
+                // initial button press.
+                const bool* keys = SDL_GetKeyboardState(nullptr);
+                WPARAM wp = g_mouseButtons;
+                if (keys && (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT])) wp |= MK_SHIFT;
+                if (keys && (keys[SDL_SCANCODE_LCTRL]  || keys[SDL_SCANCODE_RCTRL]))  wp |= MK_CONTROL;
+
                 InputLog("MOUSE_MOTION x=%d y=%d wParam=0x%X -> WM_MOUSEMOVE",
-                    x, y, (unsigned)g_mouseButtons);
-                PushMessage(hwnd, WM_MOUSEMOVE, g_mouseButtons, lp);
+                    x, y, (unsigned)wp);
+                PushMessage(hwnd, WM_MOUSEMOVE, wp, lp);
                 break;
             }
             case SDL_EVENT_MOUSE_BUTTON_DOWN:

@@ -5,6 +5,10 @@ public surface for old C/C++ games.  It is **not** Wine, **not** a full Windows
 emulator, and **not** a complete Win32 SDK replacement.  Only the subset needed by
 the target game(s) is implemented.
 
+See [`docs/scope.md`](docs/scope.md) for the project's scope policy: every new
+public API must cite a real usage site in `../free-eggbert` or `../planetblupi`.
+See [`plan.md`](plan.md) for the full evidence-based usage audit and task backlog.
+
 ```text
 Legacy game source code
         |

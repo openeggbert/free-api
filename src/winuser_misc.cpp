@@ -60,6 +60,11 @@ BOOL WINAPI AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
 {
     (void)dwStyle;
     (void)bMenu;
+
+    // Intentional identity transform: see the Doxygen comment on this
+    // function's declaration in include/winuser.h for why leaving lpRect
+    // unchanged is the correct behavior given how CreateWindowExA and
+    // GetClientRect define "window size" in this implementation.
     return lpRect ? TRUE : FALSE;
 }
 
