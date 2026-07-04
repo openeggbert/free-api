@@ -90,7 +90,9 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
         g_messageQueue.pop_front();
         if (lpMsg->message == kDiagWmUpdate) {
             g_updateMessagePending.store(false, std::memory_order_release);
-            g_diagWmUpdatePending.fetch_sub(1, std::memory_order_relaxed);
+            if (FreeApiDiagnosticsFastEnabled()) {
+                g_diagWmUpdatePending.fetch_sub(1, std::memory_order_relaxed);
+            }
         }
     }
 

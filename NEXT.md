@@ -8,6 +8,26 @@ or `../planetblupi`.
 
 ## Just completed
 
+* **Smaller cleanup batch done.** Audited every remaining `SDL_Log` call in
+  `src/*.cpp` against `todo/free-api-performance-todo.md`'s hot-path
+  concern: `StretchBlt`'s logging and 1:1/scaled fast paths, and the
+  `PushMessage`/`PumpSdlEvents`/`DispatchMessageA` diagnostic-atomic gating,
+  turned out to already be fully implemented (by a prior session, before
+  this backlog was written) — the actual gap was zero test coverage, not
+  missing implementation. Added `tests/test_gdi_regressions.cpp` (1:1 copy,
+  clipped-edge, 2x nearest-neighbor scaling, `GetPixel`/`SetPixel`
+  round-trip — all pass against the existing code unchanged). Found and
+  fixed one real, genuine gating bug: `PeekMessageA` decremented
+  `g_diagWmUpdatePending` unconditionally on every call while its matching
+  increment (in `PushMessage`) was already correctly gated — fixed to
+  match. Also gated `SetTimer`/`KillTimer`'s per-call logs (called once at
+  startup/shutdown per game, not truly hot-path, but explicitly named in
+  the TODO). Object-lifetime counters (bitmap/DC create/destroy) were
+  deliberately left ungated, per the TODO's own explicit guidance not to
+  prioritize those without evidence they're hot. Created
+  `docs/target-games.md`, the last doc from plan.md's governance milestone
+  that didn't exist yet.
+
 * **MCI digital-video / AVI movie playback investigated and resolved —
   formerly the single highest-risk item in `plan.md` §10.** Static trace of
   both games' actual source (identical logic in each) shows this is already
@@ -63,20 +83,33 @@ or `../planetblupi`.
 
 ## Queue, in priority order
 
-### 1. Smaller cleanup batch
+### 1. `CreateBitmap`'s 8-bit/16-bit conversion paths — untested, real evidenced usage
 
-* Gate the rest of the hot-path `SDL_Log` calls that `todo/free-api-performance-todo.md`
-  already identifies (this pass only gated the `FREE_DIRECT_INPUT`
-  first-20-events block) — plan.md `TASK-0105`.
-* Gate diagnostics atomic counters so they're only touched when diagnostics
-  are enabled — `TASK-0107`.
-* Apply the already-scoped `StretchBlt` fixes from the same TODO file (1:1
-  fast path, scaled-path clipping semantics, avoid per-blit allocation) —
-  `TASK-0065`/`TASK-0066`/`TASK-0068`.
-* Create `docs/target-games.md` from plan.md's governance milestone, the one
-  remaining doc that doesn't exist yet (`docs/scope.md`,
-  `docs/cmake-options.md`, and now `docs/out-of-scope.md` are all in place)
-  — `TASK-0003`.
+Planet Blupi's minimap rebuild (`decmap.cpp`) writes raw 8-bit or 16-bit
+(RGB565) pixels into a buffer and calls `CreateBitmap`, which converts them
+to the internal RGBA32 format (`src/wingdi_bitmap.cpp`). `tests/test_gdi_regressions.cpp`
+only exercises the 32-bit direct-copy path so far. Add focused tests for
+both conversion paths (known input bytes -> expected RGBA32 output) —
+plan.md `TASK-0067`.
+
+### 2. Remaining plan.md governance docs (lower priority)
+
+`docs/scope.md`, `docs/cmake-options.md`, `docs/out-of-scope.md`, and
+`docs/target-games.md` all exist now. Still missing from plan.md's
+governance milestone: a supported-APIs reference table (`TASK-0005`), a
+compile-only-stubs table (`TASK-0006`), an unsupported-APIs table
+(`TASK-0007`), and a PR review checklist (`TASK-0010`). None are urgent —
+they're reference documentation, not behavior.
+
+### 3. `MK_SHIFT`/`MK_CONTROL` on `WM_MOUSEMOVE` — manual verification still open
+
+The fix (both flags now OR'd into `WM_MOUSEMOVE`'s `wParam` from live
+keyboard state, not just button events — see `FreeApiMessageQueue.cpp`) is
+already shipped, but automated testing isn't possible in this headless
+environment (`SDL_PushEvent`-injected key events don't drive
+`SDL_GetKeyboardState()`, confirmed empirically). A real manual playtest of
+planetblupi's shift-drag cell-highlight feature would close this out for
+real — plan.md `TASK-0048`.
 
 ## Explicitly not queued (per scope policy)
 

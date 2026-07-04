@@ -288,6 +288,15 @@ if(FREE_API_BUILD_TESTS)
     target_link_libraries(test_mci_avivideo_regressions PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_mci_avivideo_regressions COMMAND test_mci_avivideo_regressions)
 
+    add_executable(test_gdi_regressions tests/test_gdi_regressions.cpp)
+    set_target_properties(test_gdi_regressions PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_gdi_regressions PRIVATE free-api)
+    add_test(NAME test_gdi_regressions COMMAND test_gdi_regressions)
+
     if(NOT WIN32)
         add_executable(test_timeb tests/test_timeb.cpp)
         set_target_properties(test_timeb PROPERTIES

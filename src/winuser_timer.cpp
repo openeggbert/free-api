@@ -26,10 +26,12 @@ UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTim
         std::lock_guard<std::mutex> lock(g_winTimerMutex);
         g_winTimers[nIDEvent] = wt;
     }
-    SDL_Log("free-api SetTimer: hwnd=%p id=%lu elapse=%u ms",
-            static_cast<void*>(hWnd),
-            static_cast<unsigned long>(nIDEvent),
-            static_cast<unsigned>(uElapse));
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api SetTimer: hwnd=%p id=%lu elapse=%u ms",
+                static_cast<void*>(hWnd),
+                static_cast<unsigned long>(nIDEvent),
+                static_cast<unsigned>(uElapse));
+    }
     FreeApiDiagSnapshot("timer-set");
     return nIDEvent;
 }
@@ -41,9 +43,11 @@ BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent)
         std::lock_guard<std::mutex> lock(g_winTimerMutex);
         g_winTimers.erase(uIDEvent);
     }
-    SDL_Log("free-api KillTimer: hwnd=%p id=%lu",
-            static_cast<void*>(hWnd),
-            static_cast<unsigned long>(uIDEvent));
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api KillTimer: hwnd=%p id=%lu",
+                static_cast<void*>(hWnd),
+                static_cast<unsigned long>(uIDEvent));
+    }
     FreeApiDiagSnapshot("timer-kill");
     return TRUE;
 }
