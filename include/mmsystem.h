@@ -142,6 +142,12 @@ typedef HMIDIOUT* LPHMIDIOUT;
 #define MCIERR_UNSUPPORTED_FUNCTION 268
 #define MCIERR_INTERNAL            305
 
+/** @brief Joystick result codes (real Win32 values). @note Status: IMPLEMENTED */
+#define JOYERR_NOERROR    0
+#define JOYERR_PARMS    165
+#define JOYERR_NOCANDO  166
+#define JOYERR_UNPLUGGED 167
+
 #define WAVE_FORMAT_PCM 1
 
 #define MCI_OPEN 0x0803
@@ -184,13 +190,19 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
 MMRESULT WINAPI timeKillEvent(UINT uTimerID);
 
 /**
- * @brief Queries joystick state.
- * @note Status: STUB
+ * @brief Queries joystick state -- real, SDL_Joystick-backed (TASK-0103).
+ * Populates `dwXpos`/`dwYpos` (SDL's signed -32768..32767 axis range
+ * shifted to Win32's unsigned 0..65535, center 32768) and `dwButtons` bits
+ * 0-3 (`JOY_BUTTON1`-`JOY_BUTTON4`) from the first 2 axes / 4 buttons of the
+ * `uJoyID`-th connected device -- the only fields free-eggbert reads
+ * (event.cpp:2069-2127). Returns `JOYERR_UNPLUGGED` if no such device is
+ * connected (both games already handle this gracefully).
+ * @note Status: IMPLEMENTED
  */
 MMRESULT WINAPI joyGetPosEx(UINT uJoyID, LPJOYINFOEX pji);
 /**
- * @brief Returns the number of available joystick devices.
- * @note Status: STUB
+ * @brief Returns the number of connected joystick devices (SDL-backed).
+ * @note Status: IMPLEMENTED
  */
 UINT WINAPI joyGetNumDevs(void);
 

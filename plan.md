@@ -2702,7 +2702,7 @@ Out of scope:
 
 ### TASK-0103: (Optional, P2) Implement real `joyGetPosEx`/`joyGetNumDevs` via SDL Gamepad/Joystick backend
 
-Status: TODO (deliberately deferred, not implemented) — explicitly optional per this task's own title; no correctness requirement (both games play fully via keyboard/mouse). Deferral decision recorded in `docs/out-of-scope.md` alongside the existing `joyGetPosEx`/`joyGetNumDevs` stub entry, matching the project's established pattern for well-scoped-but-not-evidenced-as-needed enhancements (e.g. `todo/Embedded_Resources_FreeAPI.md`).
+Status: DONE — `joyGetPosEx`/`joyGetNumDevs` (`src/winmm.cpp`) are now real, `SDL_Joystick`-backed implementations: `joyGetNumDevs` returns the real connected-device count; `joyGetPosEx` opens (and caches) the requested 0-based device index, maps SDL's signed axis range to Win32's unsigned 0..65535 (center 32768) for `dwXpos`/`dwYpos`, and packs the first 4 buttons into `dwButtons` bits 0-3 (`JOY_BUTTON1`-`JOY_BUTTON4`) — exactly the fields free-eggbert reads. `tests/test_joystick_regressions.cpp` verifies axis/button round-trip via SDL's virtual-joystick test API (no real hardware needed); `ctest` passes (17/17), including under AddressSanitizer+UBSan. Note: per TASK-0102's finding, free-eggbert's own `m_somethingJoystick` flag is never set to nonzero anywhere in its source, so the game still never actually polls this even with a real backend now available — that is a free-eggbert-side dead code path, out of this repo's scope to change.
 Priority: P2
 Area: WinMM
 Type: Implementation

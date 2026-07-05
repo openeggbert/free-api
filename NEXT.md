@@ -169,7 +169,8 @@ of its 126 tasks now carries a `Status:` line (DONE/PARTIAL/TODO/
 NOT-APPLICABLE, with evidence), verified against real code/tests rather
 than trusting the plan's own prior text.
 
-**Recently completed (uncommitted, this session, after the above commit):**
+**Recently completed and committed (`8193c6a`, "Add standalone WinAPI
+examples; confirm joystick stub is safe (TASK-0102)"):**
 * Added `examples/` — five standalone, runnable demonstrations of specific
   WinAPI functionality (window/message loop, timers, input/cursor, GDI
   minimap rendering, MIDI playback), gated behind a new
@@ -189,10 +190,33 @@ than trusting the plan's own prior text.
   actual driven playtest (installed `Xvfb` with the user's `sudo`, launched
   the real game, clicked through to its Setup screen's joystick-device-slot
   row, confirmed no crash and that clicking a slot has no effect — matching
-  the static-analysis prediction exactly). See the new "Capability
-  discovered this session" note in section 8 — real GUI verification with
-  screenshots turns out to be possible here, given `Xvfb` (one-time `sudo`
-  install) plus the already-present `xdotool`/ImageMagick `import`.
+  the static-analysis prediction exactly). See the "Capability discovered
+  this session" note below — real GUI verification with screenshots turns
+  out to be possible here, given `Xvfb` (one-time `sudo` install) plus the
+  already-present `xdotool`/ImageMagick `import`.
+
+**Recently completed (uncommitted, this session, after the above commit):**
+* **TASK-0103 implemented** (was deliberately-deferred/optional): real
+  `joyGetPosEx`/`joyGetNumDevs` (`src/winmm.cpp`), backed by
+  `SDL_Joystick`. `joyGetNumDevs` returns the real connected-device count;
+  `joyGetPosEx` opens (caches) the requested 0-based index, maps SDL's
+  signed axis range to Win32's unsigned 0..65535 (center 32768) for
+  `dwXpos`/`dwYpos`, and packs the first 4 buttons into `dwButtons` bits
+  0-3 (`JOY_BUTTON1`-`4`) — exactly what free-eggbert reads. New
+  `JOYERR_NOERROR`/`JOYERR_PARMS`/`JOYERR_UNPLUGGED` constants added to
+  `include/mmsystem.h` (real Win32 values). Tested via SDL's
+  virtual-joystick API (`tests/test_joystick_regressions.cpp`, no real
+  hardware needed) — axis/button values round-trip correctly, `JOYERR_*`
+  codes returned correctly for null/too-small/out-of-range inputs. Also
+  re-verified live: rebuilt free-eggbert against the new code, ran it under
+  `Xvfb`, navigated back to the Setup screen — identical appearance, no
+  crash, no hang (expected: per TASK-0102's finding, free-eggbert's own
+  `m_somethingJoystick` is never set to nonzero, so this new real backend
+  doesn't change any *game* behavior by itself — see `docs/out-of-scope.md`
+  for that caveat). `ctest` now 17/17, including under ASan+UBSan; both
+  free-eggbert and planetblupi still build cleanly.
+* **`plan.md` is now 125 DONE / 1 OBSOLETE — the entire non-superseded
+  backlog is complete.**
 
 **Recently implemented / fixed (prior session, real behavior changes):**
 * `LoadStringA` returns real `STRINGTABLE` text for both games instead of a
@@ -210,18 +234,16 @@ than trusting the plan's own prior text.
   removed; standalone builds now work via `-DFREE_API_USE_SYSTEM_SDL3=ON`.
 * A diagnostic-counter gating bug in `PeekMessageA` was fixed.
 
-**What does NOT work / is not implemented:**
+**What does NOT work / is not implemented (both permanent, by-design
+limitations, not gaps — everything else in the original P0-P2 backlog is
+now implemented, including `_findfirst`/`_findnext` and real joystick
+support, see above):**
 * MCI digital-video (AVI movie codec playback) is **not implemented** —
   confirmed intentional; both games already gracefully skip movies when
   this is declined (see section 4/5).
 * `LoadStringA`'s real-text table contains **only one game's strings per
   build** (whichever game's `.rc` was extracted for that specific build) —
   by design, not a bug.
-* Joystick support (`joyGetPosEx`/`joyGetNumDevs`) is a safe stub (reports
-  0 devices) — Free Eggbert degrades to keyboard/mouse gracefully; not a
-  real implementation.
-* `_findfirst`/`_findnext` (Free Eggbert's design-file picker) remain a
-  stub that always fails — a minor, non-startup-blocking feature gap.
 
 ## 3. Recent changes
 
@@ -401,20 +423,21 @@ No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-**`plan.md`'s 126-item backlog is now 124 DONE / 1 OBSOLETE / 1
-deliberately-deferred** — TASK-0102 (joystick STUB confirmation) is done,
-resolved via a real driven playtest, not left MANUAL (see the capability
-note below). Essentially nothing code- or doc-shaped remains to
-*implement*:
+**`plan.md`'s 126-item backlog is now 125 DONE / 1 OBSOLETE — every
+non-superseded task is done.** TASK-0103 (real joystick backend) was the
+last one standing (previously deliberately-deferred/optional) and is now
+implemented too. Nothing code- or doc-shaped remains to *implement*; what's
+left is purely visual/audio human-in-the-loop confirmation:
 
-1. **Visually verify this session's two visual-rendering fixes, now that a
-   real GUI playtest is actually possible here (see capability note
-   below)** — this wasn't done yet for lack of turn scope, not lack of
-   capability:
+1. **Visually verify this session's two visual-rendering fixes**, now that
+   a real GUI playtest is possible here (see capability note below) — not
+   done yet purely for lack of turn scope, not lack of capability:
    * `GetDeviceCaps(SIZEPALETTE)` now returns 0 instead of 256 — Planet
      Blupi's minimap should render in real color (16-bit path) instead of
      greyscale (8-bit placeholder path); free-eggbert's true-color
-     decor/rendering should no longer be force-disabled.
+     decor/rendering should no longer be force-disabled. (Reaching the
+     actual minimap requires navigating into a real level, not just the
+     menus TASK-0102 explored — budget more turn time for this one.)
    * `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing fix — both games'
      palette-driven rendering (via the `_lopen`/`_lread` fallback) should
      look correct; previously every such read was misaligned by 2 bytes.
@@ -430,13 +453,17 @@ note below). Essentially nothing code- or doc-shaped remains to
    via the Xvfb+xdotool approach below: `xdotool keydown shift` then
    injecting real mouse motion goes through the actual X11/SDL input path
    (not synthetic `SDL_PushEvent`), which may update `SDL_GetKeyboardState()`
-   correctly where the old in-process test approach couldn't. Untried this
-   session (out of scope for what was asked); worth a dedicated attempt.
+   correctly where the old in-process test approach couldn't. Still untried
+   as of this session; worth a dedicated attempt.
 
-4. **TASK-0103 (deliberately deferred, optional):** real
-   `joyGetPosEx`/`joyGetNumDevs` via SDL Gamepad/Joystick — only worth
-   doing if a concrete need for real joystick input emerges; not a
-   correctness requirement today.
+4. **(Optional, not evidenced as needed) real joystick *usage* in
+   free-eggbert itself** — free-api's `joyGetPosEx`/`joyGetNumDevs` are now
+   real (TASK-0103), but free-eggbert's own `m_somethingJoystick` flag is
+   never assigned anything but its 0-initialization anywhere in that game's
+   source, so it still never actually polls the joystick regardless. Fixing
+   that would require editing free-eggbert's own source, which is outside
+   this repo's scope (`docs/scope.md`) — noted here only for awareness, not
+   as a free-api task.
 
 ### Capability discovered this session: real GUI verification IS possible here
 

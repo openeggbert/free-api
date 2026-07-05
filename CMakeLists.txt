@@ -302,6 +302,15 @@ if(FREE_API_BUILD_TESTS)
     target_link_libraries(test_resources PRIVATE free-api)
     add_test(NAME test_resources COMMAND test_resources)
 
+    add_executable(test_joystick_regressions tests/test_joystick_regressions.cpp)
+    set_target_properties(test_joystick_regressions PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_joystick_regressions PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_joystick_regressions COMMAND test_joystick_regressions)
+
     add_executable(test_mci_avivideo_regressions tests/test_mci_avivideo_regressions.cpp)
     set_target_properties(test_mci_avivideo_regressions PROPERTIES
             CXX_STANDARD 20

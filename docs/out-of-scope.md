@@ -88,7 +88,6 @@ neither is mistaken for the other:
 | Everything in `windowsx.h` except `GetStockBrush` | `windowsx.h` | Proven zero real calls beyond that one macro (see header's own doc comment). |
 | `VARTYPE`/`SCODE`/`DATE`/`CLIPFORMAT` and friends | `wtypes.h` | Proven zero real runtime use in either game (see header's own doc comment). |
 | `LoadCursorA`/`LoadIconA` | `winuser.h` | Non-null handle only; neither game inspects the real cursor/icon shape (TASK-0056 confirms coverage for the names both games actually request). |
-| `joyGetPosEx`/`joyGetNumDevs` | `mmsystem.h` | Reports 0 devices; both games degrade to keyboard/mouse gracefully. No evidence of real analog-input need. **Deferred (TASK-0103):** a real `SDL_Joystick`/`SDL_Gamepad`-backed implementation is a bounded, well-evidenced *optional* enhancement (free-eggbert reads `dwXpos`/`dwYpos`/`dwButtons`, see `include/mmsystem.h`'s `JOYINFOEX` doc comment) if real joystick support is ever actually wanted — not implemented speculatively, since the game plays fully via keyboard/mouse without it. |
 | `GetStockBrush` | `windowsx.h` | Returns a valid non-null `HBRUSH`; the window is always fully covered by the game's own blit before becoming visible, so the real brush color is never seen. |
 | `MessageBoxA` | `winuser.h` | Only reached on fatal init failure in either game; a real message box isn't required for that path to behave correctly (the process still reports failure). |
 | `InvalidateRect` | `winuser.h` | A no-op; neither game's visible behavior depends on the repaint actually being scheduled (both redraw every frame regardless). |
@@ -98,6 +97,18 @@ neither is mistaken for the other:
 free-eggbert's design-file picker (`event.cpp:4741`). Now implemented for
 real via `std::filesystem`, scoped to the one wildcard shape actually used
 (a directory plus a simple `*.ext` pattern) — see `docs/supported-apis.md`.
+
+**Resolved (TASK-0103, was deferred as optional):** `joyGetPosEx`/
+`joyGetNumDevs` are now real, `SDL_Joystick`-backed implementations
+(`src/winmm.cpp`), populating exactly the fields free-eggbert reads
+(`dwXpos`/`dwYpos` from the first 2 axes, `dwButtons` bits 0-3 from the
+first 4 buttons — see `include/mmsystem.h`'s `JOYINFOEX` doc comment).
+Tested via SDL's virtual-joystick API (`tests/test_joystick_regressions.cpp`)
+without needing real hardware. This does not change TASK-0102's finding
+that free-eggbert's own joystick-enable flag (`m_somethingJoystick`) is
+never set to anything but 0 — a real backend here does not, by itself,
+make the game actually poll it; that would need a further, separate change
+to free-eggbert's own source, which is out of this repo's scope.
 
 *(Historical note: `AdjustWindowRect`, `ShowCursor`, `SetCursor`, and
 `LoadStringA` were flagged in this exact way early in this project's audit

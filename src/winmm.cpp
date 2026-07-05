@@ -6,8 +6,56 @@
 #include "internal/FreeApiDiagnostics.hpp"
 
 #include <SDL3/SDL.h>
+#include <mutex>
+#include <unordered_map>
 
 using namespace FreeApi::Internal;
+
+// TASK-0103: real joystick backend, SDL_Joystick-based (not the higher-level
+// Gamepad API -- free-eggbert's own usage is a generic 2-axis/4-button
+// joystick, matching the raw joystick model directly, and SDL's virtual
+// joystick test API attaches as a plain joystick without needing a gamepad
+// mapping-database entry).
+namespace {
+
+std::mutex g_joystickMutex;
+std::unordered_map<UINT, SDL_Joystick*> g_openJoysticks; // keyed by Win32-style 0-based device index
+
+bool EnsureJoystickSubsystem()
+{
+    if (SDL_WasInit(SDL_INIT_JOYSTICK)) return true;
+    return SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+}
+
+// Resolves a Win32-style 0-based joystick index to an already-open (cached)
+// SDL_Joystick*, opening it on first use. Returns nullptr if uJoyID is out
+// of range or the device can't be opened.
+SDL_Joystick* ResolveJoystick(UINT uJoyID)
+{
+    std::lock_guard<std::mutex> lock(g_joystickMutex);
+
+    auto it = g_openJoysticks.find(uJoyID);
+    if (it != g_openJoysticks.end()) {
+        return it->second;
+    }
+
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    if (!ids) return nullptr;
+
+    SDL_Joystick* joystick = nullptr;
+    if (static_cast<int>(uJoyID) < count) {
+        joystick = SDL_OpenJoystick(ids[uJoyID]);
+    }
+    SDL_free(ids);
+
+    if (joystick) {
+        g_openJoysticks[uJoyID] = joystick;
+    }
+    return joystick;
+}
+
+} // namespace
 
 /**
  * @brief SDL3 timer callback bridge that invokes the user-supplied LPTIMECALLBACK.
@@ -138,22 +186,71 @@ MMRESULT WINAPI timeKillEvent(UINT uTimerID)
 
 MMRESULT WINAPI joyGetPosEx(UINT uJoyID, LPJOYINFOEX pji)
 {
-    (void)uJoyID;
     if (!pji) {
-        return 1;
+        return JOYERR_PARMS;
     }
 
-    if (pji->dwSize >= sizeof(JOYINFOEX)) {
+    const DWORD originalSize = pji->dwSize;
+    if (originalSize >= sizeof(JOYINFOEX)) {
         memset(pji, 0, sizeof(JOYINFOEX));
         pji->dwSize = sizeof(JOYINFOEX);
     }
 
-    return 1;
+    if (!EnsureJoystickSubsystem()) {
+        return JOYERR_UNPLUGGED;
+    }
+
+    SDL_UpdateJoysticks(); // refresh state without requiring the caller to have pumped events this frame
+    SDL_Joystick* joystick = ResolveJoystick(uJoyID);
+    if (!joystick) {
+        return JOYERR_UNPLUGGED;
+    }
+
+    if (originalSize < sizeof(JOYINFOEX)) {
+        // Caller didn't provide a big enough struct to write into -- real
+        // Win32 would reject this too small a request.
+        return JOYERR_PARMS;
+    }
+
+    // SDL axes are signed 16-bit (-32768..32767, center 0); real Win32
+    // joystick axes are unsigned 16-bit (0..65535, center 32768) -- both
+    // free-eggbert's thresholds (<16384 / >49152) assume this convention.
+    const int numAxes = SDL_GetNumJoystickAxes(joystick);
+    if (numAxes >= 1) {
+        pji->dwXpos = static_cast<DWORD>(static_cast<int>(SDL_GetJoystickAxis(joystick, 0)) + 32768);
+    } else {
+        pji->dwXpos = 32768; // centered: no X axis reported
+    }
+    if (numAxes >= 2) {
+        pji->dwYpos = static_cast<DWORD>(static_cast<int>(SDL_GetJoystickAxis(joystick, 1)) + 32768);
+    } else {
+        pji->dwYpos = 32768;
+    }
+
+    // Real Win32 JOY_BUTTON1-4 are bits 0-3 of dwButtons, matching the first
+    // four physical buttons in device order -- free-eggbert's only usage
+    // (event.cpp:2069-2127) reads exactly these four.
+    DWORD buttons = 0;
+    const int numButtons = SDL_GetNumJoystickButtons(joystick);
+    for (int i = 0; i < 4 && i < numButtons; ++i) {
+        if (SDL_GetJoystickButton(joystick, i)) {
+            buttons |= (1u << i); // JOY_BUTTON1..JOY_BUTTON4
+        }
+    }
+    pji->dwButtons = buttons;
+
+    return JOYERR_NOERROR;
 }
 
 UINT WINAPI joyGetNumDevs(void)
 {
-    return 0;
+    if (!EnsureJoystickSubsystem()) {
+        return 0;
+    }
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    if (ids) SDL_free(ids);
+    return static_cast<UINT>(count);
 }
 
 UINT WINAPI midiOutGetNumDevs(void)
