@@ -82,8 +82,10 @@ own — it's a library consumed by the two games' own executables
 (`SPEEDY_BLUPI_WINDOWS`, `PLANET_BLUPI_WINDOWS`), both of which build and
 link successfully against the current code (verified this session).
 
-**Recently completed (uncommitted, this session — a systematic pass through
-`plan.md`'s P0 backlog, working task-by-task from the top):**
+**Recently completed and committed (`e89d65b`, "Fix MIDI playback SIGSEGV,
+GetDeviceCaps/BMP-header bugs; close out plan.md P0-P2 backlog") — a
+systematic pass through `plan.md`'s P0 backlog, working task-by-task from
+the top:**
 
 Real behavior/bug fixes (not just tests):
 * **MIDI playback was completely disabled and is now fixed.**
@@ -166,6 +168,31 @@ Documentation/build-hardening (test-adjacent, no behavior change):
 of its 126 tasks now carries a `Status:` line (DONE/PARTIAL/TODO/
 NOT-APPLICABLE, with evidence), verified against real code/tests rather
 than trusting the plan's own prior text.
+
+**Recently completed (uncommitted, this session, after the above commit):**
+* Added `examples/` — five standalone, runnable demonstrations of specific
+  WinAPI functionality (window/message loop, timers, input/cursor, GDI
+  minimap rendering, MIDI playback), gated behind a new
+  `FREE_API_BUILD_EXAMPLES` CMake option (default `OFF`). See
+  `examples/README.md`. While building `05_midi_playback`, found and fixed
+  a real design flaw in the example itself (not production code): an
+  unbounded notify-triggered reopen loop that spins as fast as the CPU
+  allows once a short track's audio backend imposes no real-time
+  backpressure (confirmed: ~1% idle CPU normally, but a runaway loop pegged
+  a core and even resisted `timeout`'s `SIGTERM` for 3+ minutes before it
+  was manually `kill -9`'d) — fixed by bounding the loop count and pacing
+  each reopen.
+* **TASK-0102 resolved** (joystick STUB confirmation) — previously `MANUAL`
+  in `plan.md`; now `DONE`, confirmed via both static analysis (proved
+  free-eggbert's `m_somethingJoystick` is never assigned anywhere but its
+  0-initialization, making joystick polling permanently dead code) and an
+  actual driven playtest (installed `Xvfb` with the user's `sudo`, launched
+  the real game, clicked through to its Setup screen's joystick-device-slot
+  row, confirmed no crash and that clicking a slot has no effect — matching
+  the static-analysis prediction exactly). See the new "Capability
+  discovered this session" note in section 8 — real GUI verification with
+  screenshots turns out to be possible here, given `Xvfb` (one-time `sudo`
+  install) plus the already-present `xdotool`/ImageMagick `import`.
 
 **Recently implemented / fixed (prior session, real behavior changes):**
 * `LoadStringA` returns real `STRINGTABLE` text for both games instead of a
@@ -374,21 +401,16 @@ No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-**`plan.md`'s 126-item backlog is now 123 DONE / 1 OBSOLETE / 1 MANUAL / 1
-deliberately-deferred** (every task carries a `Status:` line — see the plan
-file itself for the authoritative per-task record). Essentially nothing
-code- or doc-shaped remains to *implement*; what's left is verification that
-requires a human or real hardware, which cannot be done in this sandbox:
+**`plan.md`'s 126-item backlog is now 124 DONE / 1 OBSOLETE / 1
+deliberately-deferred** — TASK-0102 (joystick STUB confirmation) is done,
+resolved via a real driven playtest, not left MANUAL (see the capability
+note below). Essentially nothing code- or doc-shaped remains to
+*implement*:
 
-1. **Manually playtest this session's three production behavior changes.**
-   None of these can be verified visually/audibly in this headless sandbox
-   — all are backed by passing automated tests (including ASan) proving
-   the *mechanism* is correct, but only a real playtest confirms the
-   *player-visible result* is right:
-   * MIDI music now plays (was completely disabled by a kill-switch behind
-     a real, now-fixed race condition — see section 4). Launch either game
-     and listen for background music (needs a `.sf2` SoundFont present;
-     see README's SoundFont section).
+1. **Visually verify this session's two visual-rendering fixes, now that a
+   real GUI playtest is actually possible here (see capability note
+   below)** — this wasn't done yet for lack of turn scope, not lack of
+   capability:
    * `GetDeviceCaps(SIZEPALETTE)` now returns 0 instead of 256 — Planet
      Blupi's minimap should render in real color (16-bit path) instead of
      greyscale (8-bit placeholder path); free-eggbert's true-color
@@ -398,19 +420,48 @@ requires a human or real hardware, which cannot be done in this sandbox:
      look correct; previously every such read was misaligned by 2 bytes.
    Files: none to change unless a playtest finds a real regression.
 
-2. **Manually verify the `MK_SHIFT`/`MK_CONTROL` fix (TASK-0048/0112) in a
-   real playtest.** Confirm Planet Blupi's shift-drag cell-highlight
-   feature works — cannot be automated here (`SDL_PushEvent`-injected key
-   events don't update `SDL_GetKeyboardState()`).
+2. **MIDI music playback** — needs a real/virtual *audio* device (Xvfb
+   alone only provides video), and an AI session still can't literally
+   *hear* output — but the MCI_OPEN/PLAY/NOTIFY sequence executing without
+   error under a real (non-dummy) audio driver, or `examples/
+   05_midi_playback` run by a human with speakers, would confirm it.
 
-3. **TASK-0102 (MANUAL):** confirm the joystick stub is an acceptable
-   fallback by launching free-eggbert's options/setup screen with a real
-   or virtual gamepad attached.
+3. **`MK_SHIFT`/`MK_CONTROL` fix (TASK-0048/0112)** — worth re-attempting
+   via the Xvfb+xdotool approach below: `xdotool keydown shift` then
+   injecting real mouse motion goes through the actual X11/SDL input path
+   (not synthetic `SDL_PushEvent`), which may update `SDL_GetKeyboardState()`
+   correctly where the old in-process test approach couldn't. Untried this
+   session (out of scope for what was asked); worth a dedicated attempt.
 
 4. **TASK-0103 (deliberately deferred, optional):** real
    `joyGetPosEx`/`joyGetNumDevs` via SDL Gamepad/Joystick — only worth
    doing if a concrete need for real joystick input emerges; not a
    correctness requirement today.
+
+### Capability discovered this session: real GUI verification IS possible here
+
+Contrary to earlier sessions' assumption that visual/interactive
+verification "cannot be automated in this environment," it CAN, given one
+one-time setup step:
+
+```bash
+sudo apt-get install -y xvfb   # needs the user's password -- ask them to run
+                                # this themselves via `! sudo apt-get ...`
+Xvfb :99 -screen 0 1024x768x24 &
+DISPLAY=:99 SDL_VIDEODRIVER=x11 ./SPEEDY_BLUPI_WINDOWS &   # or PLANET_BLUPI_WINDOWS
+DISPLAY=:99 xdotool mousemove X Y click 1   # drive it
+DISPLAY=:99 xdotool key Escape              # keyboard works too
+DISPLAY=:99 import -window root screenshot.png   # ImageMagick; screenshot it
+```
+
+This is exactly how TASK-0102 was confirmed this session (launched
+free-eggbert, clicked through Title→Choose Player→Setup, observed the
+joystick-device-slot row via a real screenshot, confirmed clicking it has
+no effect). `xdotool` and `import`/`convert` (ImageMagick) were already
+present; only `xvfb` itself needed installing, which requires `sudo` (the
+sandbox user has a password-protected sudo — ask them to run the install
+command themselves via `! <command>` if you hit this again). Kill both the
+game and the `Xvfb` process when done (they don't self-terminate headless).
 
 ## 9. Do not do yet
 

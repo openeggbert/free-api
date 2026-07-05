@@ -2680,7 +2680,7 @@ Out of scope:
 
 ### TASK-0102: Confirm the current joystick STUB is an acceptable safe-stub fallback
 
-Status: MANUAL — Requires launching free-eggbert's options/setup screen and observing behavior — not automatable here.
+Status: DONE — **Confirmed by both static analysis and a real, driven playtest (Xvfb + xdotool).** Static: `m_somethingJoystick` (`event.cpp:1770`) is initialized to 0 and never assigned anywhere else in the entire codebase, so `event.cpp:2048`'s `if (m_somethingJoystick == NULL) SetJoystickEnable(FALSE)` is unconditionally true — joystick polling (`joyGetPosEx`, `event.cpp:2069`) is provably dead code regardless of free-api's stub. Runtime: launched the real `SPEEDY_BLUPI_WINDOWS` binary under Xvfb, navigated Title -> Choose Player -> Setup (the screen with `WM_BUTTON7`-`WM_BUTTON12` joystick-device slots) with real mouse clicks and keyboard (Escape). No crash anywhere. The joystick-slot row shows a "Joystick" tooltip and only slot 1 (index 0) ever renders as selected, exactly matching `m_somethingJoystick`'s permanent value of 0; clicking a different slot has no visible effect (confirms no click handler is wired). Adjacent controls on the same screen (e.g. "Volume up") show working tooltips, confirming the UI framework itself functions normally and this is specific to the joystick selector. Keyboard/mouse navigation fully functional throughout.
 Priority: P2
 Area: WinMM
 Type: Audit

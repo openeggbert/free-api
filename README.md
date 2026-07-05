@@ -235,6 +235,18 @@ supported build mode (standalone with a system-installed SDL3, building
 inside `../free-eggbert` or `../planetblupi`, and the relevant CMake
 options), see [`docs/cmake-options.md`](docs/cmake-options.md).
 
+### Examples
+
+Standalone, runnable demonstrations of specific WinAPI functionality
+(window/message loop, timers, input, GDI, MIDI playback) live in
+[`examples/`](examples/README.md):
+
+```bash
+cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON -DFREE_API_BUILD_EXAMPLES=ON
+cmake --build build
+./build/05_midi_playback
+```
+
 ---
 
 ## Project Status

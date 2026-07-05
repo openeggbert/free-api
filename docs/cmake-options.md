@@ -50,3 +50,15 @@ cmake -B build -DFREE_API_BUILD_TESTS=ON
 cmake --build build
 ctest --test-dir build
 ```
+
+## Examples
+
+`FREE_API_BUILD_EXAMPLES` defaults to `OFF` (these are interactive
+demonstrations with a real window/audio backend, not meant to be built by
+default when either target game consumes Free API as a sibling library).
+See [`examples/README.md`](../examples/README.md).
+
+```bash
+cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON -DFREE_API_BUILD_EXAMPLES=ON
+cmake --build build
+```

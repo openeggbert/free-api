@@ -368,6 +368,36 @@ if(FREE_API_BUILD_TESTS)
     endif()
 endif()
 
+# --- Examples ----------------------------------------------------------------
+# Standalone, single-file demonstrations of specific WinAPI-compatible
+# functionality (see examples/README.md). Unlike tests, these open a real
+# window and expect a real display/audio backend, so they are opt-in and not
+# built by default when free-api is consumed as a sibling library by either
+# target game.
+if(EMSCRIPTEN)
+    option(FREE_API_BUILD_EXAMPLES "Build free-api examples" OFF)
+else()
+    option(FREE_API_BUILD_EXAMPLES "Build free-api examples" OFF)
+endif()
+
+if(FREE_API_BUILD_EXAMPLES)
+    foreach(_free_api_example IN ITEMS
+            01_window_and_message_loop
+            02_timers
+            03_input_and_cursor
+            04_gdi_minimap
+            05_midi_playback)
+        add_executable(${_free_api_example} examples/${_free_api_example}.cpp)
+        set_target_properties(${_free_api_example} PROPERTIES
+                CXX_STANDARD 20
+                CXX_STANDARD_REQUIRED YES
+                CXX_EXTENSIONS NO
+        )
+        target_link_libraries(${_free_api_example} PRIVATE free-api SDL3::SDL3)
+    endforeach()
+    unset(_free_api_example)
+endif()
+
 install(TARGETS free-api freeapi_compat_headers
         EXPORT free-api-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
