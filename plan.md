@@ -3243,6 +3243,39 @@ Out of scope:
 
 ---
 
+### TASK-0127: Harden LoadStringA/STRINGTABLE — fail-loud CMake configure, known-ID verification, build-mode-aware tests
+
+Status: DONE — `cmake/ExtractStringTable.cmake` gained `REQUIRE_STRINGS`/`TARGET_GAME_NAME`/`VERIFY_ID`/`VERIFY_TEXT`; `CMakeLists.txt` passes them only for `SPEEDY_BLUPI_WINDOWS`/`PLANET_BLUPI_WINDOWS`; `tests/test_loadstring_regressions.cpp` split by compile-time build-mode macro; `check_no_hardcoded_paths` path bug fixed. Verified: free-eggbert configure logs "known-ID verification passed for 'free-eggbert': ID 106 -> \"Quit BLUPI\"" and writes 364 strings; planetblupi logs the same for 'planetblupi' and writes 257 strings; both games' full CTest suites pass 16/17 (the 1 failure, `test_winuser_regressions`'s `ClientToScreen`/`GetCursorPos` checks, is a pre-existing environment-specific issue unrelated to this task, not touched here).
+Priority: P1
+Area: Build system / Resources
+Type: Hardening
+Evidence: `cmake/ExtractStringTable.cmake`; `CMakeLists.txt` (LoadStringA extraction section + `check_no_hardcoded_paths`); `tests/test_loadstring_regressions.cpp`; `docs/out-of-scope.md`'s "RES_<id>" note; `include/winuser.h`'s `LoadStringA` doc comment
+Depends on: TASK-0075, TASK-0126
+
+Problem:
+The real-text extraction pipeline (TASK-0075) silently degraded to an empty table (and thus `"RES_<id>"` for every ID) if a target game's `.rc` went missing or its `STRINGTABLE` blocks stopped parsing — a target-game build would compile and pass CTest while shipping placeholder UI text. There was also no configure-time proof that extraction was *correct*, only that it ran without error, and `check_no_hardcoded_paths` used `CMAKE_SOURCE_DIR` (the calling game's root) instead of `CMAKE_CURRENT_SOURCE_DIR` (free-api's own root) in its `add_test` command, failing whenever free-api was built as a subdirectory of either target game.
+
+Required work:
+* `cmake/ExtractStringTable.cmake`: new optional `REQUIRE_STRINGS` (missing `.rc` or zero extracted strings becomes `FATAL_ERROR` instead of `WARNING`), `TARGET_GAME_NAME` (error-message context), `VERIFY_ID`/`VERIFY_TEXT` (a known symbol must resolve to exact expected text, `FATAL_ERROR` on mismatch or not-found).
+* `CMakeLists.txt`: pass `REQUIRE_STRINGS=ON` and `VERIFY_ID=106`/`VERIFY_TEXT="Quit BLUPI"` (`TX_BUTTON_QUITTER`, present with identical text in both `Eggbert2.rc` and `blupi-e.rc`) only when `CMAKE_PROJECT_NAME` is `SPEEDY_BLUPI_WINDOWS` or `PLANET_BLUPI_WINDOWS`; standalone builds (including the sibling-lookup convenience path) never set these.
+* Fix `check_no_hardcoded_paths`'s `add_test` to use `CMAKE_CURRENT_SOURCE_DIR`.
+* `tests/test_loadstring_regressions.cpp`: `CMakeLists.txt` now defines `FREE_API_TARGET_GAME_FREE_EGGBERT`/`FREE_API_TARGET_GAME_PLANETBLUPI` (via a kept, non-unset `FREE_API_DETECTED_TARGET_GAME` variable) on that test target; the test hard-asserts real text (never the placeholder) for a known ID in target-game mode, and logs-but-doesn't-fail either outcome in standalone mode. Added NULL-buffer and `cchBufferMax == 0` cases (both already return 0 in the existing `LoadStringA` implementation — no production code change needed there).
+* `docs/out-of-scope.md` and `include/winuser.h`: document that `"RES_<id>"` is a debug/developer-only marker, never acceptable in shipped game UI, and that a successful target-game configure is now a real signal the table is populated and correct.
+
+Acceptance criteria:
+* Reconfiguring through free-eggbert and planetblupi both succeed, logging a "known-ID verification passed" `STATUS` message and the expected string counts (364 / 257).
+* A deliberately-missing `.rc`, a zero-string extraction, and a wrong/missing `VERIFY_TEXT` each independently reproduce as a `FATAL_ERROR` when `REQUIRE_STRINGS`/`TARGET_GAME_NAME`/`VERIFY_ID` are set (verified directly via standalone `cmake -P` invocations before wiring into `CMakeLists.txt`).
+* `check_no_hardcoded_paths` passes when free-api is built as a subdirectory of either game.
+* `test_loadstring_regressions` and `test_resources` pass in both target-game builds; `test_loadstring_regressions` hard-asserts no `RES_<id>` fallback for the known ID in both.
+* No new failures introduced in either game's CTest suite (both remain at 16/17; the pre-existing `test_winuser_regressions` failure is unrelated and untouched).
+
+Out of scope:
+* No new WinAPI features, no resource types beyond `LoadStringA`/`STRINGTABLE`, no joystick/MCI-video/DirectDraw/DirectSound/DirectPlay/free-direct changes.
+* `cmake/ExtractStringTable.cmake` remains a narrow `STRINGTABLE`-only parser — confirmed (via direct inspection of both games' `.rc`/header files) that no hex, comment, or expression `#define`/`STRINGTABLE` forms are actually present, so no new parsing logic was needed.
+* Did not attempt to make a fully standalone (no sibling, no system SDL3 dev packages) free-api build succeed in this sandbox — blocked by a pre-existing, unrelated gap (no vendored `third_party/SDL` in free-api itself, and this environment's system SDL3 install lacks `SDL3_image`/`SDL3_mixer`), not something this task's scope covers. The standalone-mode CMake logic itself was verified directly via isolated `cmake -P` script invocations instead.
+
+---
+
 ## 8. Mandatory Task Themes — Coverage Map
 
 Every theme requested for this plan is addressed by the milestones above; this section is a cross-reference index, not new content.

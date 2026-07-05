@@ -166,6 +166,21 @@ Consolidates the resource-subsystem findings above into one statement:
 * Everything else resource-shaped (`LoadResource`/`LockResource`/
   `FreeResource`/`SizeofResource`/`GetModuleHandleA`) is a safe, permanent
   stub per the "Compile-only stubs" table above.
+* **`"RES_<id>"` is a debug/developer placeholder only, never acceptable in
+  shipped game UI.** It means "this ID has no STRINGTABLE entry in the
+  generated table" — either a standalone free-api build with no sibling
+  game's `.rc` extracted, or (in a target-game build) an ID with genuinely
+  no STRINGTABLE entry in that game's own `.rc`. When `CMAKE_PROJECT_NAME`
+  is `SPEEDY_BLUPI_WINDOWS` or `PLANET_BLUPI_WINDOWS`,
+  `cmake/ExtractStringTable.cmake` fails CMake configure loudly
+  (`REQUIRE_STRINGS`) if that game's `.rc` is missing or yields zero
+  strings, and separately verifies (`VERIFY_ID`/`VERIFY_TEXT`) that a known
+  ID (`TX_BUTTON_QUITTER`, 106, "Quit BLUPI" — present in both games'
+  `.rc` files) resolves correctly — so a successful configure in either
+  target game is a real signal the table is populated, not just present.
+  Standalone free-api builds intentionally do **not** set these checks and
+  may legitimately return `"RES_<id>"` for any ID — see
+  `tests/test_loadstring_regressions.cpp` for the build-mode split.
 
 **Confirmed (re-checked this session, TASK-0076/0077/0080):**
 * `LoadIconA`/`LoadCursorA` remain safe, sufficient stubs after

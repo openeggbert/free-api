@@ -544,6 +544,18 @@ HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy
  * directory (`../free-eggbert` or `../planetblupi`). If no sibling game is
  * present (a standalone build), or if a specific ID has no STRINGTABLE
  * entry in the source .rc, falls back to a placeholder string ("RES_<id>").
+ *
+ * "RES_<id>" is a debug/developer diagnostic only, meaning "no
+ * string-table data was available for this ID" -- it is NEVER acceptable
+ * as shipped game UI text. When free-api is built through free-eggbert or
+ * planetblupi (CMAKE_PROJECT_NAME is one of the two target games), CMake
+ * configure fails loudly (see cmake/ExtractStringTable.cmake's
+ * REQUIRE_STRINGS/VERIFY_ID checks) if that game's .rc is missing, yields
+ * zero strings, or a known-good ID resolves to the wrong text -- so a
+ * successful configure is a real signal that the table is populated for
+ * that game. A remaining "RES_<id>" seen at runtime in a target-game build
+ * means that specific ID has no STRINGTABLE entry in the .rc at all, which
+ * is a data/content gap to fix in the .rc, not a call site to silence here.
  * @note Status: PARTIAL
  */
 int WINAPI LoadStringA(HINSTANCE hInstance, UINT uID, LPSTR lpBuffer, int cchBufferMax);

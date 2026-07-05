@@ -70,6 +70,9 @@ endif()
 set(_free_api_string_table_rc "")
 set(_free_api_string_table_encoding "UTF-8")
 set(_free_api_string_table_headers "")
+set(_free_api_target_game "")
+set(_free_api_verify_id "")
+set(_free_api_verify_text "")
 
 # Prefer detecting which game is ACTUALLY building free-api right now via
 # the top-level project name (CMAKE_PROJECT_NAME), not just "does a sibling
@@ -78,21 +81,40 @@ set(_free_api_string_table_headers "")
 # *existence* alone cannot tell planetblupi's own build from free-eggbert's:
 # whichever one is the top-level project is unambiguous, since CMake sets
 # CMAKE_PROJECT_NAME from the first project() call in the whole configure run.
+#
+# _free_api_target_game is also the fail-loud switch: when set, a missing
+# .rc file, a zero-string extraction, or a known-ID mismatch below is a
+# configure-time FATAL_ERROR -- shipped game UI must never silently fall
+# back to placeholder/RES_<id> text. It stays unset for standalone free-api
+# builds (including the sibling-lookup convenience path below), which keep
+# the placeholder-fallback behavior documented in docs/cmake-options.md.
 if(CMAKE_PROJECT_NAME STREQUAL "SPEEDY_BLUPI_WINDOWS")
     # free-eggbert is building us directly; CMAKE_SOURCE_DIR is its own root.
+    set(_free_api_target_game "free-eggbert")
     set(_free_api_string_table_rc "${CMAKE_SOURCE_DIR}/resource/Eggbert2.rc")
     set(_free_api_string_table_encoding "UTF-16LE")
     set(_free_api_string_table_headers "${CMAKE_SOURCE_DIR}/resource/resource.h")
+    # TX_BUTTON_QUITTER (id 106) is a known STRINGTABLE entry in Eggbert2.rc
+    # that must resolve to "Quit BLUPI" -- catches silent parsing regressions.
+    set(_free_api_verify_id "106")
+    set(_free_api_verify_text "Quit BLUPI")
 elseif(CMAKE_PROJECT_NAME STREQUAL "PLANET_BLUPI_WINDOWS")
     # planetblupi is building us directly; CMAKE_SOURCE_DIR is its own root.
+    set(_free_api_target_game "planetblupi")
     set(_free_api_string_table_rc "${CMAKE_SOURCE_DIR}/resource/blupi-e.rc")
     set(_free_api_string_table_encoding "UTF-8")
     set(_free_api_string_table_headers
             "${CMAKE_SOURCE_DIR}/include/resource.h;${CMAKE_SOURCE_DIR}/include/resrc1.h")
+    # TX_BUTTON_QUITTER (id 106) is a known STRINGTABLE entry in blupi-e.rc
+    # that must resolve to "Quit BLUPI" -- catches silent parsing regressions.
+    set(_free_api_verify_id "106")
+    set(_free_api_verify_text "Quit BLUPI")
 else()
     # Standalone free-api build (its own project() call is the top-level
     # one): fall back to a developer-convenience sibling lookup, purely for
-    # local iteration -- checked in order, first match wins.
+    # local iteration -- checked in order, first match wins. Never fails
+    # configure over missing/empty resources: _free_api_target_game stays
+    # unset, so REQUIRE_STRINGS/VERIFY_ID are never passed below.
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../free-eggbert/resource/Eggbert2.rc")
         set(_free_api_string_table_rc "${CMAKE_CURRENT_SOURCE_DIR}/../free-eggbert/resource/Eggbert2.rc")
         set(_free_api_string_table_encoding "UTF-16LE")
@@ -107,6 +129,15 @@ endif()
 
 set(FREE_API_GENERATED_STRINGS_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/FreeApiGeneratedStrings.cpp")
 
+set(_free_api_extract_extra_args "")
+if(_free_api_target_game)
+    list(APPEND _free_api_extract_extra_args
+            -DREQUIRE_STRINGS=ON
+            "-DTARGET_GAME_NAME=${_free_api_target_game}"
+            "-DVERIFY_ID=${_free_api_verify_id}"
+            "-DVERIFY_TEXT=${_free_api_verify_text}")
+endif()
+
 if(_free_api_string_table_rc)
     execute_process(
             COMMAND ${CMAKE_COMMAND}
@@ -114,6 +145,7 @@ if(_free_api_string_table_rc)
                 -DRC_FILE=${_free_api_string_table_rc}
                 -DRC_ENCODING=${_free_api_string_table_encoding}
                 "-DRESOURCE_HEADERS=${_free_api_string_table_headers}"
+                ${_free_api_extract_extra_args}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake
             RESULT_VARIABLE _free_api_string_table_result
     )
@@ -121,19 +153,28 @@ else()
     execute_process(
             COMMAND ${CMAKE_COMMAND}
                 -DOUTPUT_CPP=${FREE_API_GENERATED_STRINGS_CPP}
+                ${_free_api_extract_extra_args}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake
             RESULT_VARIABLE _free_api_string_table_result
     )
 endif()
 
 if(NOT _free_api_string_table_result EQUAL 0)
-    message(FATAL_ERROR "free-api: ExtractStringTable.cmake failed (result=${_free_api_string_table_result})")
+    message(FATAL_ERROR "free-api: ExtractStringTable.cmake failed (result=${_free_api_string_table_result}) -- see messages above for the specific STRINGTABLE extraction/verification failure")
 endif()
+
+# Kept (not unset) so tests/test_loadstring_regressions.cpp's build-mode
+# compile definitions below can branch on which table, if any, is real.
+set(FREE_API_DETECTED_TARGET_GAME "${_free_api_target_game}")
 
 unset(_free_api_string_table_rc)
 unset(_free_api_string_table_encoding)
 unset(_free_api_string_table_headers)
 unset(_free_api_string_table_result)
+unset(_free_api_target_game)
+unset(_free_api_verify_id)
+unset(_free_api_verify_text)
+unset(_free_api_extract_extra_args)
 
 add_library(free-api STATIC)
 add_library(free-api::free-api ALIAS free-api)
@@ -236,8 +277,15 @@ if(FREE_API_BUILD_TESTS)
 
     # TASK-0016: fresh-clone smoke check preventing a regression of the
     # hardcoded-absolute-path bug TASK-0011 fixed.
+    #
+    # Must use CMAKE_CURRENT_SOURCE_DIR, not CMAKE_SOURCE_DIR: when free-api
+    # is built as a subdirectory of either target game,
+    # CMAKE_SOURCE_DIR refers to *that game's* root (the top-level
+    # project), not free-api's own -- CMAKE_CURRENT_SOURCE_DIR always
+    # resolves to the directory of the CMakeLists.txt currently being
+    # processed (free-api's own root), regardless of nesting.
     add_test(NAME check_no_hardcoded_paths
-             COMMAND ${CMAKE_COMMAND} -P "${CMAKE_SOURCE_DIR}/cmake/CheckNoHardcodedPaths.cmake")
+             COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoHardcodedPaths.cmake")
 
     add_executable(test_input_pipeline tests/test_input_pipeline.cpp)
     set_target_properties(test_input_pipeline PROPERTIES
@@ -291,6 +339,15 @@ if(FREE_API_BUILD_TESTS)
             CXX_EXTENSIONS NO
     )
     target_link_libraries(test_loadstring_regressions PRIVATE free-api)
+    # Tells the test which build mode it's running in, so it can assert the
+    # right contract: standalone builds may legitimately return the
+    # "RES_<id>" placeholder, but target-game builds must never return it
+    # for a known game string ID (see docs/out-of-scope.md's "RES_<id>" note).
+    if(FREE_API_DETECTED_TARGET_GAME STREQUAL "free-eggbert")
+        target_compile_definitions(test_loadstring_regressions PRIVATE FREE_API_TARGET_GAME_FREE_EGGBERT=1)
+    elseif(FREE_API_DETECTED_TARGET_GAME STREQUAL "planetblupi")
+        target_compile_definitions(test_loadstring_regressions PRIVATE FREE_API_TARGET_GAME_PLANETBLUPI=1)
+    endif()
     add_test(NAME test_loadstring_regressions COMMAND test_loadstring_regressions)
 
     add_executable(test_resources tests/test_resources.cpp)

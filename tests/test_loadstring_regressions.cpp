@@ -4,33 +4,30 @@
  *
  * Both target games source all on-screen UI text through LoadStringA.
  * cmake/ExtractStringTable.cmake extracts STRINGTABLE entries from whichever
- * sibling game's own resource/*.rc file is found (checked in order:
- * ../free-eggbert, then ../planetblupi) and compiles them into free-api, so
- * LoadStringA can return real text for that game's IDs instead of the
- * "RES_<id>" placeholder.
+ * game is actually driving the build (CMAKE_PROJECT_NAME) and compiles them
+ * into free-api, so LoadStringA can return real text for that game's IDs
+ * instead of the "RES_<id>" placeholder. See docs/out-of-scope.md's
+ * "RES_<id>" note for why that placeholder is a debug-only marker, never
+ * acceptable in shipped game UI.
  *
- * Because only one sibling's table is ever compiled into a given build (or
- * none, in a standalone build with neither sibling checked out), this test
- * cannot assume which -- if either -- table is present. It is also NOT valid
- * to assume an ID from the "wrong" game falls back to the placeholder: both
- * games assign their own IDs independently, so the same numeric ID may
- * legitimately be a *different*, real STRINGTABLE entry in whichever game's
- * table actually got compiled in (e.g. planetblupi's ID 512 is "N", but
- * free-eggbert's own ID 512 is a real, unrelated string too) -- that is a
- * correct result, not a bug, and must not be flagged as a failure.
- *
- * So this test only hard-asserts two things that are true regardless of
- * environment:
- *   1. An ID far outside either game's real ID range always falls back to
- *      the "RES_<id>" placeholder.
- *   2. At least one of the two known (id -> text) pairs below resolves to
- *      its exact expected real text -- true whenever this repository is
- *      checked out alongside at least one of its two target games (the
- *      normal development setup), which is what the extraction mechanism
- *      exists to prove.
- * Each individual known-ID lookup is otherwise logged, not hard-asserted,
- * since a "different real string from the other game" is an acceptable
- * outcome for it.
+ * CMakeLists.txt passes this test a compile-time marker for which build
+ * mode it's running in (FREE_API_TARGET_GAME_FREE_EGGBERT /
+ * FREE_API_TARGET_GAME_PLANETBLUPI / neither == standalone), mirroring the
+ * same CMAKE_PROJECT_NAME detection cmake/ExtractStringTable.cmake itself
+ * uses -- so the right contract is hard-asserted for the actual build mode
+ * instead of guessed at:
+ *   - Standalone (neither macro defined): no target game is driving the
+ *     build, so CMake never enforces REQUIRE_STRINGS/VERIFY_ID (see
+ *     cmake/ExtractStringTable.cmake). A known game ID may legitimately
+ *     return either real text (if the developer-convenience sibling lookup
+ *     found a game checked out next to free-api) or the placeholder (if
+ *     not) -- both are logged, neither is a hard failure.
+ *   - Target-game mode (either macro defined): CMake configure already
+ *     failed loudly if the .rc were missing/empty/wrong, so a known game ID
+ *     MUST resolve to its real text and must NEVER be the "RES_<id>"
+ *     placeholder -- that is hard-asserted here.
+ * An ID far outside either game's real STRINGTABLE range always falls back
+ * to the placeholder in every mode -- that is also hard-asserted.
  */
 #include <windows.h>
 #include <cstdio>
@@ -48,16 +45,6 @@ static void Check(bool condition, const char* what)
     }
 }
 
-// planetblupi's TX_DIRECT_N (include/resource.h) = 512, text "N"
-// (resource/blupi-e.rc).
-static const unsigned int kPlanetblupiId = 512;
-static const char* kPlanetblupiText = "N";
-
-// free-eggbert's TX_BUTTON_QUITTER (resource/resource.h) = 106, text
-// "Quit BLUPI" (resource/Eggbert2.rc).
-static const unsigned int kEggbertId = 106;
-static const char* kEggbertText = "Quit BLUPI";
-
 static bool IsPlaceholderFor(const char* buffer, unsigned int id)
 {
     char expected[64];
@@ -65,62 +52,71 @@ static bool IsPlaceholderFor(const char* buffer, unsigned int id)
     return strcmp(buffer, expected) == 0;
 }
 
-// Looks up one known (id -> real text) pair and logs what came back. Does
-// NOT hard-assert real-vs-placeholder here: if a *different* game's table
-// is the one compiled in, this ID may legitimately resolve to that other
-// game's own real string instead (both games assign IDs independently, so
-// numeric collisions across games are expected and not an error). Returns
-// true only when the exact expected text for THIS id was returned.
-static bool LooksUpKnownId(unsigned int id, const char* expectedText, const char* label)
-{
-    char buffer[256] = {};
-    int len = LoadStringA(nullptr, id, buffer, sizeof(buffer));
-    Check(len >= 0, "LoadStringA does not fail outright for a known ID");
+// TX_BUTTON_QUITTER: id 106, real text "Quit BLUPI" in both Eggbert2.rc and
+// blupi-e.rc -- the same known-ID pair cmake/ExtractStringTable.cmake's
+// VERIFY_ID/VERIFY_TEXT checks use at configure time for both target games.
+static const unsigned int kKnownId = 106;
+static const char* kKnownText = "Quit BLUPI";
 
-    const bool isReal = (strcmp(buffer, expectedText) == 0);
-    if (isReal) {
-        printf("[loadstring-regressions] INFO: %s (id=%u) resolved to its real STRINGTABLE text \"%s\"\n",
-               label, id, buffer);
-    } else {
-        printf("[loadstring-regressions] INFO: %s (id=%u) did not resolve to \"%s\" in this build, got \"%s\" "
-               "(expected if a different sibling's table -- or none -- is compiled in)\n",
-               label, id, expectedText, buffer);
-    }
-    return isReal;
-}
-
-static void TestAtLeastOneKnownGameResolvesToRealText()
-{
-    const bool planetblupiReal = LooksUpKnownId(kPlanetblupiId, kPlanetblupiText, "planetblupi TX_DIRECT_N");
-    const bool eggbertReal = LooksUpKnownId(kEggbertId, kEggbertText, "free-eggbert TX_BUTTON_QUITTER");
-
-    // This is the one meaningful hard guarantee across both known IDs: in
-    // the normal development setup (free-api checked out alongside at
-    // least one of its two target games), real STRINGTABLE extraction must
-    // actually be wired up end-to-end for that game.
-    Check(planetblupiReal || eggbertReal,
-          "at least one target game's known ID resolves to its real STRINGTABLE text");
-}
+// Far outside either game's real STRINGTABLE ID range in every build mode.
+static const unsigned int kUnknownId = 999999u;
 
 static void TestUnknownIdAlwaysFallsBackToPlaceholder()
 {
-    // An ID far outside either game's real STRINGTABLE range must always
-    // fall back to the placeholder, regardless of which (if any) sibling's
-    // table is compiled in.
-    const unsigned int unknownId = 999999u;
     char buffer[64] = {};
-    int len = LoadStringA(nullptr, unknownId, buffer, sizeof(buffer));
+    int len = LoadStringA(nullptr, kUnknownId, buffer, sizeof(buffer));
 
     Check(len > 0, "LoadStringA returns a positive length for an unknown ID");
-    Check(IsPlaceholderFor(buffer, unknownId), "LoadStringA falls back to \"RES_<id>\" for an ID with no STRINGTABLE entry");
+    Check(IsPlaceholderFor(buffer, kUnknownId),
+          "LoadStringA falls back to \"RES_<id>\" for an ID with no STRINGTABLE entry, in every build mode");
 }
+
+#if defined(FREE_API_TARGET_GAME_FREE_EGGBERT) || defined(FREE_API_TARGET_GAME_PLANETBLUPI)
+
+static void TestKnownGameIdReturnsRealTextNeverPlaceholder()
+{
+    char buffer[256] = {};
+    int len = LoadStringA(nullptr, kKnownId, buffer, sizeof(buffer));
+
+    Check(len > 0, "LoadStringA returns a positive length for a known game string ID (target-game build)");
+    Check(strcmp(buffer, kKnownText) == 0,
+          "LoadStringA returns the exact real STRINGTABLE text for a known game string ID (target-game build)");
+    Check(!IsPlaceholderFor(buffer, kKnownId),
+          "LoadStringA never falls back to \"RES_<id>\" for a known game string ID in a target-game build");
+}
+
+#else
+
+static void TestStandaloneKnownIdMayReturnEitherRealTextOrPlaceholder()
+{
+    // Standalone free-api builds never set REQUIRE_STRINGS/VERIFY_ID (see
+    // cmake/ExtractStringTable.cmake), so this is genuinely either outcome
+    // depending on whether the developer-convenience sibling lookup found a
+    // target game checked out next to free-api -- log which, assert neither.
+    char buffer[256] = {};
+    int len = LoadStringA(nullptr, kKnownId, buffer, sizeof(buffer));
+    Check(len > 0, "LoadStringA returns a positive length in standalone mode");
+
+    if (IsPlaceholderFor(buffer, kKnownId)) {
+        printf("[loadstring-regressions] INFO: standalone build with no sibling table -- id %u returned the placeholder (acceptable)\n",
+               kKnownId);
+    } else {
+        printf("[loadstring-regressions] INFO: standalone build found a sibling table -- id %u resolved to \"%s\"\n",
+               kKnownId, buffer);
+    }
+}
+
+#endif
 
 static void TestBufferTruncation()
 {
     // A real Win32 LoadString truncates to fit and returns the truncated
     // length (not counting the terminator) when the buffer is too small.
+    // Whatever kKnownId resolves to in this build (real text or the
+    // placeholder), it is always longer than 3 characters, so this holds
+    // regardless of build mode.
     char tinyBuffer[4] = {};
-    int len = LoadStringA(nullptr, kEggbertId, tinyBuffer, sizeof(tinyBuffer));
+    int len = LoadStringA(nullptr, kKnownId, tinyBuffer, sizeof(tinyBuffer));
 
     Check(len == static_cast<int>(sizeof(tinyBuffer)) - 1,
           "LoadStringA truncates to fit a too-small buffer and returns the truncated length");
@@ -128,13 +124,33 @@ static void TestBufferTruncation()
           "LoadStringA's truncated output is still null-terminated");
 }
 
+static void TestNullBufferReturnsZero()
+{
+    int len = LoadStringA(nullptr, kKnownId, nullptr, 256);
+    Check(len == 0, "LoadStringA returns 0 for a NULL output buffer");
+}
+
+static void TestZeroBufferMaxReturnsZero()
+{
+    char buffer[16];
+    buffer[0] = 'X';
+    int len = LoadStringA(nullptr, kKnownId, buffer, 0);
+    Check(len == 0, "LoadStringA returns 0 when cchBufferMax == 0");
+}
+
 int main()
 {
     printf("[loadstring-regressions] Starting\n");
 
-    TestAtLeastOneKnownGameResolvesToRealText();
     TestUnknownIdAlwaysFallsBackToPlaceholder();
+#if defined(FREE_API_TARGET_GAME_FREE_EGGBERT) || defined(FREE_API_TARGET_GAME_PLANETBLUPI)
+    TestKnownGameIdReturnsRealTextNeverPlaceholder();
+#else
+    TestStandaloneKnownIdMayReturnEitherRealTextOrPlaceholder();
+#endif
     TestBufferTruncation();
+    TestNullBufferReturnsZero();
+    TestZeroBufferMaxReturnsZero();
 
     if (g_failures > 0) {
         printf("[loadstring-regressions] %d FAILURE(S)\n", g_failures);
