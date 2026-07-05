@@ -230,6 +230,11 @@ cmake -B build
 cmake --build build
 ```
 
+This is the default, sibling-of-a-target-game build. For every other
+supported build mode (standalone with a system-installed SDL3, building
+inside `../free-eggbert` or `../planetblupi`, and the relevant CMake
+options), see [`docs/cmake-options.md`](docs/cmake-options.md).
+
 ---
 
 ## Project Status

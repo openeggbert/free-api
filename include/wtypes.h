@@ -12,6 +12,12 @@
  * These types are declared to compile but are not functionally used at runtime;
  * OLE/COM is not implemented in this compatibility layer.
  *
+ * Proven unused by both target games at runtime: only ../free-eggbert
+ * includes this header (misc.hpp:5, blupi.cpp:14; ../planetblupi does not
+ * include it at all) and none of these types are ever exercised as real
+ * OLE/COM behavior -- they exist purely so free-eggbert's source compiles
+ * (plan.md §3.1).
+ *
  * @note Status: STUB
  */
 #ifndef FREE_API_WTYPES_H

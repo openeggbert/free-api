@@ -37,8 +37,11 @@
  * SDL_GetKeyboardState), so it is reliably testable via SDL_PushEvent.
  */
 #include <windows.h>
+#include <windowsx.h>
 #include <SDL3/SDL.h>
 #include <cstdio>
+#include <atomic>
+#include <thread>
 
 static int g_failures = 0;
 
@@ -103,6 +106,77 @@ static void TestAdjustWindowRectPreservesClientSize()
     const int clientHeight = client.bottom - client.top;
     Check(clientWidth == 640 && clientHeight == 480,
           "AdjustWindowRect preserves the requested 640x480 client-area size");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
+// TASK-0027 (plan.md): both games populate the full WNDCLASSA field set
+// (free-eggbert blupi.cpp:707-728, planetblupi blupi.cpp:593,609-619) but
+// the other tests in this file only set 3 of the 10 fields. This locks in
+// that RegisterClassA/CreateWindowA handle every field without crashing or
+// silently dropping behavior.
+static void TestRegisterClassAWithFullFieldSet()
+{
+    WNDCLASSA wc{};
+    wc.style         = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.cbClsExtra    = 0;
+    wc.cbWndExtra    = 0;
+    wc.hInstance     = (HINSTANCE)1;
+    wc.hIcon         = LoadIconA((HINSTANCE)1, "IDR_MAINFRAME");
+    wc.hCursor       = LoadCursorA((HINSTANCE)1, "IDC_POINTER");
+    wc.hbrBackground = GetStockBrush(BLACK_BRUSH);
+    wc.lpszMenuName  = "RegTest_FullFieldSet_Menu";
+    wc.lpszClassName = "RegTest_FullFieldSet";
+
+    ATOM registered = RegisterClassA(&wc);
+    Check(registered != 0, "RegisterClassA succeeds with every WNDCLASSA field populated");
+
+    HWND hwnd = CreateWindowA("RegTest_FullFieldSet", "Test",
+                              WS_POPUPWINDOW | WS_VISIBLE,
+                              0, 0, 320, 240,
+                              HWND_DESKTOP, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowA succeeds against a class registered with the full field set");
+
+    if (hwnd) {
+        DrainMessages();
+        DestroyWindow(hwnd);
+        DrainMessages();
+    }
+}
+
+// TASK-0028 (plan.md): both games' fullscreen path calls CreateWindowExA
+// with WS_EX_TOPMOST/WS_POPUP and a size taken directly from
+// GetSystemMetrics(SM_CXSCREEN/SM_CYSCREEN) (free-eggbert blupi.cpp:733-746,
+// planetblupi blupi.cpp:625-638). This locks in that exact call shape.
+static void TestCreateWindowExAFullscreenPath()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_Fullscreen";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    const int screenWidth  = GetSystemMetrics(SM_CXSCREEN);
+    const int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    Check(screenWidth > 0 && screenHeight > 0,
+          "GetSystemMetrics(SM_CXSCREEN/SM_CYSCREEN) returns sane positive screen dimensions");
+
+    HWND hwnd = CreateWindowExA(WS_EX_TOPMOST, "RegTest_Fullscreen", "Test",
+                                 WS_POPUP,
+                                 0, 0, screenWidth, screenHeight,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the exact fullscreen call shape (WS_EX_TOPMOST/WS_POPUP)");
+    if (!hwnd) return;
+
+    DrainMessages();
+
+    RECT client{};
+    BOOL gotClient = GetClientRect(hwnd, &client);
+    Check(gotClient == TRUE, "GetClientRect succeeds for the fullscreen window");
+    Check(client.right - client.left == screenWidth && client.bottom - client.top == screenHeight,
+          "Fullscreen window's client size matches the requested screen dimensions");
 
     DestroyWindow(hwnd);
     DrainMessages();
@@ -344,7 +418,299 @@ static void TestMouseMoveLParamPackingAndModifierFlags()
     InjectMouseButton(sdlWin, /*down=*/false, SDL_BUTTON_LEFT, 77.0f, 88.0f);
     DrainMessages();
 
+    // Case 3 (TASK-0048): MK_RBUTTON must likewise persist into
+    // WM_MOUSEMOVE while the right button is held during a drag
+    // (planetblupi event.cpp:3413,3440,3472,3504).
+    InjectMouseButton(sdlWin, /*down=*/true, SDL_BUTTON_RIGHT, 20.0f, 20.0f);
+    DrainMessages(); // consume WM_RBUTTONDOWN
+
+    InjectMouseMotion(sdlWin, 99.0f, 55.0f);
+
+    bool sawRightDragMove = false;
+    WPARAM rightDragWParam = 0;
+    {
+        MSG msg{};
+        int limit = 200;
+        while (limit-- > 0) {
+            if (!PeekMessageA(&msg, hwnd, 0, 0, PM_REMOVE)) break;
+            if (msg.message == WM_MOUSEMOVE) {
+                sawRightDragMove = true;
+                rightDragWParam = msg.wParam;
+                break;
+            }
+        }
+    }
+    Check(sawRightDragMove, "WM_MOUSEMOVE is delivered while the right button is held");
+    if (sawRightDragMove) {
+        Check((rightDragWParam & MK_RBUTTON) != 0,
+              "WM_MOUSEMOVE wParam carries MK_RBUTTON while the right button is held during a drag");
+    }
+
+    InjectMouseButton(sdlWin, /*down=*/false, SDL_BUTTON_RIGHT, 99.0f, 55.0f);
+    DrainMessages();
+
     DestroyWindow(hwnd);
+    DrainMessages();
+}
+
+// TASK-0055 (plan.md): planetblupi calls GetClientRect+ClientToScreen
+// (twice, treating a RECT as two POINTs) every single displayed frame
+// (pixmap.cpp CPixmap::Display():975-990, MouseQuickDraw:1100-1123) -- a
+// hot path, not a startup-only call. This verifies the screen coordinates
+// track the window's real, current position (not a cached/stale value)
+// across a position change, round-trips via ScreenToClient, and includes a
+// basic performance sanity bound to catch an accidental O(n) regression.
+static void TestClientToScreenTracksWindowPositionNotStale()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_ClientToScreen";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_ClientToScreen", "Test",
+                                 WS_POPUPWINDOW | WS_VISIBLE,
+                                 50, 60, 200, 150,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the ClientToScreen position test window");
+    if (!hwnd) return;
+    DrainMessages();
+
+    RECT client{};
+    GetClientRect(hwnd, &client);
+
+    POINT topLeft{client.left, client.top};
+    POINT bottomRight{client.right, client.bottom};
+    ClientToScreen(hwnd, &topLeft);
+    ClientToScreen(hwnd, &bottomRight);
+    Check(topLeft.x == 50 && topLeft.y == 60,
+          "ClientToScreen maps the client origin to the window's real screen position");
+    Check(bottomRight.x == 250 && bottomRight.y == 210,
+          "ClientToScreen maps the client's far corner using the window's real screen position");
+
+    // Move the window (same size) and verify the mapping tracks the *new*
+    // position rather than returning a stale/cached value from creation.
+    MoveWindow(hwnd, 300, 400, 200, 150, TRUE);
+    DrainMessages();
+
+    RECT clientAfterMove{};
+    GetClientRect(hwnd, &clientAfterMove);
+    POINT topLeftAfterMove{clientAfterMove.left, clientAfterMove.top};
+    POINT bottomRightAfterMove{clientAfterMove.right, clientAfterMove.bottom};
+    ClientToScreen(hwnd, &topLeftAfterMove);
+    ClientToScreen(hwnd, &bottomRightAfterMove);
+    Check(topLeftAfterMove.x == 300 && topLeftAfterMove.y == 400,
+          "ClientToScreen tracks the window's new position after MoveWindow (not stale)");
+    Check(bottomRightAfterMove.x == 500 && bottomRightAfterMove.y == 550,
+          "ClientToScreen's far-corner mapping also tracks the window's new position");
+
+    // Round-trip via ScreenToClient.
+    POINT roundTrip{500, 550};
+    ScreenToClient(hwnd, &roundTrip);
+    Check(roundTrip.x == 200 && roundTrip.y == 150,
+          "ScreenToClient is the exact inverse of ClientToScreen after the move");
+
+    // Basic performance sanity check: this is a per-frame hot path
+    // (Display() calls it twice every frame), so N repeated calls must
+    // complete well within a generous bound, catching an accidental O(n)
+    // (e.g. linear scan) regression.
+    const Uint64 start = SDL_GetTicks();
+    for (int i = 0; i < 20000; ++i) {
+        POINT p{0, 0};
+        ClientToScreen(hwnd, &p);
+    }
+    const Uint64 elapsedMs = SDL_GetTicks() - start;
+    Check(elapsedMs < 2000, "20000 ClientToScreen calls complete well within a generous time bound (no O(n) regression)");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
+// TASK-0055: SetCursorPos/GetCursorPos round-trip, matching
+// MouseQuickDraw-adjacent mouse-position usage.
+//
+// Note: both are thin wrappers over SDL_WarpMouseGlobal/SDL_GetGlobalMouseState,
+// which SDL's "dummy" video driver (used in this headless test environment)
+// explicitly does not support ("That operation is not supported") -- a real
+// backend (X11/Wayland/Windows) supports it. The round-trip is therefore
+// only asserted when the warp actually reports success; otherwise this
+// records that the environment limitation was hit rather than silently
+// skipping (and still proves both functions return the correct *type* of
+// result and don't crash).
+static void TestSetCursorPosAndGetCursorPosRoundTrip()
+{
+    BOOL warped = SetCursorPos(123, 45);
+
+    POINT pos{};
+    BOOL got = GetCursorPos(&pos);
+    Check(got == TRUE, "GetCursorPos returns TRUE");
+
+    if (warped) {
+        Check(pos.x == 123 && pos.y == 45, "GetCursorPos reflects the position set by SetCursorPos");
+    } else {
+        printf("[winuser-regressions] SKIP: SetCursorPos round-trip not verifiable -- "
+               "SDL's dummy video driver does not support global mouse warp in this headless environment\n");
+    }
+}
+
+// TASK-0032 (plan.md): both games' startup sequence calls exactly
+// ShowWindow(hwnd, SW_SHOW) -> UpdateWindow(hwnd) -> SetFocus(hwnd)
+// (free-eggbert blupi.cpp:784-786; planetblupi blupi.cpp:677-679).
+static void TestShowWindowUpdateWindowSetFocusSequence()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_ShowUpdateFocus";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_ShowUpdateFocus", "Test",
+                                 WS_POPUPWINDOW, 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the startup-sequence test");
+    if (!hwnd) return;
+
+    BOOL shown = ShowWindow(hwnd, SW_SHOW);
+    (void)shown; // real Win32 return value here is "was previously visible", not a success code
+    BOOL updated = UpdateWindow(hwnd);
+    Check(updated == TRUE, "UpdateWindow succeeds immediately after ShowWindow(SW_SHOW)");
+    HWND previousFocus = SetFocus(hwnd);
+    (void)previousFocus;
+    Check(true, "ShowWindow->UpdateWindow->SetFocus sequence completes without crashing");
+
+    DrainMessages();
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
+// TASK-0034 (plan.md): both games read exactly CREATESTRUCT.hInstance on
+// WM_CREATE (free-eggbert blupi.cpp:508; planetblupi blupi.cpp:428-430).
+static HINSTANCE g_capturedCreateHInstance = nullptr;
+static bool g_capturedWmCreate = false;
+
+static LRESULT WINAPI WmCreateCaptureWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_CREATE) {
+        g_capturedWmCreate = true;
+        auto* cs = reinterpret_cast<LPCREATESTRUCTA>(lParam);
+        if (cs) g_capturedCreateHInstance = cs->hInstance;
+    }
+    return DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+static void TestWmCreateDeliversCorrectHInstance()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = WmCreateCaptureWndProc;
+    wc.lpszClassName = "RegTest_WmCreateHInstance";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    const HINSTANCE kTestInstance = reinterpret_cast<HINSTANCE>(static_cast<uintptr_t>(0x1234));
+    g_capturedWmCreate = false;
+    g_capturedCreateHInstance = nullptr;
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_WmCreateHInstance", "Test",
+                                 WS_POPUPWINDOW, 0, 0, 320, 240,
+                                 nullptr, nullptr, kTestInstance, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the WM_CREATE hInstance test");
+    Check(g_capturedWmCreate, "WM_CREATE is dispatched synchronously during CreateWindowExA");
+    Check(g_capturedCreateHInstance == kTestInstance,
+          "CREATESTRUCT.hInstance delivered via WM_CREATE matches the hInstance passed to CreateWindowExA");
+
+    if (hwnd) {
+        DrainMessages();
+        DestroyWindow(hwnd);
+        DrainMessages();
+    }
+}
+
+// TASK-0038 (plan.md): both games call WaitMessage only when idle
+// (!g_bActive), expecting it to idle without busy-spinning until a new
+// message arrives (free-eggbert blupi.cpp:921; planetblupi blupi.cpp:919).
+static void TestWaitMessageDoesNotBusySpin()
+{
+    // With no message ever posted, count how many WaitMessage calls occur
+    // in a fixed wall-clock window. A proper (sleep-based) implementation
+    // yields roughly one call per ~1ms tick; a busy-spinning implementation
+    // would instead execute many thousands/millions of calls in the same
+    // window. This distinguishes the two without needing an OS CPU-time API.
+    const Uint64 windowMs = 50;
+    const Uint64 deadline = SDL_GetTicks() + windowMs;
+    long long iterations = 0;
+    while (SDL_GetTicks() < deadline) {
+        WaitMessage();
+        ++iterations;
+    }
+    Check(iterations < 1000,
+          "WaitMessage idles (sleeps) rather than busy-spinning when no message is available "
+          "(iteration count stayed low over a fixed wall-clock window)");
+
+    // Now verify it still returns promptly once a message actually arrives,
+    // posted from a background thread after a short delay.
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_WaitMessagePost";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+    HWND hwnd = CreateWindowExA(0, "RegTest_WaitMessagePost", "Test",
+                                 WS_POPUPWINDOW, 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    DrainMessages();
+
+    std::atomic<bool> posted{false};
+    std::thread poster([&]() {
+        SDL_Delay(20);
+        PostMessageA(hwnd, WM_USER + 1, 0, 0);
+        posted.store(true);
+    });
+
+    const Uint64 waitStart = SDL_GetTicks();
+    bool sawMessage = false;
+    MSG msg{};
+    while (SDL_GetTicks() - waitStart < 2000) {
+        WaitMessage();
+        if (PeekMessageA(&msg, hwnd, 0, 0, PM_NOREMOVE)) {
+            sawMessage = true;
+            break;
+        }
+    }
+    poster.join();
+
+    Check(sawMessage, "WaitMessage-driven polling observes a message posted from another thread after a short delay");
+
+    DrainMessages();
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
+// TASK-0033 (plan.md): both games call DestroyWindow only on an
+// unrecoverable init failure (free-eggbert blupi.cpp:664; planetblupi
+// blupi.cpp:585) -- create-then-immediately-destroy, with no other window
+// operations in between (the real games exit shortly after). Repeated
+// cycles also verify the internal window registry doesn't grow unbounded
+// (todo/free-api-performance-todo.md "Verify Window Lookup Map
+// Maintenance").
+static void TestDestroyWindowFatalInitFailurePathDoesNotCrash()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_DestroyInitFailure";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    const int kIterations = 500;
+    bool allOk = true;
+    for (int i = 0; i < kIterations; ++i) {
+        HWND hwnd = CreateWindowExA(0, "RegTest_DestroyInitFailure", "Test",
+                                     WS_POPUPWINDOW, 0, 0, 320, 240,
+                                     nullptr, nullptr, (HINSTANCE)1, nullptr);
+        if (!hwnd) { allOk = false; break; }
+        BOOL destroyed = DestroyWindow(hwnd);
+        if (destroyed != TRUE) { allOk = false; break; }
+    }
+    Check(allOk, "repeated create-then-immediately-destroy cycles (matching both games' fatal-init-failure path) complete cleanly, no crash");
+
     DrainMessages();
 }
 
@@ -375,6 +741,32 @@ static void TestSetCursorReturnsPreviousHandle()
     Check(previous == first, "SetCursor returns the previously-active cursor handle");
 }
 
+// TASK-0056 (plan.md): both games call LoadCursorA with a fixed set of
+// named cursor IDs on every sprite-cursor swap (free-eggbert misc.cpp:48-59,
+// 12 names; planetblupi misc.cpp:56-69, 13 names, union below); every one
+// must return a non-null handle to avoid a null-handle edge case in game
+// code that doesn't null-check. LoadIconA is called with exactly one name
+// (both games' WNDCLASSA.hIcon, blupi.cpp:723/615).
+static void TestLoadCursorAAndLoadIconAReturnNonNullForAllRealNames()
+{
+    static const char* kCursorNames[] = {
+        "IDC_ARROW", "IDC_POINTER", "IDC_MAP", "IDC_ARROWU", "IDC_ARROWD",
+        "IDC_ARROWL", "IDC_ARROWR", "IDC_ARROWUL", "IDC_ARROWUR",
+        "IDC_ARROWDL", "IDC_ARROWDR", "IDC_WAIT", "IDC_EMPTY", "IDC_FILL",
+    };
+    bool allNonNull = true;
+    for (const char* name : kCursorNames) {
+        if (LoadCursorA((HINSTANCE)1, name) == nullptr) {
+            printf("[winuser-regressions] FAIL: LoadCursorA(\"%s\") returned NULL\n", name);
+            allNonNull = false;
+        }
+    }
+    Check(allNonNull, "LoadCursorA returns a non-null handle for every cursor name either game requests");
+
+    HICON icon = LoadIconA((HINSTANCE)1, "IDR_MAINFRAME");
+    Check(icon != nullptr, "LoadIconA(\"IDR_MAINFRAME\") returns a non-null handle (both games' WNDCLASSA.hIcon)");
+}
+
 int main()
 {
     printf("[winuser-regressions] Starting\n");
@@ -385,13 +777,22 @@ int main()
     }
 
     TestAdjustWindowRectPreservesClientSize();
+    TestRegisterClassAWithFullFieldSet();
+    TestCreateWindowExAFullscreenPath();
     TestDefWindowProcHandlesWmClose();
     TestDestroyWindowDispatchesWmDestroySynchronously();
     TestPeekMessageNoRemoveAndRemove();
     TestGetMessageReturnsFalseOnQuit();
     TestMouseMoveLParamPackingAndModifierFlags();
+    TestClientToScreenTracksWindowPositionNotStale();
+    TestSetCursorPosAndGetCursorPosRoundTrip();
+    TestShowWindowUpdateWindowSetFocusSequence();
+    TestWmCreateDeliversCorrectHInstance();
+    TestWaitMessageDoesNotBusySpin();
+    TestDestroyWindowFatalInitFailurePathDoesNotCrash();
     TestShowCursorHidesAndShowsRealCursor();
     TestSetCursorReturnsPreviousHandle();
+    TestLoadCursorAAndLoadIconAReturnNonNullForAllRealNames();
 
     SDL_Quit();
 

@@ -1,5 +1,16 @@
 # TODO: Embedded WinAPI-like Resources in FreeAPI
 
+> **Decision (plan.md TASK-0072): DEFERRED.** This design is well-scoped and
+> remains valuable, but per the evidence-based audit in `plan.md`/
+> `docs/out-of-scope.md`, neither target game is currently blocked by missing
+> resource support — both games' `.rc` files aren't compiled by their own
+> CMake builds, `FindResourceA` correctly misses every time, and both games
+> already fall through to their own working file-based loading paths
+> (`_lopen`-based palette reads, `LoadImageA(LR_LOADFROMFILE)`). **Do not
+> implement this speculatively.** Revisit only if a concrete, evidenced need
+> emerges — e.g. if `.rc` compilation is ever added to either game's build
+> and a real resource lookup becomes load-bearing.
+
 ## Goal
 
 Implement a small WinAPI-like embedded resource system in FreeAPI.

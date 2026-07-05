@@ -7,7 +7,9 @@ the target game(s) is implemented.
 
 See [`docs/scope.md`](docs/scope.md) for the project's scope policy: every new
 public API must cite a real usage site in `../free-eggbert` or `../planetblupi`.
-See [`plan.md`](plan.md) for the full evidence-based usage audit and task backlog.
+See [`docs/supported-apis.md`](docs/supported-apis.md) for the current,
+hand-maintained table of every implemented symbol and its status, and
+[`plan.md`](plan.md) for the full evidence-based usage audit and task backlog.
 
 ```text
 Legacy game source code
@@ -52,6 +54,23 @@ Each public symbol carries a `@note Status:` tag:
 | `STUB` | Placeholder: compiles, returns fixed value or does nothing. |
 | `HEADER_ONLY` | Macro, typedef, or inline function in a header; no `.cpp` needed. |
 | `INTERNAL` | Implementation detail in `.cpp` or private headers; not a public API. |
+
+## Debug Flags
+
+All flags are environment variables, read once (lazily, on first use) and
+cached; set them before launching the game/test binary. Default state for
+every flag below is **off** unless noted.
+
+| Flag | Controls | Default |
+|---|---|---|
+| `FREE_API_DIAGNOSTICS` | Enables periodic `[FREE_API_DIAG]` snapshots (queue size/high-water, timer counts, message/coalescing counters, RSS memory) at startup, `atexit`, and on demand (`FreeApiDiagSnapshot`). Also gates whether the fast-path diagnostic atomics are incremented at all (`FreeApiDiagnosticsFastEnabled`). | Off |
+| `FREE_DIRECT_DIAGNOSTICS` | Alias for `FREE_API_DIAGNOSTICS` — either one enables diagnostics (checked together). | Off |
+| `FREE_API_DEBUG_GDI` | Enables hot-path GDI logging in `src/wingdi_blit.cpp` (`StretchBlt`/`GetPixel`/`SetPixel` call details). Set to exactly `1`. | Off |
+| `FREE_API_DEBUG_INPUT` | Enables verbose input-translation logging (`InputLog`, `src/internal/FreeApiMessageQueue.cpp`) — SDL event → WinAPI message translation detail, capped at the first 20 events. Set to exactly `1`. | Off |
+| `FREE_API_DEBUG_MOUSE` | Alias for `FREE_API_DEBUG_INPUT` (either enables the same input logging). | Off |
+| `FREE_API_DEBUG_REAL_INPUT` | Alias for `FREE_API_DEBUG_INPUT` (either enables the same input logging). | Off |
+| `FREE_API_DEBUG_MIDI` | Enables verbose MIDI/MCI logging (`MIDI_LOG`, `src/MidiMusic.cpp`) — session open/play/close detail, SoundFont lookup, mixer thread state. Set to exactly `1`. | Off |
+| `FREE_API_SOUNDFONT` | Path to a `.sf2` SoundFont file for MIDI rendering; not a debug flag, but read the same way (environment variable, lazily). Falls back to `assets/soundfont/default.sf2` then `soundfont/default.sf2`; if none found, MIDI plays silently (not an error). | Unset |
 
 ## Build
 

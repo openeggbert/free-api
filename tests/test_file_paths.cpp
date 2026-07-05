@@ -1,0 +1,309 @@
+/**
+ * @file test_file_paths.cpp
+ * @brief Consolidated file/path regression tests using real, evidence-derived
+ * game asset path shapes, per plan.md TASK-0082/0088/0115.
+ *
+ * Each path string below is copied verbatim (or with the sprintf format
+ * applied) from the real games' own source, not invented:
+ *  - "data/config.def" via `fopen` (free-eggbert blupi.cpp:102).
+ *  - "image\\init.blp" via `LoadImageA` (planetblupi/free-eggbert asset
+ *    loading convention; also covered for plain fopen in
+ *    test_file_regressions.cpp's TestBackslashAndForwardSlashPathsBothResolve).
+ *  - "sound\\sound%.3d.blp" via `fopen` (free-eggbert sound.cpp:440).
+ *  - "\\User\\*.xch" via `_findfirst` (free-eggbert event.cpp:4741).
+ *
+ * TASK-0082: the case-insensitive fopen fallback (include/windows.h's
+ * free_api_fopen wrapper) is already tested for one MCI/MIDI scenario
+ * (tests/basic_test.cpp); this file extends that coverage to a plain,
+ * non-MIDI asset file.
+ *
+ * TASK-0086: `_findfirst`/`_findnext`/`_findclose` (src/crt_io.cpp) are now
+ * real, `std::filesystem`-backed implementations, scoped to the one
+ * wildcard shape free-eggbert's design-file picker actually uses (a
+ * directory plus a simple "*.ext" pattern) -- tested below both for a
+ * missing directory (returns -1, no crash) and for real matching files in
+ * a real directory.
+ */
+#include <windows.h>
+#include <direct.h>
+#include <io.h>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <sys/stat.h>
+
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
+
+static int g_failures = 0;
+
+static void Check(bool condition, const char* what)
+{
+    if (condition) {
+        printf("[file-paths] PASS: %s\n", what);
+    } else {
+        printf("[file-paths] FAIL: %s\n", what);
+        ++g_failures;
+    }
+}
+
+static std::string MakeTempRoot(const char* suffix)
+{
+#if !defined(_WIN32)
+    std::string tmpl = std::string("free-api-file-paths-") + suffix + "-XXXXXX";
+    std::vector<char> buf(tmpl.begin(), tmpl.end());
+    buf.push_back('\0');
+    char* dir = mkdtemp(buf.data());
+    return dir ? std::string(dir) : std::string();
+#else
+    (void)suffix;
+    return std::string();
+#endif
+}
+
+// TASK-0082: fopen's case-insensitive basename fallback, for a plain
+// (non-MIDI) asset file -- basic_test.cpp already covers this for the MCI
+// MIDI-open path; this covers the generic fopen wrapper directly.
+static void TestFopenCaseInsensitiveFallbackForPlainAssetFile()
+{
+    std::string root = MakeTempRoot("config");
+    Check(!root.empty(), "temp root created for the fopen case-fallback test");
+    if (root.empty()) return;
+
+    const std::string subdir = root + "/data";
+    Check(::mkdir(subdir.c_str(), 0755) == 0, "data/ subdirectory created");
+
+    // File actually exists with an uppercase basename on disk...
+    const std::string actualPath = subdir + "/CONFIG.DEF";
+    FILE* w = fopen(actualPath.c_str(), "wb");
+    Check(w != nullptr, "CONFIG.DEF fixture file created");
+    if (w) {
+        fputs("free-api", w);
+        fclose(w);
+    }
+
+#if !defined(_WIN32)
+    char oldCwd[4096];
+    Check(getcwd(oldCwd, sizeof(oldCwd)) != nullptr, "captured current working directory");
+    Check(chdir(root.c_str()) == 0, "chdir into temp root succeeded");
+#endif
+
+    // ...but both games request it in lowercase, matching free-eggbert's
+    // real literal `fopen("data/config.def", "rb")` (blupi.cpp:102).
+    FILE* f = fopen("data/config.def", "rb");
+    Check(f != nullptr, "fopen(\"data/config.def\") succeeds via the case-insensitive basename fallback");
+    if (f) fclose(f);
+
+#if !defined(_WIN32)
+    chdir(oldCwd);
+#endif
+
+    remove(actualPath.c_str());
+    rmdir(subdir.c_str());
+    rmdir(root.c_str());
+}
+
+// LoadImageA with the real "image\\init.blp" backslash path shape.
+static std::vector<uint8_t> MakeMinimalBmp(int width, int height)
+{
+    const int rowBytes = ((width * 3 + 3) / 4) * 4;
+    const int pixelDataSize = rowBytes * height;
+    const int dataOffset = 14 + 40;
+    const int fileSize = dataOffset + pixelDataSize;
+
+    std::vector<uint8_t> bmp(static_cast<size_t>(fileSize), 0);
+    auto put16 = [&](size_t off, uint16_t v) { bmp[off] = v & 0xFF; bmp[off + 1] = (v >> 8) & 0xFF; };
+    auto put32 = [&](size_t off, uint32_t v) {
+        bmp[off] = v & 0xFF; bmp[off + 1] = (v >> 8) & 0xFF;
+        bmp[off + 2] = (v >> 16) & 0xFF; bmp[off + 3] = (v >> 24) & 0xFF;
+    };
+    bmp[0] = 'B'; bmp[1] = 'M';
+    put32(2, static_cast<uint32_t>(fileSize));
+    put32(10, static_cast<uint32_t>(dataOffset));
+    put32(14, 40);
+    put32(18, static_cast<uint32_t>(width));
+    put32(22, static_cast<uint32_t>(height));
+    put16(26, 1);
+    put16(28, 24);
+    put32(30, 0);
+    put32(34, static_cast<uint32_t>(pixelDataSize));
+    for (int i = 0; i < pixelDataSize; ++i) {
+        bmp[static_cast<size_t>(dataOffset + i)] = static_cast<uint8_t>(0x30 + (i % 64));
+    }
+    return bmp;
+}
+
+static void TestLoadImageAWithBackslashInitBlpPathShape()
+{
+    std::string root = MakeTempRoot("image");
+    Check(!root.empty(), "temp root created for the LoadImageA path-shape test");
+    if (root.empty()) return;
+
+    const std::string subdir = root + "/image";
+    Check(::mkdir(subdir.c_str(), 0755) == 0, "image/ subdirectory created");
+
+    const std::string actualPath = subdir + "/init.blp";
+    std::vector<uint8_t> bmp = MakeMinimalBmp(4, 4);
+    FILE* f = fopen(actualPath.c_str(), "wb");
+    Check(f != nullptr, "init.blp fixture file created");
+    if (f) {
+        fwrite(bmp.data(), 1, bmp.size(), f);
+        fclose(f);
+    }
+
+#if !defined(_WIN32)
+    char oldCwd[4096];
+    getcwd(oldCwd, sizeof(oldCwd));
+    Check(chdir(root.c_str()) == 0, "chdir into temp root succeeded");
+#endif
+
+    // Real literal path shape, backslash-separated (planetblupi/free-eggbert
+    // asset convention).
+    HANDLE h = LoadImageA(nullptr, "image\\init.blp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    Check(h != nullptr, "LoadImageA(\"image\\\\init.blp\") succeeds via backslash-path normalization");
+    if (h) DeleteObject(reinterpret_cast<HBITMAP>(h));
+
+#if !defined(_WIN32)
+    chdir(oldCwd);
+#endif
+
+    remove(actualPath.c_str());
+    rmdir(subdir.c_str());
+    rmdir(root.c_str());
+}
+
+// fopen with the real sprintf-formatted "sound\\sound%.3d.blp" path shape
+// (free-eggbert sound.cpp:440).
+static void TestFopenWithSprintfFormattedSoundPathShape()
+{
+    std::string root = MakeTempRoot("sound");
+    Check(!root.empty(), "temp root created for the sound-path-shape test");
+    if (root.empty()) return;
+
+    const std::string subdir = root + "/sound";
+    Check(::mkdir(subdir.c_str(), 0755) == 0, "sound/ subdirectory created");
+
+    char name[64];
+    snprintf(name, sizeof(name), "sound%.3d.blp", 1);
+    const std::string actualPath = subdir + "/" + name;
+    FILE* w = fopen(actualPath.c_str(), "wb");
+    Check(w != nullptr, "sound001.blp fixture file created");
+    if (w) {
+        fputs("free-api", w);
+        fclose(w);
+    }
+
+#if !defined(_WIN32)
+    char oldCwd[4096];
+    getcwd(oldCwd, sizeof(oldCwd));
+    Check(chdir(root.c_str()) == 0, "chdir into temp root succeeded");
+#endif
+
+    char requestedPath[64];
+    snprintf(requestedPath, sizeof(requestedPath), "sound\\sound%.3d.blp", 1);
+    FILE* f = fopen(requestedPath, "rb");
+    Check(f != nullptr, "fopen of the exact sprintf-formatted \"sound\\\\sound%.3d.blp\" shape succeeds");
+    if (f) fclose(f);
+
+#if !defined(_WIN32)
+    chdir(oldCwd);
+#endif
+
+    remove(actualPath.c_str());
+    rmdir(subdir.c_str());
+    rmdir(root.c_str());
+}
+
+// _findfirst with the real "\User\*.xch" path shape (free-eggbert
+// event.cpp:4741). _findfirst is a permanent stub (TASK-0086) that always
+// returns -1; this locks in that documented, current behavior rather than
+// assuming success.
+static void TestFindFirstWithUserXchPathShapeReturnsMinusOneForMissingDirectory()
+{
+    // "\User" does not exist in this test's working directory -- real
+    // std::filesystem-backed enumeration (TASK-0086) correctly reports no
+    // matches for a nonexistent directory, matching the same -1 return the
+    // old permanent stub gave, but for the real reason now.
+    struct _finddata_t fileinfo{};
+    intptr_t handle = _findfirst("\\User\\*.xch", &fileinfo);
+    Check(handle == -1, "_findfirst(\"\\\\User\\\\*.xch\") returns -1 when the directory doesn't exist, not a crash");
+}
+
+// TASK-0086: _findfirst/_findnext/_findclose now do a real directory
+// listing, scoped to the one wildcard shape free-eggbert's design-file
+// picker actually uses: a directory plus a simple "*.ext" pattern
+// (event.cpp:4741, "\User\*.xch").
+static void TestFindFirstFindNextEnumerateRealMatchingFiles()
+{
+    std::string root = MakeTempRoot("findfirst");
+    Check(!root.empty(), "temp root created for the _findfirst test");
+    if (root.empty()) return;
+
+    const std::string subdir = root + "/User";
+    Check(::mkdir(subdir.c_str(), 0755) == 0, "User/ subdirectory created");
+
+    const char* names[] = {"save1.xch", "save2.xch", "other.txt"};
+    for (const char* name : names) {
+        FILE* f = fopen((subdir + "/" + name).c_str(), "wb");
+        Check(f != nullptr, "fixture file created");
+        if (f) { fputs("x", f); fclose(f); }
+    }
+
+#if !defined(_WIN32)
+    char oldCwd[4096];
+    getcwd(oldCwd, sizeof(oldCwd));
+    Check(chdir(root.c_str()) == 0, "chdir into temp root succeeded");
+#endif
+
+    struct _finddata_t fileinfo{};
+    intptr_t handle = _findfirst("\\User\\*.xch", &fileinfo);
+    Check(handle != -1, "_findfirst(\"\\\\User\\\\*.xch\") finds matching files in a real directory");
+
+    int count = 0;
+    bool sawSave1 = false, sawSave2 = false, sawOther = false;
+    if (handle != -1) {
+        do {
+            ++count;
+            std::string name(fileinfo.name);
+            if (name == "save1.xch") sawSave1 = true;
+            if (name == "save2.xch") sawSave2 = true;
+            if (name == "other.txt") sawOther = true;
+        } while (_findnext(handle, &fileinfo) == 0);
+        _findclose(handle);
+    }
+
+    Check(count == 2, "_findfirst/_findnext enumerate exactly the 2 files matching \"*.xch\" (not the 3rd, non-matching file)");
+    Check(sawSave1 && sawSave2 && !sawOther,
+          "_findfirst/_findnext return the correct matching filenames and exclude the non-matching one");
+
+#if !defined(_WIN32)
+    chdir(oldCwd);
+#endif
+
+    for (const char* name : names) {
+        remove((subdir + "/" + name).c_str());
+    }
+    rmdir(subdir.c_str());
+    rmdir(root.c_str());
+}
+
+int main()
+{
+    printf("[file-paths] Starting\n");
+
+    TestFopenCaseInsensitiveFallbackForPlainAssetFile();
+    TestLoadImageAWithBackslashInitBlpPathShape();
+    TestFopenWithSprintfFormattedSoundPathShape();
+    TestFindFirstWithUserXchPathShapeReturnsMinusOneForMissingDirectory();
+    TestFindFirstFindNextEnumerateRealMatchingFiles();
+
+    if (g_failures > 0) {
+        printf("[file-paths] %d FAILURE(S)\n", g_failures);
+        return 1;
+    }
+
+    printf("[file-paths] ALL TESTS PASSED\n");
+    return 0;
+}

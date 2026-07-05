@@ -5,9 +5,12 @@ extern "C" {
 int WINAPI GetDeviceCaps(HDC hdc, int index)
 {
     (void)hdc;
-    if (index == SIZEPALETTE) {
-        return 256;
-    }
+    (void)index;
+    // Real Win32 only reports a nonzero SIZEPALETTE for an actual
+    // hardware-palette (<=8bpp) device; both games' TrueColor-vs-palette
+    // branching (pixmap.cpp in each) depends on 0 meaning "not a palette
+    // device", so a modern host must report 0 here, not a placeholder like
+    // 256 (which used to force both games onto their legacy palette path).
     return 0;
 }
 

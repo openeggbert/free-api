@@ -290,114 +290,117 @@ static void MixerThread()
     std::vector<float> pcm(static_cast<size_t>(kBlockFrames) * 2);
 
     while (g_midi.running.load()) {
-        /* Check if anything is playing. */
-        MidiSession* active = nullptr;
+        bool rendered = false;
+
+        // Find the active session and render its next block under a
+        // single, uninterrupted lock acquisition. A prior version looked
+        // up `active` in one lock_guard scope, released the lock, then
+        // dereferenced it after re-acquiring a second lock_guard scope --
+        // if MCI_CLOSE (which erases from g_midi.sessions) or MCI_OPEN
+        // (whose push_back can reallocate the vector) ran on another
+        // thread during that released-lock gap, `active` became a
+        // dangling pointer. That was the real, intermittent SIGSEGV behind
+        // this file's MCI_OPEN kill-switch (now removed).
         {
             std::lock_guard<std::mutex> lk(g_midi.mtx);
+
+            MidiSession* active = nullptr;
             for (auto& s : g_midi.sessions) {
                 if (s.playing && !s.finished) {
                     active = &s;
                     break;
                 }
             }
+
+            if (active) {
+                rendered = true;
+                const double blockMs = (kBlockFrames * 1000.0) / kMixSpec.freq;
+
+                /* Process MIDI events up to the end of this block. */
+                while (active->cursor &&
+                       active->cursor->time <= active->timeMs + blockMs)
+                {
+                    tsf_channel_set_pan(g_midi.soundFont,
+                                        active->cursor->channel, 0.5f);
+
+                    switch (active->cursor->type) {
+                        case TML_PROGRAM_CHANGE:
+                            tsf_channel_set_presetnumber(
+                                g_midi.soundFont,
+                                active->cursor->channel,
+                                active->cursor->program,
+                                (active->cursor->channel == 9));
+                            break;
+                        case TML_NOTE_ON:
+                            tsf_channel_note_on(
+                                g_midi.soundFont,
+                                active->cursor->channel,
+                                active->cursor->key,
+                                static_cast<float>(active->cursor->velocity) / 127.0f);
+                            break;
+                        case TML_NOTE_OFF:
+                            tsf_channel_note_off(
+                                g_midi.soundFont,
+                                active->cursor->channel,
+                                active->cursor->key);
+                            break;
+                        case TML_PITCH_BEND:
+                            tsf_channel_set_pitchwheel(
+                                g_midi.soundFont,
+                                active->cursor->channel,
+                                active->cursor->pitch_bend);
+                            break;
+                        case TML_CONTROL_CHANGE:
+                            tsf_channel_midi_control(
+                                g_midi.soundFont,
+                                active->cursor->channel,
+                                active->cursor->control,
+                                active->cursor->control_value);
+                            break;
+                        default:
+                            break;
+                    }
+                    active->cursor = active->cursor->next;
+                }
+                active->timeMs += blockMs;
+
+                /* Render audio. */
+                tsf_set_output(g_midi.soundFont, TSF_STEREO_INTERLEAVED,
+                               kMixSpec.freq, 0.0f);
+                tsf_render_float(g_midi.soundFont, pcm.data(), kBlockFrames, 0);
+
+                /* Apply volume. */
+                const float vol = g_midi.volume;
+                if (vol != 1.0f) {
+                    for (float& s : pcm) s *= vol;
+                }
+
+                /* End of song? */
+                if (active->cursor == nullptr) {
+                    active->playing  = false;
+                    active->finished = true;
+
+                    /* Post MM_MCINOTIFY to the registered window. */
+                    if (active->notifyHwnd) {
+                        MIDI_LOG("MCI_PLAY finished, posting MM_MCINOTIFY to HWND %p",
+                                 static_cast<void*>(active->notifyHwnd));
+                        PostMessageA(active->notifyHwnd, MM_MCINOTIFY,
+                                     MCI_NOTIFY_SUCCESSFUL,
+                                     static_cast<LPARAM>(active->id));
+                    }
+                }
+            }
         }
 
-        if (!active) {
+        if (rendered) {
+            /* Submit PCM to SDL. */
+            SDL_PutAudioStreamData(
+                g_midi.stream,
+                pcm.data(),
+                static_cast<int>(pcm.size() * sizeof(float)));
+        } else {
             SDL_Delay(10);
-            continue;
         }
-
-        /* Render one block. */
-        {
-            std::lock_guard<std::mutex> lk(g_midi.mtx);
-
-            /* Re-check under lock. */
-            if (!active->playing || active->finished) {
-                continue;
-            }
-
-            const double blockMs = (kBlockFrames * 1000.0) / kMixSpec.freq;
-
-            /* Process MIDI events up to the end of this block. */
-            while (active->cursor &&
-                   active->cursor->time <= active->timeMs + blockMs)
-            {
-                tsf_channel_set_pan(g_midi.soundFont,
-                                    active->cursor->channel, 0.5f);
-
-                switch (active->cursor->type) {
-                    case TML_PROGRAM_CHANGE:
-                        tsf_channel_set_presetnumber(
-                            g_midi.soundFont,
-                            active->cursor->channel,
-                            active->cursor->program,
-                            (active->cursor->channel == 9));
-                        break;
-                    case TML_NOTE_ON:
-                        tsf_channel_note_on(
-                            g_midi.soundFont,
-                            active->cursor->channel,
-                            active->cursor->key,
-                            static_cast<float>(active->cursor->velocity) / 127.0f);
-                        break;
-                    case TML_NOTE_OFF:
-                        tsf_channel_note_off(
-                            g_midi.soundFont,
-                            active->cursor->channel,
-                            active->cursor->key);
-                        break;
-                    case TML_PITCH_BEND:
-                        tsf_channel_set_pitchwheel(
-                            g_midi.soundFont,
-                            active->cursor->channel,
-                            active->cursor->pitch_bend);
-                        break;
-                    case TML_CONTROL_CHANGE:
-                        tsf_channel_midi_control(
-                            g_midi.soundFont,
-                            active->cursor->channel,
-                            active->cursor->control,
-                            active->cursor->control_value);
-                        break;
-                    default:
-                        break;
-                }
-                active->cursor = active->cursor->next;
-            }
-            active->timeMs += blockMs;
-
-            /* Render audio. */
-            tsf_set_output(g_midi.soundFont, TSF_STEREO_INTERLEAVED,
-                           kMixSpec.freq, 0.0f);
-            tsf_render_float(g_midi.soundFont, pcm.data(), kBlockFrames, 0);
-
-            /* Apply volume. */
-            const float vol = g_midi.volume;
-            if (vol != 1.0f) {
-                for (float& s : pcm) s *= vol;
-            }
-
-            /* End of song? */
-            if (active->cursor == nullptr) {
-                active->playing  = false;
-                active->finished = true;
-
-                /* Post MM_MCINOTIFY to the registered window. */
-                if (active->notifyHwnd) {
-                    MIDI_LOG("MCI_PLAY finished, posting MM_MCINOTIFY to HWND %p",
-                             static_cast<void*>(active->notifyHwnd));
-                    PostMessageA(active->notifyHwnd, MM_MCINOTIFY,
-                                 MCI_NOTIFY_SUCCESSFUL,
-                                 static_cast<LPARAM>(active->id));
-                }
-            }
-        }
-
-        /* Submit PCM to SDL. */
-        SDL_PutAudioStreamData(
-            g_midi.stream,
-            pcm.data(),
-            static_cast<int>(pcm.size() * sizeof(float)));
     }
 
     MIDI_LOG("mixer thread exiting");
@@ -534,8 +537,6 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
         auto* parms = reinterpret_cast<MCI_OPEN_PARMSA*>(dwParam);
         if (!parms) return MCIERR_INTERNAL;
 
-        //todo fix sigsegv
-        return MCIERR_INTERNAL;
         const char* devType = parms->lpstrDeviceType ? parms->lpstrDeviceType : "";
 
         /* Decline CD audio — the game handles this branch already. */

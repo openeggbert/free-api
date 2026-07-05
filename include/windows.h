@@ -125,6 +125,12 @@ int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** 
 // an uppercase-basename fallback for case-sensitive file systems.
 // Defined here so every C++ translation unit that includes <windows.h> picks
 // it up automatically without changing Planet Blupi source files.
+//
+// This is a DELIBERATE, narrowly-scoped exception to "don't pollute global
+// macros" -- justified specifically because Planet Blupi's own backslash
+// path literals are otherwise unusable on POSIX (§3.8), not a general
+// policy of macro-heavy compatibility. Do not add further global macro
+// redefinitions without an equally concrete, evidenced justification.
 // @note Status: IMPLEMENTED
 #ifndef FREE_API_FOPEN_WRAPPER_DEFINED
 #define FREE_API_FOPEN_WRAPPER_DEFINED

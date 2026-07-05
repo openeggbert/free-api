@@ -3,6 +3,13 @@
 #include <minwindef.h>
 #include <windef.h>
 
+// Neither ../free-eggbert nor ../planetblupi ever defines UNICODE, so only
+// the A-suffixed branch below has a real implementation anywhere in this
+// library; the W-suffixed macro aliases exist purely for source-compile
+// compatibility symmetry with real Win32 headers, not functional wide-
+// character support (see docs/out-of-scope.md's Unicode policy). Do not
+// implement real W-suffixed runtime behavior unless a target game is proven
+// to build with UNICODE defined.
 #ifdef UNICODE
 #define SetWindowText SetWindowTextW
 #define PostMessage PostMessageW

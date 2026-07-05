@@ -27,6 +27,15 @@ typedef struct tagRGBQUAD {
     BYTE rgbReserved;
 } RGBQUAD, *LPRGBQUAD;
 
+// Real Win32's <wingdi.h> wraps these two structs in #pragma pack(push, 2)
+// specifically because BITMAPFILEHEADER's WORD+DWORD+WORD+WORD+DWORD layout
+// would otherwise pick up 2 bytes of compiler-inserted padding after
+// bfType, making it 16 bytes instead of the real, on-disk 14-byte BMP file
+// header -- both games' _lopen/_lread palette-fallback path (ddutil.cpp)
+// reads real .bmp asset files directly into these structs, so the packed
+// layout is required for correct decoding, not just source compatibility.
+#pragma pack(push, 2)
+
 //815
 /** @brief BMP info header. @note Status: STUB */
 typedef struct tagBITMAPINFOHEADER {
@@ -52,6 +61,8 @@ typedef struct tagBITMAPFILEHEADER {
     WORD bfReserved2;
     DWORD bfOffBits;
 } BITMAPFILEHEADER, *LPBITMAPFILEHEADER;
+
+#pragma pack(pop)
 
 //#1054
 #ifndef FREE_API_PALETTEENTRY_DEFINED
@@ -96,7 +107,10 @@ BOOL WINAPI DeleteDC(HDC hdc);
 BOOL WINAPI DeleteObject(HGDIOBJ ho);
 
 //#2886
-/** @brief Returns 256 for SIZEPALETTE; otherwise 0. @note Status: PARTIAL */
+/** @brief Always returns 0, matching real Win32's SIZEPALETTE contract on a
+ * modern (non-palette) TrueColor host -- both games branch their
+ * TrueColor-vs-palette rendering path on this. @note Status: IMPLEMENTED
+ * (for the one index, SIZEPALETTE, either game queries) */
 int WINAPI GetDeviceCaps(HDC hdc, int index);
 
 //#2923

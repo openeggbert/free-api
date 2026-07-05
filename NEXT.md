@@ -2,9 +2,13 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `8e7cf0a` (2026-07-04). See [`plan.md`](plan.md) for the
-full evidence-based usage audit and 124-item task backlog, and
-[`docs/scope.md`](docs/scope.md) for the scope policy.
+state as of commit `8e7cf0a` (2026-07-04) plus substantial uncommitted
+changes made this session — a systematic pass through `plan.md`'s P0
+backlog, including a critical MIDI-playback bug fix (see section 2/3/4).
+See [`plan.md`](plan.md) for the full evidence-based usage audit and
+126-item task backlog (every task now carries a `Status:` line reconciled
+against actual repository state), and [`docs/scope.md`](docs/scope.md) for
+the scope policy.
 
 ## 1. Project summary
 
@@ -24,12 +28,14 @@ Wine, not a general WinAPI reimplementation, not a platform for arbitrary
 (`file:line`) in one of the two games' own source (`docs/scope.md`).
 
 **Current development phase:** incremental hardening after an initial
-evidence-based audit (`plan.md`). The P0 foundation work (build
-portability, core WinUser/message-loop correctness, file/path handling,
-cursor visibility) is done; several real bugs found via that audit have
-since been fixed; `LoadStringA` now returns real text; MCI digital-video
-was investigated and resolved as an intentional non-issue; a round of
-logging/diagnostics/GDI test cleanup is done.
+evidence-based audit (`plan.md`), now well past the P0 tier — as of this
+session, every `plan.md` P0 task is `Status: DONE`. Several real bugs found
+via test-writing have since been fixed, most significantly a MIDI-playback
+kill-switch + its underlying race condition (section 2/4), a
+`GetDeviceCaps(SIZEPALETTE)` contract bug affecting both games' rendering
+path selection, and a struct-packing bug affecting real BMP palette
+decoding. `LoadStringA` returns real text; MCI digital-video was
+investigated and resolved as an intentional non-issue.
 
 **Important architectural decisions:**
 
@@ -62,13 +68,13 @@ session:
 * As a subdirectory of `../planetblupi` (real game build,
   `PLANET_BLUPI_WINDOWS` links and runs).
 
-**Test status:** 10 test binaries, **9 pass / 1 fails**. The failure
-(`basic_test`) is a known, pre-existing, environment-specific issue (see
-section 4) — every other test passes, including all tests added/modified
-this session: `test_header_compile`, `test_winuser_regressions`,
-`test_file_regressions`, `test_loadstring_regressions`,
-`test_mci_avivideo_regressions`, `test_gdi_regressions`, `test_input_pipeline`,
-`test_timeb`.
+**Test status:** 14 test binaries, **14/14 pass** (verified stable across
+5+ repeated runs, plus a full AddressSanitizer+UBSan pass with zero
+errors). `basic_test`'s long-standing MCI_OPEN failure — previously
+documented here as an unresolved "environment-specific audio backend
+issue" — is **fixed** (see section 4; it was misdiagnosed). New test
+binaries added this session: `test_timer_regressions`,
+`test_planetblupi_loop`, `test_eggbert_loop`, `test_mci_sequences`.
 
 **CLI/tools/apps/libraries:** Free API produces one artifact,
 `libfree-api.a`, plus its test binaries. It has no standalone CLI/app of its
@@ -76,7 +82,92 @@ own — it's a library consumed by the two games' own executables
 (`SPEEDY_BLUPI_WINDOWS`, `PLANET_BLUPI_WINDOWS`), both of which build and
 link successfully against the current code (verified this session).
 
-**Recently implemented / fixed (this session, real behavior changes):**
+**Recently completed (uncommitted, this session — a systematic pass through
+`plan.md`'s P0 backlog, working task-by-task from the top):**
+
+Real behavior/bug fixes (not just tests):
+* **MIDI playback was completely disabled and is now fixed.**
+  `MidiMusicSendCommand`'s `MCI_OPEN` handler (`src/MidiMusic.cpp`) had a
+  hardcoded `return MCIERR_INTERNAL` behind a `//todo fix sigsegv` comment
+  (commit `a35f476c`, "MIDI was disabled") — neither game could play any
+  music, and `basic_test`'s failure (previously documented in this file as
+  an "environment-specific audio backend issue") was actually this
+  kill-switch, misdiagnosed by a prior session. Root-caused the real
+  segfault: `MixerThread` captured a `MidiSession*` pointer under one
+  `lock_guard` scope, released the lock, then dereferenced it after
+  re-acquiring a *second* `lock_guard` scope; a concurrent `MCI_CLOSE`
+  (erases from `g_midi.sessions`) or `MCI_OPEN` (`push_back`, can
+  reallocate the vector) during that gap left the pointer dangling — the
+  exact race free-eggbert's own `MM_MCINOTIFY` handler triggers
+  (`SuspendMusic()`/`MCI_CLOSE` then immediately `RestartMusic()`/
+  `MCI_OPEN`+`MCI_PLAY`, `blupi.cpp:562-580`). Fixed by folding
+  find-and-render into one uninterrupted lock acquisition; removed the
+  kill-switch. Verified via AddressSanitizer (zero errors) and a 30-cycle
+  stress test reproducing the exact real-game close-then-reopen pattern.
+  **Needs a manual playtest** to confirm audibly — cannot be verified by
+  ear in this headless sandbox.
+* `GetDeviceCaps(SIZEPALETTE)` (`src/wingdi_misc.cpp`) previously always
+  returned 256 (a hardcoded palette-display placeholder); real Win32 only
+  returns nonzero for an actual <=8bpp hardware-palette device — a modern
+  TrueColor host reports 0. Both games' TrueColor-vs-palette branching
+  logic only agrees when the value is exactly 0; the old 256 forced
+  free-eggbert's true-color decor off and forced planetblupi's minimap
+  onto its untested 8-bit-indexed `CreateBitmap` path instead of the
+  true-color 16-bit path. Fixed to return 0. **Needs a manual visual
+  playtest** of planetblupi's minimap and free-eggbert's true-color
+  rendering.
+* `BITMAPFILEHEADER`/`BITMAPINFOHEADER` (`include/wingdi.h`) lacked
+  `#pragma pack`, so `BITMAPFILEHEADER` was 16 bytes instead of the real,
+  on-disk 14-byte BMP file header size. Both games' `_lopen`/`_lread`
+  palette-fallback path (`ddutil.cpp`, live since `FindResourceA` always
+  misses) reads every real `.bmp` asset's header directly into these
+  structs — every such read was misaligned by 2 bytes, corrupting the
+  palette data read after it. Fixed with `#pragma pack(push, 2)`/`pop`
+  (matching real Win32's own `<wingdi.h>`). **Needs a manual visual
+  playtest** of both games' palette-driven rendering.
+
+Test-only additions (`tests/`), one per completed `plan.md` P0 task —
+see `plan.md` for the full per-task `Status:` lines:
+* `TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba`/`...Rgb565...`
+  (`test_gdi_regressions.cpp`, TASK-0125) — pixel-value correctness for
+  `CreateBitmap`'s conversion paths (previously only object-validity
+  checked).
+* `TestRegisterClassAWithFullFieldSet`,
+  `TestCreateWindowExAFullscreenPath`,
+  `TestClientToScreenTracksWindowPositionNotStale`,
+  `TestSetCursorPosAndGetCursorPosRoundTrip` (`test_winuser_regressions.cpp`,
+  TASK-0027/0028/0055).
+* `tests/test_timer_regressions.cpp` (new file, TASK-0039/0040/0041/
+  0042/0043/0044) — `SetTimer`/`KillTimer`/`WM_TIMER` and `timeSetEvent`/
+  `timeKillEvent`, a cross-thread `PostMessageA` stress test, and the
+  `WM_DESTROY`→kill-timer→`PostQuitMessage` sequence for both timer
+  mechanisms.
+* `tests/test_planetblupi_loop.cpp`, `tests/test_eggbert_loop.cpp` (new
+  files, TASK-0037/0110/0111) — end-to-end reproductions of both games'
+  exact `PeekMessage(PM_NOREMOVE)`→`GetMessage`→`Dispatch` loop idiom.
+* `TestCreateCompatibleDcRepeatedLifecycleDoesNotLeak`,
+  `TestGetDeviceCapsSizePaletteReportsTrueColorHost`,
+  `TestGetSystemPaletteEntriesFills256WellFormedEntries`,
+  `TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions`,
+  `TestSelectObjectDeleteObjectBitmapIntoDcLifecycle`
+  (`test_gdi_regressions.cpp`, TASK-0059/0060/0061/0062/0063/0064).
+* `TestFindResourceAMissesThenLopenLreadLcloseDecodesRealBmpHeader`
+  (`test_file_regressions.cpp`, TASK-0073/0084).
+* `tests/test_mci_sequences.cpp` (new file, TASK-0089/0090/0091/0094/0098)
+  — sequencer open/play/notify/close, the notify-triggered
+  close-then-reopen stress test, cdaudio decline.
+
+Documentation/build-hardening (test-adjacent, no behavior change):
+* `cmake/ExtractStringTable.cmake` now emits a `message(WARNING ...)` for
+  an unsupported `L"..."` wide-string `STRINGTABLE` entry or an embedded
+  escaped double-quote, instead of silently mis-parsing (TASK-0126).
+
+`plan.md` itself was reconciled against actual repository state: every one
+of its 126 tasks now carries a `Status:` line (DONE/PARTIAL/TODO/
+NOT-APPLICABLE, with evidence), verified against real code/tests rather
+than trusting the plan's own prior text.
+
+**Recently implemented / fixed (prior session, real behavior changes):**
 * `LoadStringA` returns real `STRINGTABLE` text for both games instead of a
   `"RES_<id>"` placeholder.
 * `DestroyWindow` now synchronously dispatches `WM_DESTROY` to the window's
@@ -102,8 +193,6 @@ link successfully against the current code (verified this session).
 * Joystick support (`joyGetPosEx`/`joyGetNumDevs`) is a safe stub (reports
   0 devices) — Free Eggbert degrades to keyboard/mouse gracefully; not a
   real implementation.
-* `CreateBitmap`'s 8-bit and 16-bit-to-RGBA32 conversion paths (used by
-  Planet Blupi's minimap) are implemented but have **zero test coverage**.
 * `_findfirst`/`_findnext` (Free Eggbert's design-file picker) remain a
   stub that always fails — a minor, non-startup-blocking feature gap.
 
@@ -140,46 +229,52 @@ In chronological order, most recent last (commit hashes on `develop`):
 
 ## 4. Current blocker / main problem
 
-**There is no blocker preventing further work.** The one open issue is a
-known, environment-specific test failure that has not stopped any of the
-above from being completed or verified:
+**There is no blocker preventing further work, and the previously-documented
+one has been resolved (see below) — it was misdiagnosed, not actually an
+environment limitation.**
 
-* **Symptom:** `basic_test` fails with `MCI_OPEN failed (305): Internal MCI
-  error` inside its `RunMidiCaseFallbackRegression` sub-test.
-* **Failing command:** `ctest --output-on-failure` (or directly:
-  `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/basic_test`).
-* **Failing test:** `basic_test` (specifically the MCI-open-a-real-MIDI-file
-  regression, not the `Sleep`/`GetTickCount` smoke test, which passes).
-* **Affected files/modules:** `src/MidiMusic.cpp`, `src/winmm.cpp` (MCI/MIDI
-  open path); `tests/basic_test.cpp` (the test itself, unmodified this
-  session).
-* **Suspected cause:** SDL3's audio subsystem/SDL3_mixer failing to
-  initialize a real audio device/stream in this sandboxed dev environment,
-  even with `SDL_AUDIODRIVER=dummy` set. This has been consistently
-  reproducible across every build performed this session.
-* **What's been tried / ruled out:** confirmed via `git stash` comparison
-  and diff review that no change made this session touches
-  `MidiMusic.cpp`/`winmm.cpp`'s actual MCI/MIDI-open logic — only an
-  unrelated comment in `winmm.cpp` was edited. The failure is identical
-  with and without an explicit `SDL_AUDIODRIVER` override. **Not yet
-  tried:** running on a machine with real, working audio hardware/drivers;
-  instrumenting SDL3_mixer's dummy-driver audio-stream-open path directly
-  to find the exact failure point.
+* **Previously documented here as:** `basic_test` failing with `MCI_OPEN
+  failed (305): Internal MCI error`, attributed to "SDL3's audio subsystem
+  failing to initialize a real audio device/stream in this sandboxed dev
+  environment."
+* **Actual root cause (found this session):** `src/MidiMusic.cpp`'s
+  `MCI_OPEN` handler had a hardcoded `return MCIERR_INTERNAL` behind a
+  `//todo fix sigsegv` comment — a deliberate kill-switch from commit
+  `a35f476c` ("MIDI was disabled"), unrelated to the sandbox's audio
+  hardware. The real bug it was papering over was a dangling-pointer race
+  in `MixerThread` (see section 2's "Recently completed" for the full
+  explanation) — now fixed, and the kill-switch removed.
+* **Current state:** `basic_test` passes; MIDI music (`MCI_OPEN`/
+  `MCI_PLAY`/`MM_MCINOTIFY`/`MCI_CLOSE`) works end-to-end and is covered by
+  `tests/test_mci_sequences.cpp`, including a stress test reproducing the
+  exact race. Verified stable across 5+ repeated runs and a full
+  AddressSanitizer+UBSan pass (zero errors).
+* **Still needed:** a manual playtest of both games' actual background
+  music, since audio correctness/quality cannot be judged in this headless
+  sandbox (SoundFont is also not present here — "No SoundFont found" is
+  expected in this environment and does not indicate a bug; see
+  `src/MidiMusic.cpp`'s file-level doc comment for the lookup order).
 
 ## 5. Known bugs and limitations
 
-* **Confirmed bug / environment limitation:** `basic_test`'s MCI-open
-  sub-test fails in this sandbox (section 4). Root cause not fully isolated
-  (audio backend, not application logic).
-* **Incomplete:** `CreateBitmap`'s 8-bit and 16-bit-to-RGBA32 conversion
-  paths (`src/wingdi_bitmap.cpp`) have no test coverage. Implementation
-  looks correct by inspection but is unverified.
+* **Needs manual verification (real behavior changes made this session,
+  cannot be judged in this headless sandbox):**
+  * MIDI music playback (section 4) — needs an audible playtest.
+  * `GetDeviceCaps(SIZEPALETTE)` fix (`src/wingdi_misc.cpp`, now returns 0
+    instead of 256) — changes which rendering path both games take
+    (planetblupi's minimap should now use its true-color path instead of
+    the untested 8-bit-indexed placeholder; free-eggbert's true-color
+    decor should no longer be force-disabled). Needs a visual playtest.
+  * `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing fix (`include/wingdi.h`,
+    now `#pragma pack(push, 2)`) — both games' `_lopen`/`_lread` real-BMP
+    palette-fallback path was reading these structs misaligned by 2 bytes
+    before this fix. Needs a visual playtest of palette-driven rendering.
 * **Incomplete / needs verification:** the `WM_MOUSEMOVE` `MK_SHIFT`/
-  `MK_CONTROL` fix (`src/internal/FreeApiMessageQueue.cpp`) cannot be
-  automatically tested in this headless environment — confirmed
-  empirically that `SDL_PushEvent`-injected key events do not update
-  `SDL_GetKeyboardState()`. Needs a real manual playtest of Planet Blupi's
-  shift-drag cell-highlight feature to fully confirm.
+  `MK_CONTROL` fix (`src/internal/FreeApiMessageQueue.cpp`, from a prior
+  session) cannot be automatically tested in this headless environment —
+  confirmed empirically that `SDL_PushEvent`-injected key events do not
+  update `SDL_GetKeyboardState()`. Needs a real manual playtest of Planet
+  Blupi's shift-drag cell-highlight feature to fully confirm.
 * **By design, not a bug:** `LoadStringA`'s generated table holds only one
   game's strings per compiled build (see section 1/2).
 * **By design, not a bug:** MCI digital-video/AVI is permanently declined;
@@ -191,11 +286,10 @@ above from being completed or verified:
   `cmake --build` alone will **not** pick up the change — a full
   `cmake -B <dir>` reconfigure is required. Not currently documented
   anywhere except here.
-* **Suspected risk, unverified:** the `STRINGTABLE` parser in
-  `ExtractStringTable.cmake` assumes no `L"..."` wide-string entries and no
-  embedded escaped double-quotes in either game's `.rc`. Confirmed true for
-  both files as they exist today; would silently mis-parse (or skip) an
-  entry if either file changed to use that syntax, with no warning emitted.
+* **Resolved this session:** the `STRINGTABLE` parser in
+  `ExtractStringTable.cmake` now emits a `message(WARNING ...)` for an
+  unsupported `L"..."` wide-string entry or an embedded escaped
+  double-quote, instead of silently mis-parsing (`TASK-0126`).
 * **Unknown:** whether real joystick support is ever actually wanted for
   Free Eggbert — no evidence of user demand either way; current safe stub
   is sufficient for correctness.
@@ -280,39 +374,58 @@ No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-1. **Add tests for `CreateBitmap`'s 8-bit and 16-bit conversion paths.**
-   Goal: verify known 8-bit-indexed and RGB565 input bytes convert to the
-   expected RGBA32 output (Planet Blupi's minimap rebuild path).
-   Files: `tests/test_gdi_regressions.cpp` (extend), `src/wingdi_bitmap.cpp`
-   (read-only reference).
-   Verify: `cmake --build build --target test_gdi_regressions && ./build/test_gdi_regressions`
+**`plan.md`'s 126-item backlog is now 123 DONE / 1 OBSOLETE / 1 MANUAL / 1
+deliberately-deferred** (every task carries a `Status:` line — see the plan
+file itself for the authoritative per-task record). Essentially nothing
+code- or doc-shaped remains to *implement*; what's left is verification that
+requires a human or real hardware, which cannot be done in this sandbox:
 
-2. **Manually verify the `MK_SHIFT`/`MK_CONTROL` fix in a real playtest.**
-   Goal: confirm Planet Blupi's shift-drag cell-highlight feature actually
-   works now that `WM_MOUSEMOVE` carries live modifier state (cannot be
-   automated in this environment — see section 5).
-   Files: none to change; `src/internal/FreeApiMessageQueue.cpp` is the
-   implementation under test.
-   Verify: launch Planet Blupi, hold Shift while dragging over cells,
-   confirm highlight behavior matches expectations.
+1. **Manually playtest this session's three production behavior changes.**
+   None of these can be verified visually/audibly in this headless sandbox
+   — all are backed by passing automated tests (including ASan) proving
+   the *mechanism* is correct, but only a real playtest confirms the
+   *player-visible result* is right:
+   * MIDI music now plays (was completely disabled by a kill-switch behind
+     a real, now-fixed race condition — see section 4). Launch either game
+     and listen for background music (needs a `.sf2` SoundFont present;
+     see README's SoundFont section).
+   * `GetDeviceCaps(SIZEPALETTE)` now returns 0 instead of 256 — Planet
+     Blupi's minimap should render in real color (16-bit path) instead of
+     greyscale (8-bit placeholder path); free-eggbert's true-color
+     decor/rendering should no longer be force-disabled.
+   * `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing fix — both games'
+     palette-driven rendering (via the `_lopen`/`_lread` fallback) should
+     look correct; previously every such read was misaligned by 2 bytes.
+   Files: none to change unless a playtest finds a real regression.
 
-3. **Add a defensive check/warning to `ExtractStringTable.cmake` for
-   unsupported `STRINGTABLE` syntax.** Goal: emit a `message(WARNING ...)`
-   if a `.rc` file contains `L"..."` wide-string entries or escaped
-   double-quotes within a `STRINGTABLE` block, so a future `.rc` edit
-   doesn't silently lose data.
-   Files: `cmake/ExtractStringTable.cmake`.
-   Verify: `cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON` and confirm the
-   logged string counts are unchanged (257 for planetblupi / 364 for
-   free-eggbert, depending on which is detected).
+2. **Manually verify the `MK_SHIFT`/`MK_CONTROL` fix (TASK-0048/0112) in a
+   real playtest.** Confirm Planet Blupi's shift-drag cell-highlight
+   feature works — cannot be automated here (`SDL_PushEvent`-injected key
+   events don't update `SDL_GetKeyboardState()`).
 
-4. **Add `docs/supported-apis.md`** (plan.md `TASK-0005`): a hand-maintained
-   reference table of every implemented public symbol and its status.
-   Files: `docs/supported-apis.md` (new).
-   Verify: none — documentation only.
+3. **TASK-0102 (MANUAL):** confirm the joystick stub is an acceptable
+   fallback by launching free-eggbert's options/setup screen with a real
+   or virtual gamepad attached.
+
+4. **TASK-0103 (deliberately deferred, optional):** real
+   `joyGetPosEx`/`joyGetNumDevs` via SDL Gamepad/Joystick — only worth
+   doing if a concrete need for real joystick input emerges; not a
+   correctness requirement today.
 
 ## 9. Do not do yet
 
+* Do not reintroduce a MIDI "kill switch" (a hardcoded early-return in
+  `MidiMusicSendCommand`'s `MCI_OPEN` handler) if a crash is ever seen again
+  in this area — the real bug was a dangling-pointer race in `MixerThread`
+  (fixed this session by folding find-and-render into one lock
+  acquisition), not something inherent to `MCI_OPEN` itself. Root-cause any
+  future crash the same way (AddressSanitizer + read the exact lock scopes)
+  rather than disabling the feature.
+* Do not revert the `GetDeviceCaps(SIZEPALETTE)` value (now 0) back to a
+  nonzero placeholder, or the `BITMAPFILEHEADER`/`BITMAPINFOHEADER`
+  `#pragma pack(push, 2)`, without re-reading the analysis in `plan.md`
+  TASK-0060/TASK-0084 first — both were real, evidenced bugs affecting both
+  games' actual rendering paths, not stylistic changes.
 * No general `.rc`/`.res` resource compiler — `ExtractStringTable.cmake`
   must stay narrowly `STRINGTABLE`-only.
 * No real Unicode/`W` API implementations.

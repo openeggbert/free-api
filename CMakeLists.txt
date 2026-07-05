@@ -234,6 +234,11 @@ if(FREE_API_BUILD_TESTS)
     target_link_libraries(basic_test PRIVATE free-api SDL3::SDL3)
     add_test(NAME basic_test COMMAND basic_test)
 
+    # TASK-0016: fresh-clone smoke check preventing a regression of the
+    # hardcoded-absolute-path bug TASK-0011 fixed.
+    add_test(NAME check_no_hardcoded_paths
+             COMMAND ${CMAKE_COMMAND} -P "${CMAKE_SOURCE_DIR}/cmake/CheckNoHardcodedPaths.cmake")
+
     add_executable(test_input_pipeline tests/test_input_pipeline.cpp)
     set_target_properties(test_input_pipeline PROPERTIES
             CXX_STANDARD 20
@@ -270,6 +275,15 @@ if(FREE_API_BUILD_TESTS)
     target_link_libraries(test_file_regressions PRIVATE free-api)
     add_test(NAME test_file_regressions COMMAND test_file_regressions)
 
+    add_executable(test_file_paths tests/test_file_paths.cpp)
+    set_target_properties(test_file_paths PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_file_paths PRIVATE free-api)
+    add_test(NAME test_file_paths COMMAND test_file_paths)
+
     add_executable(test_loadstring_regressions tests/test_loadstring_regressions.cpp)
     set_target_properties(test_loadstring_regressions PROPERTIES
             CXX_STANDARD 20
@@ -278,6 +292,15 @@ if(FREE_API_BUILD_TESTS)
     )
     target_link_libraries(test_loadstring_regressions PRIVATE free-api)
     add_test(NAME test_loadstring_regressions COMMAND test_loadstring_regressions)
+
+    add_executable(test_resources tests/test_resources.cpp)
+    set_target_properties(test_resources PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_resources PRIVATE free-api)
+    add_test(NAME test_resources COMMAND test_resources)
 
     add_executable(test_mci_avivideo_regressions tests/test_mci_avivideo_regressions.cpp)
     set_target_properties(test_mci_avivideo_regressions PROPERTIES
@@ -296,6 +319,42 @@ if(FREE_API_BUILD_TESTS)
     )
     target_link_libraries(test_gdi_regressions PRIVATE free-api)
     add_test(NAME test_gdi_regressions COMMAND test_gdi_regressions)
+
+    add_executable(test_timer_regressions tests/test_timer_regressions.cpp)
+    set_target_properties(test_timer_regressions PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_timer_regressions PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_timer_regressions COMMAND test_timer_regressions)
+
+    add_executable(test_planetblupi_loop tests/test_planetblupi_loop.cpp)
+    set_target_properties(test_planetblupi_loop PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_planetblupi_loop PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_planetblupi_loop COMMAND test_planetblupi_loop)
+
+    add_executable(test_eggbert_loop tests/test_eggbert_loop.cpp)
+    set_target_properties(test_eggbert_loop PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_eggbert_loop PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_eggbert_loop COMMAND test_eggbert_loop)
+
+    add_executable(test_mci_sequences tests/test_mci_sequences.cpp)
+    set_target_properties(test_mci_sequences PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_mci_sequences PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_mci_sequences COMMAND test_mci_sequences)
 
     if(NOT WIN32)
         add_executable(test_timeb tests/test_timeb.cpp)

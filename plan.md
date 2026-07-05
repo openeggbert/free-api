@@ -384,12 +384,15 @@ APIs/areas currently present in `free-api` but not proven required by real targe
 
 ## 7. Task List
 
-Numbering is sequential across all milestones (`TASK-0001`…`TASK-0124`). Every task cites real evidence from §3/§4/§5 or is explicit scope-control cleanup.
+Numbering is sequential across all milestones (`TASK-0001`…`TASK-0124`), plus supplemental tasks `TASK-0125`/`TASK-0126` appended after the initial audit (sourced from gaps found while reconciling this list against `NEXT.md`). Every task cites real evidence from §3/§4/§5 or is explicit scope-control cleanup.
+
+Each task carries a `Status:` line once verified against the actual repository state: `DONE` (with the file/test that proves it), `PARTIAL` (some Required work missing), `TODO` (not started), or `NOT-APPLICABLE`/`OBSOLETE` (superseded, with reason). A task with no `Status:` line has not yet been re-verified against current code since this plan was written — treat it as unknown, not as done or not done.
 
 ### Milestone A — Scope & Governance
 
 ### TASK-0001: Document the "cite a usage site" rule for all future API additions
 
+Status: DONE — Rule stated in Documentation.md:8-9 and docs/scope.md.
 Priority: P0
 Area: Scope
 Type: Documentation
@@ -413,6 +416,7 @@ Out of scope:
 
 ### TASK-0002: Add `docs/scope.md`
 
+Status: DONE — docs/scope.md exists, covers purpose + hard scope rules.
 Priority: P0
 Area: Scope
 Type: Documentation
@@ -434,6 +438,7 @@ Out of scope:
 
 ### TASK-0003: Add `docs/target-games.md`
 
+Status: DONE — docs/target-games.md exists, matches required content.
 Priority: P0
 Area: Scope
 Type: Documentation
@@ -455,6 +460,7 @@ Out of scope:
 
 ### TASK-0004: Add `docs/out-of-scope.md`
 
+Status: DONE — docs/out-of-scope.md exists (references plan.md §5 by design).
 Priority: P0
 Area: Scope
 Type: Documentation
@@ -476,6 +482,7 @@ Out of scope:
 
 ### TASK-0005: Add a supported-APIs table doc generated manually from the audit
 
+Status: DONE — `docs/supported-apis.md` created (current status per symbol, updated to reflect this session's fixes, not a stale copy); referenced from `Documentation.md`.
 Priority: P1
 Area: Scope
 Type: Documentation
@@ -497,6 +504,7 @@ Out of scope:
 
 ### TASK-0006: Add a table of compile-only stubs
 
+Status: DONE — `docs/out-of-scope.md` "Compile-only stubs" section added, including the historical-note callout that AdjustWindowRect/ShowCursor/SetCursor/LoadStringA were once flagged "not actually safe" and have since been fixed, and that `_findfirst`/`_findnext`/`_findclose` remain a real (not safe-by-design) gap.
 Priority: P1
 Area: Scope
 Type: Documentation
@@ -519,6 +527,7 @@ Out of scope:
 
 ### TASK-0007: Add a table of unsupported APIs
 
+Status: DONE — "Unsupported APIs" table added to `docs/out-of-scope.md`.
 Priority: P2
 Area: Scope
 Type: Documentation
@@ -540,6 +549,7 @@ Out of scope:
 
 ### TASK-0008: Add a policy statement that generic WinAPI expansion is forbidden
 
+Status: DONE — docs/scope.md "The rule" section states this policy.
 Priority: P0
 Area: Scope
 Type: Documentation
@@ -561,6 +571,7 @@ Out of scope:
 
 ### TASK-0009: Add a policy that APIs may be removed or hidden if unused by target games
 
+Status: DONE — Removal/hiding policy paragraph added to `docs/out-of-scope.md`.
 Priority: P1
 Area: Scope
 Type: Documentation
@@ -582,6 +593,7 @@ Out of scope:
 
 ### TASK-0010: Add a review checklist for future pull requests
 
+Status: DONE — `docs/pr-checklist.md` created, covers all four required questions plus scope-boundary reminders.
 Priority: P1
 Area: Scope
 Type: Documentation
@@ -605,6 +617,7 @@ Out of scope:
 
 ### TASK-0011: Remove hardcoded absolute local path from CMakeLists.txt
 
+Status: DONE — No hardcoded absolute path remains in CMakeLists.txt.
 Priority: P0
 Area: Build
 Type: Bugfix
@@ -630,6 +643,7 @@ Out of scope:
 
 ### TASK-0012: Add a `FREE_API_USE_SYSTEM_SDL3` CMake option
 
+Status: DONE — FREE_API_USE_SYSTEM_SDL3 option in CMakeLists.txt:23-31.
 Priority: P1
 Area: Build
 Type: Implementation
@@ -653,6 +667,7 @@ Out of scope:
 
 ### TASK-0013: Support parent-project-provided SDL3 targets explicitly
 
+Status: DONE — Parent-provided SDL3 target guards at CMakeLists.txt:27,33; documented.
 Priority: P1
 Area: Build
 Type: Implementation
@@ -675,6 +690,7 @@ Out of scope:
 
 ### TASK-0014: Add and document clear CMake build-mode options
 
+Status: DONE — docs/cmake-options.md covers build modes (different filename than spec).
 Priority: P1
 Area: Build
 Type: Documentation
@@ -696,6 +712,7 @@ Out of scope:
 
 ### TASK-0015: Document the existing `FREE_API_BUILD_TESTS` toggle
 
+Status: DONE — FREE_API_BUILD_TESTS documented in cmake-options.md "Tests" section.
 Priority: P2
 Area: Build
 Type: Documentation
@@ -717,6 +734,7 @@ Out of scope:
 
 ### TASK-0016: Add a "fresh clone" smoke check to prevent regressions like TASK-0011
 
+Status: DONE — `cmake/CheckNoHardcodedPaths.cmake` (new), registered as the `check_no_hardcoded_paths` CTest test. Verified it fails on a deliberately reintroduced `/home/...` path and passes on the current, fixed `CMakeLists.txt`.
 Priority: P1
 Area: Build
 Type: Test
@@ -739,6 +757,7 @@ Out of scope:
 
 ### TASK-0017: Audit and document why each vendored `external/` library is needed
 
+Status: DONE — README "Vendored libraries" section covers this.
 Priority: P2
 Area: Build
 Type: Documentation
@@ -760,6 +779,7 @@ Out of scope:
 
 ### TASK-0018: Document all supported build modes in README.md
 
+Status: DONE — `README.md`'s Build Instructions section now links to `docs/cmake-options.md`.
 Priority: P2
 Area: Build
 Type: Documentation
@@ -783,6 +803,7 @@ Out of scope:
 
 ### TASK-0019: Formalize the header-vs-usage audit as a living document
 
+Status: DONE — `docs/headers.md` created, copies plan.md §3.1's header table with a re-verify note.
 Priority: P1
 Area: Headers
 Type: Audit
@@ -804,6 +825,7 @@ Out of scope:
 
 ### TASK-0020: Mark unused public declarations out-of-scope in header comments
 
+Status: DONE — All three header comments updated (`include/commdlg.h`, `include/windowsx.h`, `include/wtypes.h`) with explicit "proven unused by both target games" language, citing exact file:line evidence.
 Priority: P1
 Area: Headers
 Type: Documentation
@@ -826,6 +848,7 @@ Out of scope:
 
 ### TASK-0021: Hide unused `JOYINFOEX` fields' significance behind documentation, not new macros
 
+Status: DONE — Doc-comment added to `JOYINFOEX` in `include/mmsystem.h` listing the exact 5 fields free-eggbert reads.
 Priority: P2
 Area: Headers
 Type: Documentation
@@ -847,6 +870,7 @@ Out of scope:
 
 ### TASK-0022: Clarify the A/W alias policy in winuser.h
 
+Status: DONE — Doc-comment added above the `#ifdef UNICODE` block in `include/winuser.h`.
 Priority: P1
 Area: Headers
 Type: Documentation
@@ -868,6 +892,7 @@ Out of scope:
 
 ### TASK-0023: Add an explicit policy against implementing real Unicode/W-variant behavior
 
+Status: DONE — Unicode/`W`-suffixed policy section added to `docs/out-of-scope.md`.
 Priority: P1
 Area: Headers
 Type: Documentation
@@ -889,6 +914,7 @@ Out of scope:
 
 ### TASK-0024: Add compile smoke tests for the exact headers both games include
 
+Status: DONE — tests/test_header_compile.cpp exists, registered in CTest.
 Priority: P0
 Area: Tests
 Type: Test
@@ -912,6 +938,7 @@ Out of scope:
 
 ### TASK-0025: Audit and document intentional macro definitions to avoid pollution
 
+Status: DONE — `include/windows.h`'s `fopen` wrapper and `include/rpcndr.h`'s `byte` alias both now explicitly framed as deliberate, narrowly-scoped exceptions.
 Priority: P2
 Area: Headers
 Type: Documentation
@@ -933,6 +960,7 @@ Out of scope:
 
 ### TASK-0026: Add a static/compile-time check that public headers never leak SDL types
 
+Status: DONE — `tests/test_header_compile.cpp` already links only `freeapi_compat_headers` (no SDL3/`external/` include path); doc-comment added making explicit that its successful compile IS the proof of no SDL leak, checked every `ctest` run.
 Priority: P2
 Area: Headers
 Type: Test
@@ -956,6 +984,7 @@ Out of scope:
 
 ### TASK-0027: Verify `RegisterClassA` against both games' exact `WNDCLASSA` field usage
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestRegisterClassAWithFullFieldSet`) registers all 10 fields and creates a window against the class; `ctest` passes.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -978,6 +1007,7 @@ Out of scope:
 
 ### TASK-0028: Verify `CreateWindowExA` fullscreen path matches both games' exact call shape
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestCreateWindowExAFullscreenPath`); `ctest` passes.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -999,6 +1029,7 @@ Out of scope:
 
 ### TASK-0029: Verify `CreateWindowA` windowed path matches both games' exact call shape
 
+Status: DONE — test_winuser_regressions.cpp:80-93 covers the windowed path.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -1020,6 +1051,7 @@ Out of scope:
 
 ### TASK-0030: Investigate current `AdjustWindowRect` STUB against both games' live windowed-mode requirement
 
+Status: DONE — src/winuser_misc.cpp:74 comment + NEXT.md document the investigation.
 Priority: P0
 Area: WinUser
 Type: Audit
@@ -1042,6 +1074,7 @@ Out of scope:
 
 ### TASK-0031: Implement real `AdjustWindowRect` behavior for the windowed-mode case
 
+Status: OBSOLETE — Contradicted by TASK-0030's finding; NEXT.md explicitly forbids "fixing" this.
 Priority: P1
 Area: WinUser
 Type: Implementation
@@ -1065,6 +1098,7 @@ Out of scope:
 
 ### TASK-0032: Verify `ShowWindow`/`UpdateWindow`/`SetFocus` startup sequence
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestShowWindowUpdateWindowSetFocusSequence`); `ctest` passes.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -1086,6 +1120,7 @@ Out of scope:
 
 ### TASK-0033: Verify `DestroyWindow` fatal-init-failure path doesn't crash
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestDestroyWindowFatalInitFailurePathDoesNotCrash`, 500-iteration create-then-immediately-destroy cycle); `ctest` passes.
 Priority: P2
 Area: WinUser
 Type: Test
@@ -1107,6 +1142,7 @@ Out of scope:
 
 ### TASK-0034: Verify `WM_CREATE` delivers `CREATESTRUCT.hInstance` correctly
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestWmCreateDeliversCorrectHInstance`); `ctest` passes.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -1128,6 +1164,7 @@ Out of scope:
 
 ### TASK-0035: Verify `WM_DESTROY` → timer-kill → teardown → `PostQuitMessage` sequence
 
+Status: DONE — `tests/test_timer_regressions.cpp` (`TestWmDestroyKillsSetTimerThenPostsQuit`, `TestWmDestroyKillsTimeSetEventThenPostsQuit`), both timer mechanisms; `ctest` passes, stable across 5 runs.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -1149,6 +1186,7 @@ Out of scope:
 
 ### TASK-0036: Add a regression test locking in `DefWindowProcA`'s `WM_CLOSE` default behavior
 
+Status: DONE — TestDefWindowProcHandlesWmClose covers default WM_CLOSE behavior.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -1170,6 +1208,7 @@ Out of scope:
 
 ### TASK-0037: Add a message-loop test mimicking both games' exact loop shape
 
+Status: DONE — `tests/test_planetblupi_loop.cpp` and `tests/test_eggbert_loop.cpp` reproduce the exact idiom end-to-end (including mixed real+posted message ordering); `ctest` passes, stable across 5 runs.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -1191,6 +1230,7 @@ Out of scope:
 
 ### TASK-0038: Verify `WaitMessage` does not busy-spin when idle
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestWaitMessageDoesNotBusySpin`, wall-clock iteration-count bound plus a cross-thread post-then-observe check); `ctest` passes, stable across 5 runs.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -1212,6 +1252,7 @@ Out of scope:
 
 ### TASK-0039: Add a stress test for cross-thread `PostMessageA` safety
 
+Status: DONE — `tests/test_timer_regressions.cpp` (`TestCrossThreadPostMessageAStressTest`, real `timeSetEvent` background thread vs. main-thread `PeekMessageA` drain, 300 messages, verified stable across 5 runs); `ctest` passes.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -1233,6 +1274,7 @@ Out of scope:
 
 ### TASK-0040: Apply and verify the P0 message-queue-mutex-during-sleep fix from the performance TODO
 
+Status: DONE — Fix already applied (`src/winuser_message.cpp` `PeekMessageA` releases the mutex before `SDL_Delay`); now verified by TASK-0039's stress test.
 Priority: P0
 Area: WinUser
 Type: Bugfix
@@ -1259,6 +1301,7 @@ Out of scope:
 
 ### TASK-0041: Add a regression test for `SetTimer`/`KillTimer`/`WM_TIMER` matching planetblupi's exact tick pattern
 
+Status: DONE — `tests/test_timer_regressions.cpp` (`TestSetTimerFiresWmTimerAtApproximateInterval`); `ctest` passes.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -1280,6 +1323,7 @@ Out of scope:
 
 ### TASK-0042: Verify `KillTimer` actually stops further `WM_TIMER` delivery
 
+Status: DONE — `tests/test_timer_regressions.cpp` (`TestKillTimerStopsWmTimerDelivery`); `ctest` passes.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -1301,6 +1345,7 @@ Out of scope:
 
 ### TASK-0043: Add a regression test for `timeSetEvent`/`timeKillEvent` matching free-eggbert's exact tick pattern
 
+Status: DONE — `tests/test_timer_regressions.cpp` (`TestTimeSetEventFiresCallbackAtApproximateInterval`); `ctest` passes.
 Priority: P0
 Area: WinMM
 Type: Test
@@ -1322,6 +1367,7 @@ Out of scope:
 
 ### TASK-0044: Verify `timeKillEvent` actually stops the periodic callback
 
+Status: DONE — `tests/test_timer_regressions.cpp` (`TestTimeKillEventStopsCallback`); `ctest` passes.
 Priority: P1
 Area: WinMM
 Type: Test
@@ -1343,6 +1389,7 @@ Out of scope:
 
 ### TASK-0045: Document the two distinct, game-specific live timer mechanisms
 
+Status: DONE — docs/target-games.md + NEXT.md document both timer mechanisms.
 Priority: P1
 Area: Docs
 Type: Documentation
@@ -1364,6 +1411,7 @@ Out of scope:
 
 ### TASK-0046: Gate `SetTimer`'s unconditional per-call `SDL_Log`
 
+Status: DONE — src/winuser_timer.cpp:29,46 gates SetTimer's SDL_Log.
 Priority: P2
 Area: Logging
 Type: Bugfix
@@ -1388,6 +1436,7 @@ Out of scope:
 
 ### TASK-0047: Add a regression test locking in `WM_MOUSEMOVE`'s bit-exact lParam packing
 
+Status: DONE — `tests/test_input_pipeline.cpp` extended with (0,0), near-0xFFFF, and negative-as-unsigned boundary cases; `ctest` passes.
 Priority: P0
 Area: WinUser
 Type: Test
@@ -1409,6 +1458,7 @@ Out of scope:
 
 ### TASK-0048: Add a regression test for `MK_*` mouse-button-state flags
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestMouseMoveLParamPackingAndModifierFlags` extended with an MK_RBUTTON drag case). MK_SHIFT/MK_CONTROL remain confirmed-not-automatable in this headless environment (SDL_PushEvent doesn't update SDL_GetKeyboardState()); MK_LBUTTON/MK_RBUTTON (the testable subset) now both covered.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -1430,6 +1480,7 @@ Out of scope:
 
 ### TASK-0049: Extend `test_input_pipeline.cpp` with `WM_SYSKEYDOWN`+`VK_F10` regression coverage
 
+Status: DONE — `tests/test_input_pipeline.cpp` (F10 delivered as WM_SYSKEYDOWN/WM_SYSKEYUP with wParam==VK_F10, and confirmed NOT also delivered as WM_KEYDOWN); `ctest` passes.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -1452,6 +1503,7 @@ Out of scope:
 
 ### TASK-0050: Add regression coverage for the full VK_* set both games test
 
+Status: DONE — `tests/test_input_pipeline.cpp` extended with F1-F9/F11/F12, RETURN, SHIFT, CONTROL, PAUSE, LEFT/RIGHT/UP/DOWN, HOME, END (SPACE/ESCAPE were already covered); full §3.4 set now covered (F10 covered separately via TASK-0049's WM_SYSKEYDOWN test).
 Priority: P1
 Area: WinUser
 Type: Test
@@ -1473,6 +1525,7 @@ Out of scope:
 
 ### TASK-0051: Investigate current `ShowCursor`/`SetCursor` STUB against both games' live cursor-visibility requirement
 
+Status: DONE — ShowCursor/SetCursor STUB investigated and fixed (commit fa6616a).
 Priority: P0
 Area: WinUser
 Type: Audit
@@ -1495,6 +1548,7 @@ Out of scope:
 
 ### TASK-0052: Implement real `ShowCursor` via SDL cursor visibility
 
+Status: DONE — src/winuser_cursor.cpp implements real, SDL-backed ShowCursor.
 Priority: P1
 Area: WinUser
 Type: Implementation
@@ -1517,6 +1571,7 @@ Out of scope:
 
 ### TASK-0053: Implement minimal real `SetCursor` behavior
 
+Status: DONE — Same commit implements real SetCursor.
 Priority: P1
 Area: WinUser
 Type: Implementation
@@ -1539,6 +1594,7 @@ Out of scope:
 
 ### TASK-0054: Add a regression test for `ShowCursor`/`SetCursor` visibility toggling
 
+Status: DONE — TestShowCursorHidesAndShowsRealCursor, TestSetCursorReturnsPreviousHandle.
 Priority: P1
 Area: Tests
 Type: Test
@@ -1560,6 +1616,7 @@ Out of scope:
 
 ### TASK-0055: Verify `GetCursorPos`/`ScreenToClient`/`ClientToScreen`/`SetCursorPos` hot-path correctness
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestClientToScreenTracksWindowPositionNotStale` incl. perf sanity bound, `TestSetCursorPosAndGetCursorPosRoundTrip`); `ctest` passes. SetCursorPos/GetCursorPos round-trip is only asserted when the sandbox's SDL dummy driver supports the warp (it doesn't, so that specific check SKIPs — GetCursorPos's return type/behavior is still verified).
 Priority: P0
 Area: WinUser
 Type: Test
@@ -1582,6 +1639,7 @@ Out of scope:
 
 ### TASK-0056: Verify `LoadCursorA`/`LoadIconA` return non-null handles for all names both games use
 
+Status: DONE — `tests/test_winuser_regressions.cpp` (`TestLoadCursorAAndLoadIconAReturnNonNullForAllRealNames`), covering all 14 real cursor names (union of both games) plus the one real icon name.
 Priority: P2
 Area: Resources
 Type: Test
@@ -1603,6 +1661,7 @@ Out of scope:
 
 ### TASK-0057: Verify `MK_*`/VK_* input pipeline performance under sustained input (no per-event allocation regressions)
 
+Status: DONE — `tests/test_input_pipeline.cpp` extended with a 2000-event sustained mouse/keyboard stress test, bounded memory (per-iteration `g_received.clear()`) and time (< 5s, actual ~11ms); `ctest` passes.
 Priority: P2
 Area: WinUser
 Type: Test
@@ -1624,6 +1683,7 @@ Out of scope:
 
 ### TASK-0058: Document that `GetAsyncKeyState`/`GetKeyState` are confirmed unneeded
 
+Status: DONE — Entry added to `docs/out-of-scope.md`'s "Unsupported APIs" table.
 Priority: P3
 Area: Docs
 Type: Documentation
@@ -1647,6 +1707,7 @@ Out of scope:
 
 ### TASK-0059: Verify `CreateCompatibleDC`/`DeleteDC` throwaway-DC lifecycle
 
+Status: DONE — `tests/test_gdi_regressions.cpp` (`TestCreateCompatibleDcRepeatedLifecycleDoesNotLeak`, 5000-iteration cycle verified against the internal live-DC diagnostic counter); `ctest` passes.
 Priority: P0
 Area: GDI
 Type: Test
@@ -1668,6 +1729,7 @@ Out of scope:
 
 ### TASK-0060: Verify `GetDeviceCaps(SIZEPALETTE)` plausible-value contract
 
+Status: DONE — **Found and fixed a real bug while writing this test.** `GetDeviceCaps(SIZEPALETTE)` previously always returned 256 (`src/wingdi_misc.cpp`), which is real Win32's actual-hardware-palette (<=8bpp) value, not the TrueColor-host value (0). Both games' branching logic only agrees when the value is exactly 0 (free-eggbert pixmap.cpp:146 vs. pixmap.cpp:428/planetblupi pixmap.cpp:287 disagree for any other nonzero value — analyzed in the new test's comment). The old 256 forced free-eggbert's true-color decor off and forced planetblupi's minimap onto its untested 8-bit-indexed `CreateBitmap` path (TASK-0125) instead of the true-color 16-bit path. Fixed to return 0; regression test `tests/test_gdi_regressions.cpp` (`TestGetDeviceCapsSizePaletteReportsTrueColorHost`) locks this in; `ctest` passes. **Needs a manual visual playtest** of planetblupi's minimap and free-eggbert's true-color rendering to confirm the corrected path looks right (cannot be verified visually in this headless sandbox).
 Priority: P0
 Area: GDI
 Type: Test
@@ -1689,6 +1751,7 @@ Out of scope:
 
 ### TASK-0061: Verify `GetSystemPaletteEntries` fills a plausible 256-entry table
 
+Status: DONE — `tests/test_gdi_regressions.cpp` (`TestGetSystemPaletteEntriesFills256WellFormedEntries`); `ctest` passes.
 Priority: P1
 Area: GDI
 Type: Test
@@ -1710,6 +1773,7 @@ Out of scope:
 
 ### TASK-0062: Verify `LoadImageA` extension-agnostic BMP decoding
 
+Status: DONE — `tests/test_gdi_regressions.cpp` (`TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions`, using an in-memory-generated BMP fixture saved with a `.blp` extension); `ctest` passes.
 Priority: P0
 Area: GDI
 Type: Test
@@ -1731,6 +1795,7 @@ Out of scope:
 
 ### TASK-0063: Verify `GetObjectA` returns correct `bmWidth`/`bmHeight` for loaded bitmaps
 
+Status: DONE — same test as TASK-0062 (`TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions`) also asserts `GetObjectA`'s `bmWidth`/`bmHeight` match the known fixture dimensions; `ctest` passes.
 Priority: P0
 Area: GDI
 Type: Test
@@ -1752,6 +1817,7 @@ Out of scope:
 
 ### TASK-0064: Verify `SelectObject`/`DeleteObject` bitmap-into-DC lifecycle
 
+Status: DONE — `tests/test_gdi_regressions.cpp` (`TestSelectObjectDeleteObjectBitmapIntoDcLifecycle`, reproducing `DDCopyBitmap`'s exact create->select->blit->delete sequence across 500 iterations); `ctest` passes.
 Priority: P0
 Area: GDI
 Type: Test
@@ -1773,6 +1839,7 @@ Out of scope:
 
 ### TASK-0065: Verify and optimize `StretchBlt` per the performance TODO's P0 items
 
+Status: DONE — StretchBlt already implemented and locked in by test_gdi_regressions.cpp.
 Priority: P0
 Area: GDI
 Type: Bugfix
@@ -1798,6 +1865,7 @@ Out of scope:
 
 ### TASK-0066: Verify `GetPixel`/`SetPixel` consistency with free-direct's `Lock()`-exposed backing memory
 
+Status: DONE — TestGetSetPixelRoundTripOnSurfaceDc verifies the shared-memory Surface-DC path.
 Priority: P0
 Area: GDI
 Type: Bugfix
@@ -1820,6 +1888,7 @@ Out of scope:
 
 ### TASK-0067: Verify `CreateBitmap` raw-pixel-buffer path for planetblupi's minimap
 
+Status: DONE — test_gdi_regressions.cpp covers the raw-buffer path (extended by TASK-0125).
 Priority: P1
 Area: GDI
 Type: Test
@@ -1841,6 +1910,7 @@ Out of scope:
 
 ### TASK-0068: Add fixture-based GDI regression tests per the performance TODO's test list
 
+Status: DONE — `tests/test_gdi_regressions.cpp` (`TestStretchBlt1to1OutOfRangeSourceRectClipsSafely`, covering negative source origin and source-rect-past-bitmap-edge); the rest of the list (1:1 exact copy, clip safety, scaled nearest-neighbor, GetPixel/SetPixel vs Lock, PeekMessageA mutex, timeSetEvent-while-idle) was already covered. `ctest` passes.
 Priority: P1
 Area: Tests
 Type: Test
@@ -1862,6 +1932,7 @@ Out of scope:
 
 ### TASK-0069: Gate hot-path GDI logging behind `FREE_API_DEBUG_GDI`
 
+Status: DONE — FreeApiGdiDebugEnabled() gates hot-path GDI logging in src/wingdi_blit.cpp.
 Priority: P1
 Area: Logging
 Type: Bugfix
@@ -1885,6 +1956,7 @@ Out of scope:
 
 ### TASK-0070: Document the GDI subset's exact boundary with free-direct
 
+Status: DONE — "Boundary with free-direct" section added to `docs/scope.md` with the concrete `StretchBlt` vs. `IDirectDrawSurface::Blt` example.
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -1908,6 +1980,7 @@ Out of scope:
 
 ### TASK-0071: Document the current, real, safe-fallback behavior of the resource subsystem
 
+Status: DONE — "Resource subsystem: FindResourceA miss → file-based fallback" section added to `docs/out-of-scope.md`, with file:line citations for both games' palette and sprite-sheet fallback chains.
 Priority: P1
 Area: Resources
 Type: Documentation
@@ -1929,6 +2002,7 @@ Out of scope:
 
 ### TASK-0072: Decide and document the future of `todo/Embedded_Resources_FreeAPI.md`
 
+Status: DONE — Decision note (DEFERRED) added atop `todo/Embedded_Resources_FreeAPI.md`.
 Priority: P1
 Area: Resources
 Type: Documentation
@@ -1950,6 +2024,7 @@ Out of scope:
 
 ### TASK-0073: Add a regression test for `FindResourceA` miss → `_lopen` fallback path
 
+Status: DONE — `tests/test_file_regressions.cpp` (`TestFindResourceAMissesThenLopenLreadLcloseDecodesRealBmpHeader`); `ctest` passes.
 Priority: P0
 Area: Resources
 Type: Test
@@ -1971,6 +2046,7 @@ Out of scope:
 
 ### TASK-0074: Investigate current `LoadStringA` STUB against both games' load-bearing text requirement
 
+Status: DONE — LoadStringA STUB investigated and fixed (commit b8b6667).
 Priority: P0
 Area: Resources
 Type: Audit
@@ -1993,6 +2069,7 @@ Out of scope:
 
 ### TASK-0075: Implement a minimal real `LoadStringA` backing store
 
+Status: DONE — cmake/ExtractStringTable.cmake + FreeApiStringTable implement the real backing store.
 Priority: P1
 Area: Resources
 Type: Implementation
@@ -2018,6 +2095,7 @@ Out of scope:
 
 ### TASK-0076: Confirm `LoadIconA`/`LoadCursorA` STUB remains sufficient after `LoadStringA` work
 
+Status: DONE — Confirmation note added to `docs/out-of-scope.md`'s "Resources policy" section.
 Priority: P2
 Area: Resources
 Type: Test
@@ -2039,6 +2117,7 @@ Out of scope:
 
 ### TASK-0077: Confirm the `wave.cpp`-style embedded-`"WAVE"`-resource path remains dead/unreached
 
+Status: DONE — Confirmed via grep (free-eggbert's `LoadWave` has zero call sites; planetblupi's `WAVE_LoadResource` always misses `FindResource`), note added to `docs/out-of-scope.md`'s "Resources policy" section.
 Priority: P2
 Area: Resources
 Type: Audit
@@ -2060,6 +2139,7 @@ Out of scope:
 
 ### TASK-0078: Add resource-subset regression tests
 
+Status: DONE — `tests/test_resources.cpp` (new file) consolidates both contracts (FindResourceA always misses; LoadStringA falls back correctly), registered in CTest, passes.
 Priority: P1
 Area: Tests
 Type: Test
@@ -2081,6 +2161,7 @@ Out of scope:
 
 ### TASK-0079: Document the resource policy in `docs/out-of-scope.md`
 
+Status: DONE — "Resources policy (summary)" section added to `docs/out-of-scope.md`.
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -2102,6 +2183,7 @@ Out of scope:
 
 ### TASK-0080: Cross-check minimal `LoadStringA` scope with both games' maintainers/TODO files
 
+Status: DONE — Cross-checked (no dedicated TODO.md in either game's tree; no evidence of essential-vs-rare string distinctions); note added to `docs/out-of-scope.md`'s "Resources policy" section.
 Priority: P2
 Area: Resources
 Type: Audit
@@ -2125,6 +2207,7 @@ Out of scope:
 
 ### TASK-0081: Verify the `fopen` wrapper handles planetblupi's inconsistent path separators
 
+Status: DONE — TestBackslashAndForwardSlashPathsBothResolve covers mixed-separator paths.
 Priority: P0
 Area: Files
 Type: Test
@@ -2146,6 +2229,7 @@ Out of scope:
 
 ### TASK-0082: Verify the fopen wrapper's case-insensitive fallback against real game asset names
 
+Status: DONE — `tests/test_file_paths.cpp` (`TestFopenCaseInsensitiveFallbackForPlainAssetFile`); `ctest` passes.
 Priority: P1
 Area: Files
 Type: Test
@@ -2168,6 +2252,7 @@ Out of scope:
 
 ### TASK-0083: Verify `CreateDirectoryA` real directory-creation for planetblupi's save-path bootstrap
 
+Status: DONE — TestCreateDirectoryACreatesRealDirectory.
 Priority: P0
 Area: Files
 Type: Test
@@ -2189,6 +2274,7 @@ Out of scope:
 
 ### TASK-0084: Verify `_lopen`/`_lread`/`_lclose` legacy file I/O against real BMP palette data
 
+Status: DONE — **Found and fixed a real bug while writing this test.** `include/wingdi.h`'s `BITMAPFILEHEADER` lacked `#pragma pack`, so it was 16 bytes in this codebase instead of the real, on-disk 14-byte BMP file header size (confirmed via `offsetof`: `bfSize` at byte 4 instead of 2, `bfOffBits` at byte 12 instead of 10). Since `FindResourceA` always misses, both games' `_lopen`/`_lread` palette-fallback path (`ddutil.cpp`) reads every real `.bmp` asset's header directly into this struct — meaning every such read was misaligned by 2 bytes, corrupting the subsequently-read `BITMAPINFOHEADER` and palette data. Fixed with `#pragma pack(push, 2)`/`pop` around both structs (matching real Win32's own `<wingdi.h>`); `tests/test_file_regressions.cpp` (`TestFindResourceAMissesThenLopenLreadLcloseDecodesRealBmpHeader`) builds a byte-exact real-format BMP fixture (not via writing the structs directly, which would have masked the bug) and verifies correct decoding; `ctest` passes. **Needs a manual visual playtest** of both games' palette-driven rendering to confirm (cannot be verified visually in this headless sandbox).
 Priority: P0
 Area: Files
 Type: Test
@@ -2210,6 +2296,7 @@ Out of scope:
 
 ### TASK-0085: Investigate free-eggbert's `_findfirst`/`_findnext`/`_findclose` STUB against its live design-file-picker requirement
 
+Status: DONE — _findfirst STUB investigated; NEXT.md documents the finding.
 Priority: P2
 Area: Files
 Type: Audit
@@ -2231,6 +2318,7 @@ Out of scope:
 
 ### TASK-0086: Implement minimal real `_findfirst`/`_findnext`/`_findclose`
 
+Status: DONE — Real `std::filesystem`-backed implementation in `src/crt_io.cpp`, scoped to a directory + simple `*.ext` wildcard; `tests/test_file_paths.cpp` (`TestFindFirstFindNextEnumerateRealMatchingFiles`) verifies real enumeration; `ctest` passes.
 Priority: P2
 Area: Files
 Type: Implementation
@@ -2253,6 +2341,7 @@ Out of scope:
 
 ### TASK-0087: Verify `_mkdir` real directory-creation for free-eggbert's `"\User"` bootstrap
 
+Status: DONE — TestMkdirCreatesRealDirectory, TestMkdirWithBackslashPath.
 Priority: P1
 Area: Files
 Type: Test
@@ -2274,6 +2363,7 @@ Out of scope:
 
 ### TASK-0088: Add file/path regression tests using real game-like asset path shapes
 
+Status: DONE — `tests/test_file_paths.cpp` (new file) covers all 4 real path shapes through their actual functions: `fopen("data/config.def")`, `LoadImageA("image\\init.blp")`, `fopen("sound\\sound%.3d.blp")`, `_findfirst("\\User\\*.xch")`; registered in CTest, passes.
 Priority: P1
 Area: Tests
 Type: Test
@@ -2297,6 +2387,7 @@ Out of scope:
 
 ### TASK-0089: Verify the existing `"sequencer"` MIDI open/play/close path against both games' exact call sequence
 
+Status: DONE — **Found and fixed a critical, real bug while investigating this task: MIDI playback was completely disabled.** `MidiMusicSendCommand`'s `MCI_OPEN` handler (`src/MidiMusic.cpp`) unconditionally returned `MCIERR_INTERNAL` behind a `//todo fix sigsegv` comment (commit `a35f476c`, "MIDI was disabled") — meaning neither game could play any MIDI music at all, and `basic_test`'s long-standing "environment-specific audio" failure (per the prior NEXT.md diagnosis) was actually this kill-switch, misdiagnosed. Root-caused the actual segfault: `MixerThread` captured a `MidiSession*` under one `lock_guard` scope, released the lock, then dereferenced it after re-acquiring a *second* `lock_guard` scope — a concurrent `MCI_CLOSE` (erases from `g_midi.sessions`) or `MCI_OPEN` (whose `push_back` can reallocate the vector) on the main thread during that gap left `active` dangling. This is exactly the race free-eggbert's own `MM_MCINOTIFY` handler can trigger (`blupi.cpp:562-580`: `SuspendMusic()`/`MCI_CLOSE` then immediately `RestartMusic()`/`MCI_OPEN`+`MCI_PLAY`). Fixed by folding the find-and-render step into one uninterrupted lock acquisition; removed the kill-switch. `basic_test` now passes (was the suite's only failure all session); new `tests/test_mci_sequences.cpp` reproduces both games' exact open→play(`MCI_NOTIFY`)→notify→close sequence and a 30-cycle stress test mirroring the real notify-triggered close-then-reopen pattern. Verified with repeated runs (13/13, 5+ repeats) and a full AddressSanitizer+UBSan pass (zero errors). **Needs a manual playtest** of both games' actual background music to confirm audibly (cannot be verified by ear in this headless sandbox).
 Priority: P0
 Area: WinMM
 Type: Test
@@ -2319,6 +2410,7 @@ Out of scope:
 
 ### TASK-0090: Verify `MM_MCINOTIFY`/`MCI_NOTIFY_SUCCESSFUL` delivery timing and clarify the "looping" TODO note
 
+Status: DONE — Confirmed via `tests/test_mci_sequences.cpp`: `MM_MCINOTIFY`/`MCI_NOTIFY_SUCCESSFUL` is posted reliably to the callback `HWND` when a track finishes (was blocked by the TASK-0089 MCI_OPEN kill-switch; now fixed). Both games' own restart-on-notify logic (free-eggbert `blupi.cpp:562-580`) is real game code, unaffected by free-api — once notify delivery works, the game-side loop mechanism works. README's "Looping: TODO" note is accurate in scope (free-api itself still has no internal MCI loop-flag) but the looping *experience* now works end-to-end via the notify-and-restart pattern, since MCI_OPEN/MCI_PLAY/MM_MCINOTIFY all function correctly again.
 Priority: P0
 Area: WinMM
 Type: Audit
@@ -2341,6 +2433,7 @@ Out of scope:
 
 ### TASK-0091: Add a regression test for `MM_MCINOTIFY` delivery timing
 
+Status: DONE — `tests/test_mci_sequences.cpp` (`TestSequencerOpenPlayNotifyCloseSequence`) verifies `MM_MCINOTIFY`/`MCI_NOTIFY_SUCCESSFUL` arrives at the requesting HWND within a reasonable time after a short real MIDI fixture finishes.
 Priority: P1
 Area: WinMM
 Type: Test
@@ -2362,6 +2455,7 @@ Out of scope:
 
 ### TASK-0092: Verify `midiOutGetNumDevs`/`Open`/`SetVolume`/`Close` volume-iteration sequence
 
+Status: DONE — `tests/test_mci_sequences.cpp` (`TestMidiOutVolumeIterationSequence`); `ctest` passes.
 Priority: P1
 Area: WinMM
 Type: Test
@@ -2383,6 +2477,7 @@ Out of scope:
 
 ### TASK-0093: Verify `mciGetErrorStringA` never crashes and returns a non-empty string on failure
 
+Status: DONE — mciGetErrorStringA exercised in basic_test.cpp + test_mci_avivideo_regressions.cpp.
 Priority: P2
 Area: WinMM
 Type: Test
@@ -2404,6 +2499,7 @@ Out of scope:
 
 ### TASK-0094: Verify `"cdaudio"` MCI device type graceful decline doesn't break planetblupi's music fallback logic
 
+Status: DONE — `tests/test_mci_sequences.cpp` (`TestCdaudioGracefulDeclineDoesNotBreakSequencerFallback`) verifies the decline plus a subsequent successful sequencer fallback open.
 Priority: P1
 Area: WinMM
 Type: Test
@@ -2425,6 +2521,7 @@ Out of scope:
 
 ### TASK-0095: Investigate MCI digital-video (`"avivideo"`/`MCI_DGV_*`) requirements for both games' movie playback
 
+Status: DONE — docs/out-of-scope.md contains the full MCI digital-video investigation writeup.
 Priority: P0
 Area: WinMM
 Type: Audit
@@ -2447,6 +2544,7 @@ Out of scope:
 
 ### TASK-0096: Decide and implement (or explicitly document as unsupported) minimal MCI digital-video scope
 
+Status: DONE — MCI digital-video documented as permanently declined, non-issue.
 Priority: P1
 Area: WinMM
 Type: Implementation
@@ -2470,6 +2568,7 @@ Out of scope:
 
 ### TASK-0097: Verify `mciGetDeviceIDA`'s STUB-returns-0 remains acceptable
 
+Status: DONE — `tests/test_mci_sequences.cpp` (`TestMciGetDeviceIdaResultSafelyClosable`); `ctest` passes.
 Priority: P2
 Area: WinMM
 Type: Test
@@ -2491,6 +2590,7 @@ Out of scope:
 
 ### TASK-0098: Add a WinMM/MCI regression test mimicking both games' actual command sequences
 
+Status: DONE — `tests/test_mci_sequences.cpp` exists, registered in CTest, covers sequencer open/play/notify/close, the notify-triggered close-then-reopen stress test, and cdaudio decline; digital-video deliberately left to the existing `tests/test_mci_avivideo_regressions.cpp` per this task's own out-of-scope note.
 Priority: P1
 Area: Tests
 Type: Test
@@ -2512,6 +2612,7 @@ Out of scope:
 
 ### TASK-0099: Cross-link the SoundFont requirement from both games' setup docs
 
+Status: DONE — Cross-reference added to `docs/target-games.md`.
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -2533,6 +2634,7 @@ Out of scope:
 
 ### TASK-0100: Confirm `PlaySound`/`waveOut*` remain correctly unimplemented
 
+Status: DONE — Entry added to `docs/out-of-scope.md`'s "Unsupported APIs" table.
 Priority: P3
 Area: Docs
 Type: Documentation
@@ -2556,6 +2658,7 @@ Out of scope:
 
 ### TASK-0101: Document joystick scope: required (live) for free-eggbert only
 
+Status: DONE — docs/target-games.md documents the joystick scope asymmetry.
 Priority: P2
 Area: Scope
 Type: Documentation
@@ -2577,6 +2680,7 @@ Out of scope:
 
 ### TASK-0102: Confirm the current joystick STUB is an acceptable safe-stub fallback
 
+Status: MANUAL — Requires launching free-eggbert's options/setup screen and observing behavior — not automatable here.
 Priority: P2
 Area: WinMM
 Type: Audit
@@ -2598,6 +2702,7 @@ Out of scope:
 
 ### TASK-0103: (Optional, P2) Implement real `joyGetPosEx`/`joyGetNumDevs` via SDL Gamepad/Joystick backend
 
+Status: TODO (deliberately deferred, not implemented) — explicitly optional per this task's own title; no correctness requirement (both games play fully via keyboard/mouse). Deferral decision recorded in `docs/out-of-scope.md` alongside the existing `joyGetPosEx`/`joyGetNumDevs` stub entry, matching the project's established pattern for well-scoped-but-not-evidenced-as-needed enhancements (e.g. `todo/Embedded_Resources_FreeAPI.md`).
 Priority: P2
 Area: WinMM
 Type: Implementation
@@ -2621,6 +2726,7 @@ Out of scope:
 
 ### TASK-0104: Do not implement `joyGetDevCapsA`/`JOYCAPS`
 
+Status: DONE — Entry added to `docs/out-of-scope.md`'s "Unsupported APIs" table.
 Priority: P3
 Area: Scope
 Type: Documentation
@@ -2644,6 +2750,7 @@ Out of scope:
 
 ### TASK-0105: Gate remaining hot-path `SDL_Log` calls behind existing debug flags
 
+Status: DONE — Remaining hot-path SDL_Log calls confirmed gated.
 Priority: P1
 Area: Cleanup
 Type: Bugfix
@@ -2667,6 +2774,7 @@ Out of scope:
 
 ### TASK-0106: Document all `FREE_API_DEBUG_*` flags in one place
 
+Status: DONE — "Debug Flags" table added to `Documentation.md`, covering all `FREE_API_DEBUG_*`/`FREE_API_DIAGNOSTICS`/`FREE_DIRECT_DIAGNOSTICS`/`FREE_API_SOUNDFONT` flags.
 Priority: P1
 Area: Docs
 Type: Documentation
@@ -2688,6 +2796,7 @@ Out of scope:
 
 ### TASK-0107: Ensure diagnostics atomics are only incremented when diagnostics are enabled
 
+Status: DONE — FreeApiDiagnosticsEnabled() gating pattern confirmed; NEXT.md notes the gating bugfix.
 Priority: P1
 Area: Cleanup
 Type: Bugfix
@@ -2710,6 +2819,7 @@ Out of scope:
 
 ### TASK-0108: Verify logging changes don't alter timing-sensitive behavior
 
+Status: DONE — Re-ran `test_timer_regressions` (TASK-0041/0043's tests) 3x with `FREE_API_DIAGNOSTICS` unset and 3x with it set to `1`; both configurations pass consistently (all 29 checks, every run) with comparable timing.
 Priority: P2
 Area: Tests
 Type: Test
@@ -2733,6 +2843,7 @@ Out of scope:
 
 ### TASK-0109: Register all new test targets in `CMakeLists.txt`/CTest
 
+Status: DONE — All 15 test files (10 new this session) registered in `CMakeLists.txt`/CTest following the existing pattern; dependencies TASK-0024/0068/0078/0088/0098 all DONE.
 Priority: P0
 Area: Tests
 Type: Test
@@ -2754,6 +2865,7 @@ Out of scope:
 
 ### TASK-0110: Add a message-loop test mimicking planetblupi's exact loop shape (consolidation)
 
+Status: DONE — `tests/test_planetblupi_loop.cpp` exists, registered in CTest, passes.
 Priority: P0
 Area: Tests
 Type: Test
@@ -2775,6 +2887,7 @@ Out of scope:
 
 ### TASK-0111: Add a message-loop test mimicking free-eggbert's exact loop shape (consolidation)
 
+Status: DONE — `tests/test_eggbert_loop.cpp` exists, registered in CTest, passes.
 Priority: P0
 Area: Tests
 Type: Test
@@ -2796,6 +2909,7 @@ Out of scope:
 
 ### TASK-0112: Add `MK_*` mouse-flag regression test (consolidation)
 
+Status: DONE — Same fix as TASK-0048.
 Priority: P1
 Area: Tests
 Type: Test
@@ -2817,6 +2931,7 @@ Out of scope:
 
 ### TASK-0113: Add `WM_SYSKEYDOWN`+`VK_F10` regression test (consolidation)
 
+Status: DONE — Same test as TASK-0049.
 Priority: P1
 Area: Tests
 Type: Test
@@ -2838,6 +2953,7 @@ Out of scope:
 
 ### TASK-0114: Add GDI blit-pattern regression tests (consolidation)
 
+Status: DONE — `tests/test_gdi_regressions.cpp` (`TestFullLoadSelectBlitColorMatchDeleteSequence`) chains LoadImageA->CreateCompatibleDC/SelectObject->StretchBlt->SetPixel/GetPixel color-match->DeleteDC/DeleteObject in one pass; `ctest` passes.
 Priority: P1
 Area: Tests
 Type: Test
@@ -2859,6 +2975,7 @@ Out of scope:
 
 ### TASK-0115: Add file/path regression tests based on actual game asset paths (consolidation)
 
+Status: DONE — Confirmed: all 4 fixtures in `tests/test_file_paths.cpp` (TASK-0088) use literal path strings copied from the real games' own source (blupi.cpp:102, sound.cpp:440, event.cpp:4741), not invented equivalents.
 Priority: P1
 Area: Tests
 Type: Test
@@ -2880,6 +2997,7 @@ Out of scope:
 
 ### TASK-0116: Ensure every test runs through CTest
 
+Status: DONE — `ctest --test-dir build` lists and passes all 15 tests (verified this session, including a full AddressSanitizer+UBSan pass).
 Priority: P0
 Area: Tests
 Type: Test
@@ -2903,6 +3021,7 @@ Out of scope:
 
 ### TASK-0117: Confirm `commdlg.h` remains an empty compile-only stub
 
+Status: DONE — commdlg.h verified to be an empty stub.
 Priority: P3
 Area: Cleanup
 Type: Removal
@@ -2924,6 +3043,7 @@ Out of scope:
 
 ### TASK-0118: Confirm `windowsx.h` scope stays limited to `GetStockBrush`
 
+Status: DONE — windowsx.h verified to contain only GetStockBrush.
 Priority: P3
 Area: Cleanup
 Type: Removal
@@ -2945,6 +3065,7 @@ Out of scope:
 
 ### TASK-0119: Confirm `wtypes.h` remains STUB-only
 
+Status: DONE — wtypes.h verified to contain only plain typedefs.
 Priority: P3
 Area: Cleanup
 Type: Removal
@@ -2966,6 +3087,7 @@ Out of scope:
 
 ### TASK-0120: Review `WM_CHAR`/text-input translation as unproven; do not expand
 
+Status: DONE — Entry added to `docs/out-of-scope.md`'s "Unsupported APIs" table.
 Priority: P3
 Area: Cleanup
 Type: Audit
@@ -2987,6 +3109,7 @@ Out of scope:
 
 ### TASK-0121: Review `WM_MBUTTONDOWN`/`UP` translation as unproven; do not expand
 
+Status: DONE — Entry added to `docs/out-of-scope.md`'s "Unsupported APIs" table.
 Priority: P3
 Area: Cleanup
 Type: Audit
@@ -3008,6 +3131,7 @@ Out of scope:
 
 ### TASK-0122: Review `GlobalMemoryStatus` scope; keep limited to `dwTotalPhys`
 
+Status: DONE — Entry added to `docs/out-of-scope.md`'s "Unsupported APIs" table.
 Priority: P3
 Area: Cleanup
 Type: Audit
@@ -3029,6 +3153,7 @@ Out of scope:
 
 ### TASK-0123: Review `GetTickCount`/`Sleep` as test-infrastructure dependencies, not game dependencies
 
+Status: DONE — Entry added to `docs/out-of-scope.md`'s "Unsupported APIs" table.
 Priority: P3
 Area: Cleanup
 Type: Audit
@@ -3050,6 +3175,7 @@ Out of scope:
 
 ### TASK-0124: Audit and document the free-direct boundary for DirectX-family symbols
 
+Status: DONE — Same "Boundary with free-direct" section (TASK-0070) in `docs/scope.md` explicitly lists `ddraw.h`/`dsound.h`/`dplay.h` and `DD*`/`DS*`/`DP*` as free-direct's responsibility.
 Priority: P1
 Area: Cleanup
 Type: Documentation
@@ -3068,6 +3194,52 @@ Acceptance criteria:
 
 Out of scope:
 * Do not audit or modify `free-direct` itself as part of this task — that project is out of this repo's scope.
+
+### TASK-0125: Verify `CreateBitmap`'s 8-bit and 16-bit-to-RGBA32 pixel conversion correctness
+
+Status: DONE — `tests/test_gdi_regressions.cpp` (`TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba`, `TestCreateBitmap16BitRgb565ConvertsToExpectedRgba32`); `ctest` passes.
+Priority: P1
+Area: GDI
+Type: Test
+Evidence: `src/wingdi_bitmap.cpp:117-147` (8-bit indexed and 16-bit RGB565 conversion paths); planetblupi `decmap.cpp:576-594` (minimap rebuild call site)
+Depends on: TASK-0067
+
+Problem:
+`CreateBitmap`'s 8-bit-indexed and 16-bit RGB565-to-RGBA32 conversion paths (used by Planet Blupi's minimap rebuild) have zero test coverage of pixel-value correctness. TASK-0067 only verifies that a valid `HBITMAP` is returned and that `GetObjectA` reports matching dimensions — it does not verify that the converted pixel values themselves are correct.
+
+Required work:
+* Add a test supplying known 8-bit indexed input bytes and known 16-bit RGB565 input words to `CreateBitmap`, then inspect the resulting RGBA32 pixel buffer (via `GetObjectA`'s `bmBits`) and assert the converted R/G/B/A values match the conversion formulas already implemented in `src/wingdi_bitmap.cpp`.
+
+Acceptance criteria:
+* New test passes for both the 8-bit and 16-bit conversion paths, asserting on actual converted pixel values (not just object validity/dimensions).
+* Existing tests still pass.
+* No unrelated API is added.
+
+Out of scope:
+* Do not implement palette expansion for 8-bit indexed input (see the `TODO` in `src/wingdi_bitmap.cpp`) — the greyscale-placeholder behavior is the current, intentional behavior to lock in as-is.
+* Do not add support for additional bit depths neither game uses.
+
+### TASK-0126: Add a defensive warning to `ExtractStringTable.cmake` for unsupported `STRINGTABLE` syntax
+
+Status: DONE — `cmake/ExtractStringTable.cmake` warns on `L"..."` entries and embedded escaped quotes; verified reconfigure still logs 364 (free-eggbert) / 257 (planetblupi) strings with no new warnings.
+Priority: P2
+Area: Build system
+Type: Hardening
+Evidence: `cmake/ExtractStringTable.cmake`; NEXT.md §5 ("Suspected risk, unverified")
+Depends on: None
+
+Problem:
+`ExtractStringTable.cmake`'s `STRINGTABLE` parser assumes no `L"..."` wide-string entries and no embedded escaped double-quotes in either game's `.rc`. This is confirmed true for both files as they exist today, but a future `.rc` edit using either syntax would silently mis-parse or skip an entry, with no warning emitted.
+
+Required work:
+* Add a `message(WARNING ...)` in `cmake/ExtractStringTable.cmake` when a `.rc` file's `STRINGTABLE` block contains an `L"..."` wide-string entry or an embedded escaped double-quote, so a future edit doesn't silently lose data.
+
+Acceptance criteria:
+* Reconfiguring (`cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON`) against both games' current `.rc` files emits no new warning and the logged string counts are unchanged (257 for planetblupi / 364 for free-eggbert).
+* No unrelated behavior change to the parser's happy path.
+
+Out of scope:
+* Do not implement actual parsing support for `L"..."` or escaped quotes — warn only; the parser stays narrowly `STRINGTABLE`-only per `docs/scope.md`.
 
 ---
 

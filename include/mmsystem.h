@@ -38,6 +38,15 @@ typedef DWORD MCIERROR;
  * @brief Extended joystick state structure.
  *
  * Mirrors the legacy WinMM JOYINFOEX layout expected by old games.
+ *
+ * Only free-eggbert's event.cpp:2069-2125 reads this struct (planetblupi
+ * never uses joysticks), and it only reads `dwSize`, `dwFlags`, `dwXpos`,
+ * `dwYpos`, and `dwButtons` -- `dwZpos`/`dwRpos`/`dwUpos`/`dwVpos`/
+ * `dwButtonNumber`/`dwPOV`/`dwReserved1`/`dwReserved2` are declared purely
+ * for real Win32 struct-layout compatibility and are never read by either
+ * game. Any future real joystick implementation (TASK-0103) only needs to
+ * populate the five fields listed above.
+ *
  * @note Status: STUB
  */
 typedef struct tagJOYINFOEX {

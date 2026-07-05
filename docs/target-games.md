@@ -55,3 +55,7 @@ are actually load-bearing:
   exists" tells you which game is actually driving a given build. Free
   API's own `CMakeLists.txt` keys off `CMAKE_PROJECT_NAME` (the actual
   top-level project) for exactly this reason; see `docs/cmake-options.md`.
+* Both games need a **SoundFont (`.sf2`) file present** for audible MIDI
+  music (background music otherwise plays silently, which is not an error —
+  see the README's "SoundFont requirement" section under "MIDI / MCI Music"
+  for the exact lookup order and how to supply one).

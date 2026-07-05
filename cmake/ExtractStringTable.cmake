@@ -70,9 +70,26 @@ if(DEFINED RC_FILE AND DEFINED RESOURCE_HEADERS)
                 continue()
             endif()
 
+            # This parser only understands plain ANSI "..." string literals.
+            # An L"..." wide-string entry would silently fail to match below
+            # and be dropped with no explanation -- warn instead.
+            if(trimmed MATCHES "^([A-Za-z_][A-Za-z0-9_]*)[ \t]+L\"")
+                message(WARNING "ExtractStringTable.cmake: ${RC_FILE}: unsupported L\"...\" wide-string STRINGTABLE entry ignored (ANSI-only parser): ${trimmed}")
+                continue()
+            endif()
+
             if(trimmed MATCHES "^([A-Za-z_][A-Za-z0-9_]*) +\"(.*)\"$")
                 set(sym "${CMAKE_MATCH_1}")
                 set(text "${CMAKE_MATCH_2}")
+
+                # An embedded escaped double-quote (\") within the string text
+                # is not distinguished from the closing quote by the regex
+                # above, and could silently mis-parse the entry -- warn.
+                string(FIND "${text}" "\\\"" escaped_quote_idx)
+                if(NOT escaped_quote_idx EQUAL -1)
+                    message(WARNING "ExtractStringTable.cmake: ${RC_FILE}: STRINGTABLE entry '${sym}' contains an embedded escaped double-quote, which this ANSI-only parser may mis-parse: ${trimmed}")
+                endif()
+
                 list(FIND symbol_names "${sym}" sym_idx)
                 if(sym_idx GREATER -1)
                     list(GET symbol_values ${sym_idx} numeric_id)

@@ -7,6 +7,13 @@
  * This header exists to allow old code that includes <windowsx.h> to compile.
  * None of those macros are defined here; add them as needed.
  *
+ * Proven unused by both target games beyond one macro: `GetStockBrush` is the
+ * only real call either game makes through this header (once each, at
+ * startup, for `wc.hbrBackground` -- ../free-eggbert blupi.cpp:725,
+ * ../planetblupi blupi.cpp:617). `ddutil.cpp`/`movie.cpp` in both games
+ * #include this header but call nothing from it (plan.md §3.1) -- kept only
+ * so those files compile.
+ *
  * @note Status: STUB
  */
 #ifndef FREE_API_WINDOWSX_H

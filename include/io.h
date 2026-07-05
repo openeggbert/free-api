@@ -1,15 +1,19 @@
 /**
  * @file io.h
- * @brief Minimal MSVC io.h compatibility: legacy file I/O and file-search stubs.
+ * @brief Minimal MSVC io.h compatibility: legacy file I/O and file search.
  *
  * Provides the subset of Windows io.h API used by old C/C++ games:
  * - Legacy low-level file I/O: _lopen, _lread, _lclose (POSIX wrappers, see windows.h)
- * - MSVC file-search API: _findfirst, _findnext, _findclose
- *   These are NOT implemented; they return -1/failure immediately (stub).
- * - _finddata_t structure for use with the above
+ * - MSVC file-search API: _findfirst, _findnext, _findclose -- backed by real
+ *   std::filesystem directory listing, scoped to the one wildcard shape
+ *   evidenced in free-eggbert (a directory plus a simple "*.ext"-style
+ *   pattern, e.g. "\User\*.xch"; not general Windows wildcard syntax --
+ *   no "?", no multiple "*").
+ * - _finddata_t structure for use with the above (only `.name` is
+ *   populated; free-eggbert's one caller only reads that field)
  * - _MAX_FNAME constant
  *
- * @note Status: PARTIAL
+ * @note Status: IMPLEMENTED
  */
 #ifndef FREE_API_IO_H
 #define FREE_API_IO_H
@@ -74,11 +78,11 @@ struct _finddata_t {
     char name[_MAX_FNAME];
 };
 
-/** @brief Begins a file search by wildcard pattern. @note Status: STUB */
+/** @brief Begins a file search by a simple "*.ext"-style wildcard pattern. @note Status: IMPLEMENTED */
 intptr_t _findfirst(const char* filespec, struct _finddata_t* fileinfo);
-/** @brief Advances to the next file matching pattern. @note Status: STUB */
+/** @brief Advances to the next file matching pattern. @note Status: IMPLEMENTED */
 int _findnext(intptr_t handle, struct _finddata_t* fileinfo);
-/** @brief Closes a file search handle. @note Status: STUB */
+/** @brief Closes a file search handle. @note Status: IMPLEMENTED */
 int _findclose(intptr_t handle);
 
 #ifdef __cplusplus

@@ -20,10 +20,21 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <atomic>
 #include <vector>
 
 extern "C" HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel);
 extern "C" BOOL FreeApiDestroySurfaceDC(HDC hdc);
+
+// Test-local forward declarations of internal diagnostic counters (defined
+// in src/internal/FreeApiDiagnostics.hpp/.cpp) -- not part of the public
+// windows.h surface, referenced here only to verify TASK-0059's "no
+// unbounded internal-registry growth" acceptance criterion directly rather
+// than indirectly.
+namespace FreeApi::Internal {
+extern std::atomic<int64_t> g_diagCompatDcs;
+extern std::atomic<int64_t> g_diagCompatDcsEver;
+}
 
 // Test-local only: neither target game unpacks a COLORREF's components (only
 // RGB() packing is used), so these are deliberately not added to any public
@@ -170,6 +181,67 @@ static void TestStretchBlt1to1ClippedAtDestinationEdgeStaysInBounds()
     DeleteDC(srcDc);
 }
 
+// TASK-0068 (plan.md, todo/free-api-performance-todo.md "P2: Add Focused
+// Performance/Correctness Tests"): out-of-range source rectangle handling
+// -- a source rect that starts before (0,0) or extends past the source
+// bitmap's width/height must be safely clipped (no OOB read), not rejected
+// or allowed to read garbage.
+static void TestStretchBlt1to1OutOfRangeSourceRectClipsSafely()
+{
+    const int srcW = 4, srcH = 4;
+    std::vector<uint8_t> srcPixels(static_cast<size_t>(srcW) * srcH * 4);
+    for (int y = 0; y < srcH; ++y) {
+        for (int x = 0; x < srcW; ++x) {
+            size_t off = (static_cast<size_t>(y) * srcW + x) * 4;
+            srcPixels[off + 0] = static_cast<uint8_t>(x * 50 + 10);
+            srcPixels[off + 1] = static_cast<uint8_t>(y * 50 + 10);
+            srcPixels[off + 2] = 0x99;
+            srcPixels[off + 3] = 255;
+        }
+    }
+    HBITMAP srcBitmap = MakeSourceBitmap(srcW, srcH, srcPixels);
+    HDC srcDc = CreateCompatibleDC(nullptr);
+    SelectObject(srcDc, srcBitmap);
+
+    // Case 1: negative source origin -- request source (-2,-2) sized 4x4;
+    // only source (0,0)-(2,2) actually exists, which should land at
+    // destination (2,2)-(4,4) (shifted by the same amount the negative
+    // origin was clamped).
+    {
+        TestSurface dest(8, 8);
+        BOOL ok = StretchBlt(dest.hdc, 0, 0, srcW, srcH, srcDc, -2, -2, srcW, srcH, SRCCOPY);
+        Check(ok == TRUE, "StretchBlt(1:1) returns TRUE for a negative source origin (clipped, not rejected)");
+
+        COLORREF shifted = GetPixel(dest.hdc, 2, 2);
+        Check(GetRValue(shifted) == 10 && GetGValue(shifted) == 10 && GetBValue(shifted) == 0x99,
+              "negative source origin clips safely: source (0,0) lands at the correctly shifted destination position");
+        Check(dest.IsSentinelAt(0, 0),
+              "negative source origin: destination pixels with no corresponding in-bounds source pixel stay untouched");
+    }
+
+    // Case 2: source rect extends past the bitmap's right/bottom edge --
+    // request source (2,2) sized 4x4 from a 4x4 bitmap (only a 2x2 region
+    // at (2,2)-(4,4) actually exists).
+    {
+        TestSurface dest(8, 8);
+        BOOL ok = StretchBlt(dest.hdc, 0, 0, srcW, srcH, srcDc, 2, 2, srcW, srcH, SRCCOPY);
+        Check(ok == TRUE, "StretchBlt(1:1) returns TRUE for a source rect extending past the bitmap's edge (clipped, not rejected)");
+
+        COLORREF inBounds = GetPixel(dest.hdc, 0, 0);
+        Check(GetRValue(inBounds) == static_cast<uint8_t>(2 * 50 + 10) &&
+              GetGValue(inBounds) == static_cast<uint8_t>(2 * 50 + 10) &&
+              GetBValue(inBounds) == 0x99,
+              "out-of-range source rect clips safely: the in-bounds corner (source (2,2)) is copied correctly");
+        Check(dest.IsSentinelAt(2, 0),
+              "out-of-range source rect: destination pixels beyond the bitmap's actual extent stay untouched (no garbage read)");
+        Check(dest.IsSentinelAt(0, 2),
+              "out-of-range source rect: destination pixels beyond the bitmap's actual extent (other axis) stay untouched");
+    }
+
+    DeleteObject(srcBitmap);
+    DeleteDC(srcDc);
+}
+
 static void TestStretchBltScaledNearestNeighborSamplesCorrectSourcePixel()
 {
     // 2x2 source, each quadrant a distinct flat color.
@@ -228,14 +300,331 @@ static void TestGetSetPixelRoundTripOnSurfaceDc()
     Check(dest.IsSentinelAt(0, 0), "SetPixel does not affect other pixels on the same surface");
 }
 
+// TASK-0125 (plan.md): CreateBitmap's 8-bit-indexed and 16-bit RGB565
+// conversion paths (src/wingdi_bitmap.cpp) feed Planet Blupi's minimap
+// rebuild (decmap.cpp) but had no test coverage of the converted pixel
+// values themselves -- only TASK-0067's HBITMAP-validity/dimensions check.
+static void TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba()
+{
+    const int w = 4, h = 1;
+    const std::vector<uint8_t> indexed = {0x00, 0x40, 0x80, 0xFF};
+
+    HBITMAP bmp = CreateBitmap(w, h, 1, 8, indexed.data());
+    Check(bmp != nullptr, "CreateBitmap succeeds for 8-bit indexed input");
+
+    BITMAP info{};
+    int written = GetObjectA(bmp, sizeof(info), &info);
+    Check(written == sizeof(BITMAP), "GetObjectA reports a full BITMAP struct for an 8-bit-created bitmap");
+    Check(info.bmWidth == w && info.bmHeight == h, "GetObjectA reports correct dimensions for an 8-bit-created bitmap");
+
+    const uint8_t* pixels = static_cast<const uint8_t*>(info.bmBits);
+    bool allMatch = true;
+    for (int x = 0; x < w && allMatch; ++x) {
+        const uint8_t idx = indexed[static_cast<size_t>(x)];
+        const uint8_t* px = pixels + x * 4;
+        if (px[0] != idx || px[1] != idx || px[2] != idx || px[3] != 0xFF) {
+            allMatch = false;
+        }
+    }
+    Check(allMatch, "CreateBitmap's 8-bit path expands each index to RGBA32 (R=G=B=index, A=255)");
+
+    DeleteObject(bmp);
+}
+
+static void TestCreateBitmap16BitRgb565ConvertsToExpectedRgba32()
+{
+    const int w = 4, h = 1;
+    // Pure red, pure green, pure blue, white -- each exactly representable
+    // in RGB565, so the expected RGBA32 output has no rounding error.
+    const std::vector<uint16_t> rgb565 = {0xF800, 0x07E0, 0x001F, 0xFFFF};
+
+    HBITMAP bmp = CreateBitmap(w, h, 1, 16, rgb565.data());
+    Check(bmp != nullptr, "CreateBitmap succeeds for 16-bit RGB565 input");
+
+    BITMAP info{};
+    int written = GetObjectA(bmp, sizeof(info), &info);
+    Check(written == sizeof(BITMAP), "GetObjectA reports a full BITMAP struct for a 16-bit-created bitmap");
+    Check(info.bmWidth == w && info.bmHeight == h, "GetObjectA reports correct dimensions for a 16-bit-created bitmap");
+
+    const uint8_t* pixels = static_cast<const uint8_t*>(info.bmBits);
+    auto CheckPixel = [&](int x, uint8_t r, uint8_t g, uint8_t b, const char* what) {
+        const uint8_t* px = pixels + x * 4;
+        Check(px[0] == r && px[1] == g && px[2] == b && px[3] == 0xFF, what);
+    };
+
+    CheckPixel(0, 255, 0, 0, "16-bit RGB565 pure red (0xF800) converts to RGBA32 (255,0,0,255)");
+    CheckPixel(1, 0, 255, 0, "16-bit RGB565 pure green (0x07E0) converts to RGBA32 (0,255,0,255)");
+    CheckPixel(2, 0, 0, 255, "16-bit RGB565 pure blue (0x001F) converts to RGBA32 (0,0,255,255)");
+    CheckPixel(3, 255, 255, 255, "16-bit RGB565 white (0xFFFF) converts to RGBA32 (255,255,255,255)");
+
+    DeleteObject(bmp);
+}
+
+// TASK-0059 (plan.md): both games repeatedly create-then-destroy a memory
+// DC purely to host a bitmap for GetDeviceCaps/GetObject/SelectObject/
+// StretchBlt (free-eggbert pixmap.cpp:137,152, ddutil.cpp:141,166;
+// planetblupi ddutil.cpp:198,230, pixmap.cpp:282,293). Verifies many
+// create/destroy cycles don't crash and don't leak the live-DC count.
+static void TestCreateCompatibleDcRepeatedLifecycleDoesNotLeak()
+{
+    using namespace FreeApi::Internal;
+
+    const int64_t baselineLive = g_diagCompatDcs.load();
+    const int64_t baselineEver = g_diagCompatDcsEver.load();
+
+    const int kIterations = 5000;
+    for (int i = 0; i < kIterations; ++i) {
+        HDC dc = CreateCompatibleDC(nullptr);
+        GetDeviceCaps(dc, SIZEPALETTE); // matches real "select/query" usage
+        DeleteDC(dc);
+    }
+
+    Check(g_diagCompatDcs.load() == baselineLive,
+          "repeated CreateCompatibleDC/DeleteDC cycles leave the live-DC count unchanged (no leak)");
+    Check(g_diagCompatDcsEver.load() == baselineEver + kIterations,
+          "every CreateCompatibleDC call in the loop was accounted for exactly once");
+}
+
+// TASK-0060 (plan.md): both games branch their TrueColor-vs-palette
+// rendering path on GetDeviceCaps(hdc, SIZEPALETTE). Real Win32 only
+// reports a nonzero SIZEPALETTE for an actual hardware-palette (<=8bpp)
+// device; a modern TrueColor host reports 0. This matters because the two
+// real call-site patterns only agree when the value is exactly 0:
+//   - free-eggbert pixmap.cpp:146: disables true-color rendering when
+//     devcap is nonzero AND < 257 (the real legacy-palette range) --
+//     0 or a huge value would both leave true-color enabled.
+//   - free-eggbert pixmap.cpp:428 / planetblupi pixmap.cpp:287: treat ANY
+//     nonzero value as "this is a palette device" (m_bPalette = TRUE),
+//     and ONLY exactly 0 as "not a palette device."
+// A fixed nonzero placeholder (this function previously returned 256)
+// satisfies neither game correctly: it forces free-eggbert's true-color
+// decor off, and forces planetblupi's minimap onto its untested
+// 8-bit-indexed CreateBitmap path (TASK-0125) instead of the true-color
+// 16-bit path. This was a genuine bug found while writing this test, fixed
+// alongside it (src/wingdi_misc.cpp).
+static void TestGetDeviceCapsSizePaletteReportsTrueColorHost()
+{
+    HDC dc = CreateCompatibleDC(nullptr);
+    Check(dc != nullptr, "CreateCompatibleDC succeeds for the GetDeviceCaps test");
+
+    int sizePalette = GetDeviceCaps(dc, SIZEPALETTE);
+    Check(sizePalette == 0,
+          "GetDeviceCaps(SIZEPALETTE) reports 0, which both games' branching logic requires to correctly "
+          "recognize a modern TrueColor host (not a legacy palette display)");
+
+    DeleteDC(dc);
+}
+
+// TASK-0061 (plan.md): planetblupi reads 256 PALETTEENTRY values from this
+// call into m_sysPal (pixmap.cpp:292). Verifies it fills exactly 256
+// well-formed entries without crashing.
+static void TestGetSystemPaletteEntriesFills256WellFormedEntries()
+{
+    HDC dc = CreateCompatibleDC(nullptr);
+    Check(dc != nullptr, "CreateCompatibleDC succeeds for the GetSystemPaletteEntries test");
+
+    PALETTEENTRY entries[256]{};
+    UINT filled = GetSystemPaletteEntries(dc, 0, 256, entries);
+    Check(filled == 256, "GetSystemPaletteEntries(0, 256) fills exactly 256 entries");
+
+    bool wellFormed = true;
+    for (UINT i = 0; i < filled; ++i) {
+        if (entries[i].peRed != entries[i].peGreen || entries[i].peGreen != entries[i].peBlue) {
+            wellFormed = false;
+            break;
+        }
+    }
+    Check(wellFormed, "every filled PALETTEENTRY is well-formed (grayscale placeholder: R=G=B)");
+
+    DeleteDC(dc);
+}
+
+// Builds a minimal, valid, uncompressed 24-bit BMP byte stream in memory
+// (14-byte BITMAPFILEHEADER + 40-byte BITMAPINFOHEADER + bottom-up pixel
+// data), so LoadImageA's decoding can be tested against a known-dimension
+// fixture without shipping a binary test asset.
+static std::vector<uint8_t> MakeMinimalBmp(int width, int height)
+{
+    const int rowBytes = ((width * 3 + 3) / 4) * 4; // rows padded to 4 bytes
+    const int pixelDataSize = rowBytes * height;
+    const int dataOffset = 14 + 40;
+    const int fileSize = dataOffset + pixelDataSize;
+
+    std::vector<uint8_t> bmp(static_cast<size_t>(fileSize), 0);
+    auto put16 = [&](size_t off, uint16_t v) { bmp[off] = v & 0xFF; bmp[off + 1] = (v >> 8) & 0xFF; };
+    auto put32 = [&](size_t off, uint32_t v) {
+        bmp[off] = v & 0xFF; bmp[off + 1] = (v >> 8) & 0xFF;
+        bmp[off + 2] = (v >> 16) & 0xFF; bmp[off + 3] = (v >> 24) & 0xFF;
+    };
+
+    bmp[0] = 'B'; bmp[1] = 'M';
+    put32(2, static_cast<uint32_t>(fileSize));
+    put32(10, static_cast<uint32_t>(dataOffset));
+    put32(14, 40); // BITMAPINFOHEADER size
+    put32(18, static_cast<uint32_t>(width));
+    put32(22, static_cast<uint32_t>(height)); // positive => bottom-up
+    put16(26, 1);  // planes
+    put16(28, 24); // bitCount
+    put32(30, 0);  // BI_RGB
+    put32(34, static_cast<uint32_t>(pixelDataSize));
+
+    // Fill with a simple, non-zero BGR pattern so the fixture isn't
+    // indistinguishable from an all-zeroed buffer.
+    for (int i = 0; i < pixelDataSize; ++i) {
+        bmp[static_cast<size_t>(dataOffset + i)] = static_cast<uint8_t>(0x40 + (i % 64));
+    }
+    return bmp;
+}
+
+// TASK-0062/0063 (plan.md): LoadImageA uses SDL_LoadBMP internally, and both
+// games load every sprite-sheet asset through this path with a non-.bmp
+// extension (.blp) (planetblupi ddutil.cpp:90,95,148,151); GetObjectA then
+// drives DirectDraw surface sizing in free-direct off the reported
+// bmWidth/bmHeight (free-eggbert ddutil.cpp:57,149; planetblupi
+// ddutil.cpp:47,104,208). Verifies both against a real, non-.bmp-named
+// fixture file.
+static void TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions()
+{
+    const int width = 6, height = 4;
+    const std::vector<uint8_t> bmpBytes = MakeMinimalBmp(width, height);
+
+    const char* fixturePath = "test_gdi_fixture.blp";
+    FILE* f = fopen(fixturePath, "wb");
+    Check(f != nullptr, "test fixture file opens for writing");
+    if (f) {
+        fwrite(bmpBytes.data(), 1, bmpBytes.size(), f);
+        fclose(f);
+    }
+
+    HANDLE h = LoadImageA(nullptr, fixturePath, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    Check(h != nullptr, "LoadImageA decodes a real BMP byte stream saved with a non-.bmp (.blp) extension");
+
+    if (h) {
+        HBITMAP hbm = reinterpret_cast<HBITMAP>(h);
+        BITMAP bm{};
+        int written = GetObjectA(hbm, sizeof(bm), &bm);
+        Check(written == sizeof(BITMAP), "GetObjectA reports a full BITMAP struct for a LoadImageA-loaded bitmap");
+        Check(bm.bmWidth == width && bm.bmHeight == height,
+              "GetObjectA reports the exact bmWidth/bmHeight of the loaded BMP fixture");
+
+        DeleteObject(hbm);
+    }
+
+    remove(fixturePath);
+}
+
+// TASK-0064 (plan.md): both games select a loaded bitmap into a memory DC,
+// blit, then delete it -- free-eggbert's DDCopyBitmap (ddutil.cpp:122-168)
+// does exactly: CreateCompatibleDC -> SelectObject(dc, hbm) -> GetObject ->
+// StretchBlt -> DeleteDC(dc) -> DeleteObject(hbm) (planetblupi ddutil.cpp
+// follows the identical shape). Verifies the full sequence across repeated
+// iterations without crash/leak.
+static void TestSelectObjectDeleteObjectBitmapIntoDcLifecycle()
+{
+    using namespace FreeApi::Internal;
+    const int64_t baselineDcLive = g_diagCompatDcs.load();
+
+    const int srcW = 2, srcH = 2;
+    std::vector<uint8_t> srcPixels(static_cast<size_t>(srcW) * srcH * 4, 0xAB);
+
+    const int kIterations = 500;
+    for (int i = 0; i < kIterations; ++i) {
+        HBITMAP hbm = CreateBitmap(srcW, srcH, 1, 32, srcPixels.data());
+
+        HDC hdcImage = CreateCompatibleDC(nullptr);
+        SelectObject(hdcImage, hbm);
+
+        BITMAP bm{};
+        GetObjectA(hbm, sizeof(bm), &bm);
+
+        TestSurface dest(4, 4);
+        StretchBlt(dest.hdc, 0, 0, 4, 4, hdcImage, 0, 0, srcW, srcH, SRCCOPY);
+
+        DeleteDC(hdcImage);
+        DeleteObject(hbm);
+    }
+
+    Check(g_diagCompatDcs.load() == baselineDcLive,
+          "repeated select->blit->delete cycles (matching DDCopyBitmap's exact sequence) leave the live-DC count unchanged");
+}
+
+// TASK-0114 (plan.md): a single, named end-to-end test chaining both games'
+// full real-world blit pattern in one pass -- load (LoadImageA) -> select
+// (CreateCompatibleDC/SelectObject) -> stretch-blit (StretchBlt) ->
+// color-match (the GetDC/SetPixel/Lock-equivalent GetPixel/SetPixel
+// round-trip DDColorMatch relies on, free-eggbert ddutil.cpp:276-291) ->
+// delete (DeleteDC/DeleteObject). Each step is already unit-tested above
+// (TASK-0062/0063/0064/0066/0067); this confirms they compose correctly as
+// one sequence, not just in isolation.
+static void TestFullLoadSelectBlitColorMatchDeleteSequence()
+{
+    const int width = 4, height = 4;
+    const std::vector<uint8_t> bmpBytes = MakeMinimalBmp(width, height);
+
+    const char* fixturePath = "test_gdi_e2e_fixture.blp";
+    FILE* f = fopen(fixturePath, "wb");
+    Check(f != nullptr, "e2e test fixture file opens for writing");
+    if (f) {
+        fwrite(bmpBytes.data(), 1, bmpBytes.size(), f);
+        fclose(f);
+    }
+
+    // Load.
+    HANDLE h = LoadImageA(nullptr, fixturePath, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    Check(h != nullptr, "e2e: LoadImageA loads the fixture bitmap");
+    HBITMAP hbm = reinterpret_cast<HBITMAP>(h);
+
+    if (hbm) {
+        BITMAP bm{};
+        GetObjectA(hbm, sizeof(bm), &bm);
+        Check(bm.bmWidth == width && bm.bmHeight == height, "e2e: GetObjectA reports the loaded bitmap's correct dimensions");
+
+        // Select.
+        HDC hdcImage = CreateCompatibleDC(nullptr);
+        Check(hdcImage != nullptr, "e2e: CreateCompatibleDC succeeds");
+        SelectObject(hdcImage, hbm);
+
+        // Stretch-blit.
+        TestSurface dest(8, 8);
+        BOOL blitOk = StretchBlt(dest.hdc, 0, 0, width, height, hdcImage, 0, 0, width, height, SRCCOPY);
+        Check(blitOk == TRUE, "e2e: StretchBlt copies the loaded bitmap onto the destination surface");
+
+        // Color-match (DDColorMatch's own mechanism: SetPixel then read
+        // back via the same DC -- see ddutil.cpp:276-291).
+        COLORREF probe = RGB(0x11, 0x22, 0x33);
+        SetPixel(dest.hdc, 0, 0, probe);
+        COLORREF readBack = GetPixel(dest.hdc, 0, 0);
+        Check(GetRValue(readBack) == GetRValue(probe) &&
+              GetGValue(readBack) == GetGValue(probe) &&
+              GetBValue(readBack) == GetBValue(probe),
+              "e2e: SetPixel->GetPixel color-match round-trip succeeds on the blitted-to surface");
+
+        // Delete.
+        DeleteDC(hdcImage);
+        BOOL deleted = DeleteObject(hbm);
+        Check(deleted == TRUE, "e2e: DeleteObject succeeds, completing the full load->select->blit->color-match->delete sequence");
+    }
+
+    remove(fixturePath);
+}
+
 int main()
 {
     printf("[gdi-regressions] Starting\n");
 
     TestStretchBlt1to1CopiesExactRectAndLeavesRestUntouched();
     TestStretchBlt1to1ClippedAtDestinationEdgeStaysInBounds();
+    TestStretchBlt1to1OutOfRangeSourceRectClipsSafely();
     TestStretchBltScaledNearestNeighborSamplesCorrectSourcePixel();
     TestGetSetPixelRoundTripOnSurfaceDc();
+    TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba();
+    TestCreateBitmap16BitRgb565ConvertsToExpectedRgba32();
+    TestCreateCompatibleDcRepeatedLifecycleDoesNotLeak();
+    TestGetDeviceCapsSizePaletteReportsTrueColorHost();
+    TestGetSystemPaletteEntriesFills256WellFormedEntries();
+    TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
+    TestSelectObjectDeleteObjectBitmapIntoDcLifecycle();
+    TestFullLoadSelectBlitColorMatchDeleteSequence();
 
     if (g_failures > 0) {
         printf("[gdi-regressions] %d FAILURE(S)\n", g_failures);
