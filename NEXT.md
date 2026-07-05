@@ -2,13 +2,11 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `8e7cf0a` (2026-07-04) plus substantial uncommitted
-changes made this session — a systematic pass through `plan.md`'s P0
-backlog, including a critical MIDI-playback bug fix (see section 2/3/4).
-See [`plan.md`](plan.md) for the full evidence-based usage audit and
-126-item task backlog (every task now carries a `Status:` line reconciled
-against actual repository state), and [`docs/scope.md`](docs/scope.md) for
-the scope policy.
+state as of commit `88484a3` (2026-07-05, `develop` branch, pushed to
+`origin/develop`). See [`plan.md`](plan.md) for the full evidence-based
+usage audit and 127-item task backlog (every task carries a `Status:` line
+reconciled against actual repository state), and
+[`docs/scope.md`](docs/scope.md) for the scope policy.
 
 ## 1. Project summary
 
@@ -27,21 +25,21 @@ Wine, not a general WinAPI reimplementation, not a platform for arbitrary
 1998-era Windows software. Every public API must cite a real usage site
 (`file:line`) in one of the two games' own source (`docs/scope.md`).
 
-**Current development phase:** incremental hardening after an initial
-evidence-based audit (`plan.md`), now well past the P0 tier — as of this
-session, every `plan.md` P0 task is `Status: DONE`. Several real bugs found
-via test-writing have since been fixed, most significantly a MIDI-playback
-kill-switch + its underlying race condition (section 2/4), a
-`GetDeviceCaps(SIZEPALETTE)` contract bug affecting both games' rendering
-path selection, and a struct-packing bug affecting real BMP palette
-decoding. `LoadStringA` returns real text; MCI digital-video was
-investigated and resolved as an intentional non-issue.
+**Current development phase:** the original evidence-based audit backlog
+(`plan.md`, 127 tasks) is complete — 126 `DONE`, 1 `OBSOLETE` (superseded).
+Work has moved from "implement the missing behavior" to "harden what's
+already implemented" — the most recent pass (this session) hardened
+`LoadStringA`'s real-text backing so a broken/missing resource silently
+degrading to placeholder text in a *shipped* build is now caught at CMake
+configure time instead of only being visible at runtime.
 
 **Important architectural decisions:**
 
 * Free API is a **static library**, normally built as a sibling
   `add_subdirectory()` of one of the two target games (which also provide
-  SDL3). It can also build standalone via `-DFREE_API_USE_SYSTEM_SDL3=ON`.
+  SDL3). It can also build standalone via `-DFREE_API_USE_SYSTEM_SDL3=ON`,
+  though see section 4 for a currently-unresolved gap in that path in this
+  particular sandbox.
 * SDL3 is an **internal backend detail only** — public headers in
   `include/` must never expose SDL types.
 * Both target games are always siblings of each other and of `free-api` on
@@ -52,7 +50,13 @@ investigated and resolved as an intentional non-issue.
 * Real UI text for `LoadStringA` is extracted at **CMake configure time**
   from whichever game's own `resource/*.rc` is driving the build, via a
   narrow, `STRINGTABLE`-only parser (`cmake/ExtractStringTable.cmake`) —
-  deliberately not a general `.rc`/`.res` compiler.
+  deliberately not a general `.rc`/`.res` compiler. **As of this session,
+  target-game builds (`SPEEDY_BLUPI_WINDOWS`/`PLANET_BLUPI_WINDOWS`) fail
+  CMake configure loudly** if that game's `.rc` is missing, yields zero
+  extracted strings, or a known string ID (`TX_BUTTON_QUITTER`, 106,
+  `"Quit BLUPI"` in both games) doesn't resolve to its expected text.
+  Standalone builds are unaffected and keep the placeholder-fallback
+  behavior.
 * The two target games use **two different, mutually-exclusive live timer
   mechanisms** as their frame pump: Free Eggbert uses
   `timeSetEvent`/`timeKillEvent` (WinMM multimedia timer); Planet Blupi
@@ -60,288 +64,195 @@ investigated and resolved as an intentional non-issue.
 
 ## 2. Current status
 
-**Build status:** builds cleanly in all three configurations tested this
-session:
-* Standalone with system SDL3 (`-DFREE_API_USE_SYSTEM_SDL3=ON`).
-* As a subdirectory of `../free-eggbert` (real game build,
-  `SPEEDY_BLUPI_WINDOWS` links and runs).
-* As a subdirectory of `../planetblupi` (real game build,
-  `PLANET_BLUPI_WINDOWS` links and runs).
+**Build status:**
+* As a subdirectory of `../free-eggbert` (Ninja generator,
+  `cmake-build-debug/`): configures and builds cleanly, including the new
+  configure-time verification (`known-ID verification passed for
+  'free-eggbert': ID 106 -> "Quit BLUPI"`).
+* As a subdirectory of `../planetblupi` (Unix Makefiles generator,
+  `build/`): same, `known-ID verification passed for 'planetblupi'`.
+* Standalone (`free-api`'s own `cmake-build-debug/`/`build/`): **does NOT
+  currently configure to completion in this sandbox** — see section 4.
 
-**Test status:** 14 test binaries, **14/14 pass** (verified stable across
-5+ repeated runs, plus a full AddressSanitizer+UBSan pass with zero
-errors). `basic_test`'s long-standing MCI_OPEN failure — previously
-documented here as an unresolved "environment-specific audio backend
-issue" — is **fixed** (see section 4; it was misdiagnosed). New test
-binaries added this session: `test_timer_regressions`,
-`test_planetblupi_loop`, `test_eggbert_loop`, `test_mci_sequences`.
+**Test status:** 17 test binaries registered per target-game build.
+**17/17 pass in both free-eggbert and planetblupi builds**, but *only* when
+run with `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` (see section 4 for
+why this matters — it is not optional in this sandbox's default display).
+`test_loadstring_regressions` now hard-asserts, in target-game mode, that a
+known game string ID never falls back to the `"RES_<id>"` placeholder.
 
 **CLI/tools/apps/libraries:** Free API produces one artifact,
 `libfree-api.a`, plus its test binaries. It has no standalone CLI/app of its
 own — it's a library consumed by the two games' own executables
 (`SPEEDY_BLUPI_WINDOWS`, `PLANET_BLUPI_WINDOWS`), both of which build and
 link successfully against the current code (verified this session).
+`examples/` also exists (five standalone WinAPI demos, gated behind
+`-DFREE_API_BUILD_EXAMPLES=ON`, default `OFF`) from a prior session —
+not re-verified this session, no changes made to it.
 
-**Recently completed and committed (`e89d65b`, "Fix MIDI playback SIGSEGV,
-GetDeviceCaps/BMP-header bugs; close out plan.md P0-P2 backlog") — a
-systematic pass through `plan.md`'s P0 backlog, working task-by-task from
-the top:**
+**Recently implemented features (this session, committed `88484a3`):**
+fail-loud CMake configure-time checks and known-ID verification for
+`LoadStringA`'s STRINGTABLE extraction, described in full in section 3.
 
-Real behavior/bug fixes (not just tests):
-* **MIDI playback was completely disabled and is now fixed.**
-  `MidiMusicSendCommand`'s `MCI_OPEN` handler (`src/MidiMusic.cpp`) had a
-  hardcoded `return MCIERR_INTERNAL` behind a `//todo fix sigsegv` comment
-  (commit `a35f476c`, "MIDI was disabled") — neither game could play any
-  music, and `basic_test`'s failure (previously documented in this file as
-  an "environment-specific audio backend issue") was actually this
-  kill-switch, misdiagnosed by a prior session. Root-caused the real
-  segfault: `MixerThread` captured a `MidiSession*` pointer under one
-  `lock_guard` scope, released the lock, then dereferenced it after
-  re-acquiring a *second* `lock_guard` scope; a concurrent `MCI_CLOSE`
-  (erases from `g_midi.sessions`) or `MCI_OPEN` (`push_back`, can
-  reallocate the vector) during that gap left the pointer dangling — the
-  exact race free-eggbert's own `MM_MCINOTIFY` handler triggers
-  (`SuspendMusic()`/`MCI_CLOSE` then immediately `RestartMusic()`/
-  `MCI_OPEN`+`MCI_PLAY`, `blupi.cpp:562-580`). Fixed by folding
-  find-and-render into one uninterrupted lock acquisition; removed the
-  kill-switch. Verified via AddressSanitizer (zero errors) and a 30-cycle
-  stress test reproducing the exact real-game close-then-reopen pattern.
-  **Needs a manual playtest** to confirm audibly — cannot be verified by
-  ear in this headless sandbox.
-* `GetDeviceCaps(SIZEPALETTE)` (`src/wingdi_misc.cpp`) previously always
-  returned 256 (a hardcoded palette-display placeholder); real Win32 only
-  returns nonzero for an actual <=8bpp hardware-palette device — a modern
-  TrueColor host reports 0. Both games' TrueColor-vs-palette branching
-  logic only agrees when the value is exactly 0; the old 256 forced
-  free-eggbert's true-color decor off and forced planetblupi's minimap
-  onto its untested 8-bit-indexed `CreateBitmap` path instead of the
-  true-color 16-bit path. Fixed to return 0. **Needs a manual visual
-  playtest** of planetblupi's minimap and free-eggbert's true-color
-  rendering.
-* `BITMAPFILEHEADER`/`BITMAPINFOHEADER` (`include/wingdi.h`) lacked
-  `#pragma pack`, so `BITMAPFILEHEADER` was 16 bytes instead of the real,
-  on-disk 14-byte BMP file header size. Both games' `_lopen`/`_lread`
-  palette-fallback path (`ddutil.cpp`, live since `FindResourceA` always
-  misses) reads every real `.bmp` asset's header directly into these
-  structs — every such read was misaligned by 2 bytes, corrupting the
-  palette data read after it. Fixed with `#pragma pack(push, 2)`/`pop`
-  (matching real Win32's own `<wingdi.h>`). **Needs a manual visual
-  playtest** of both games' palette-driven rendering.
-
-Test-only additions (`tests/`), one per completed `plan.md` P0 task —
-see `plan.md` for the full per-task `Status:` lines:
-* `TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba`/`...Rgb565...`
-  (`test_gdi_regressions.cpp`, TASK-0125) — pixel-value correctness for
-  `CreateBitmap`'s conversion paths (previously only object-validity
-  checked).
-* `TestRegisterClassAWithFullFieldSet`,
-  `TestCreateWindowExAFullscreenPath`,
-  `TestClientToScreenTracksWindowPositionNotStale`,
-  `TestSetCursorPosAndGetCursorPosRoundTrip` (`test_winuser_regressions.cpp`,
-  TASK-0027/0028/0055).
-* `tests/test_timer_regressions.cpp` (new file, TASK-0039/0040/0041/
-  0042/0043/0044) — `SetTimer`/`KillTimer`/`WM_TIMER` and `timeSetEvent`/
-  `timeKillEvent`, a cross-thread `PostMessageA` stress test, and the
-  `WM_DESTROY`→kill-timer→`PostQuitMessage` sequence for both timer
-  mechanisms.
-* `tests/test_planetblupi_loop.cpp`, `tests/test_eggbert_loop.cpp` (new
-  files, TASK-0037/0110/0111) — end-to-end reproductions of both games'
-  exact `PeekMessage(PM_NOREMOVE)`→`GetMessage`→`Dispatch` loop idiom.
-* `TestCreateCompatibleDcRepeatedLifecycleDoesNotLeak`,
-  `TestGetDeviceCapsSizePaletteReportsTrueColorHost`,
-  `TestGetSystemPaletteEntriesFills256WellFormedEntries`,
-  `TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions`,
-  `TestSelectObjectDeleteObjectBitmapIntoDcLifecycle`
-  (`test_gdi_regressions.cpp`, TASK-0059/0060/0061/0062/0063/0064).
-* `TestFindResourceAMissesThenLopenLreadLcloseDecodesRealBmpHeader`
-  (`test_file_regressions.cpp`, TASK-0073/0084).
-* `tests/test_mci_sequences.cpp` (new file, TASK-0089/0090/0091/0094/0098)
-  — sequencer open/play/notify/close, the notify-triggered
-  close-then-reopen stress test, cdaudio decline.
-
-Documentation/build-hardening (test-adjacent, no behavior change):
-* `cmake/ExtractStringTable.cmake` now emits a `message(WARNING ...)` for
-  an unsupported `L"..."` wide-string `STRINGTABLE` entry or an embedded
-  escaped double-quote, instead of silently mis-parsing (TASK-0126).
-
-`plan.md` itself was reconciled against actual repository state: every one
-of its 126 tasks now carries a `Status:` line (DONE/PARTIAL/TODO/
-NOT-APPLICABLE, with evidence), verified against real code/tests rather
-than trusting the plan's own prior text.
-
-**Recently completed and committed (`8193c6a`, "Add standalone WinAPI
-examples; confirm joystick stub is safe (TASK-0102)"):**
-* Added `examples/` — five standalone, runnable demonstrations of specific
-  WinAPI functionality (window/message loop, timers, input/cursor, GDI
-  minimap rendering, MIDI playback), gated behind a new
-  `FREE_API_BUILD_EXAMPLES` CMake option (default `OFF`). See
-  `examples/README.md`. While building `05_midi_playback`, found and fixed
-  a real design flaw in the example itself (not production code): an
-  unbounded notify-triggered reopen loop that spins as fast as the CPU
-  allows once a short track's audio backend imposes no real-time
-  backpressure (confirmed: ~1% idle CPU normally, but a runaway loop pegged
-  a core and even resisted `timeout`'s `SIGTERM` for 3+ minutes before it
-  was manually `kill -9`'d) — fixed by bounding the loop count and pacing
-  each reopen.
-* **TASK-0102 resolved** (joystick STUB confirmation) — previously `MANUAL`
-  in `plan.md`; now `DONE`, confirmed via both static analysis (proved
-  free-eggbert's `m_somethingJoystick` is never assigned anywhere but its
-  0-initialization, making joystick polling permanently dead code) and an
-  actual driven playtest (installed `Xvfb` with the user's `sudo`, launched
-  the real game, clicked through to its Setup screen's joystick-device-slot
-  row, confirmed no crash and that clicking a slot has no effect — matching
-  the static-analysis prediction exactly). See the "Capability discovered
-  this session" note below — real GUI verification with screenshots turns
-  out to be possible here, given `Xvfb` (one-time `sudo` install) plus the
-  already-present `xdotool`/ImageMagick `import`.
-
-**Recently completed (uncommitted, this session, after the above commit):**
-* **TASK-0103 implemented** (was deliberately-deferred/optional): real
-  `joyGetPosEx`/`joyGetNumDevs` (`src/winmm.cpp`), backed by
-  `SDL_Joystick`. `joyGetNumDevs` returns the real connected-device count;
-  `joyGetPosEx` opens (caches) the requested 0-based index, maps SDL's
-  signed axis range to Win32's unsigned 0..65535 (center 32768) for
-  `dwXpos`/`dwYpos`, and packs the first 4 buttons into `dwButtons` bits
-  0-3 (`JOY_BUTTON1`-`4`) — exactly what free-eggbert reads. New
-  `JOYERR_NOERROR`/`JOYERR_PARMS`/`JOYERR_UNPLUGGED` constants added to
-  `include/mmsystem.h` (real Win32 values). Tested via SDL's
-  virtual-joystick API (`tests/test_joystick_regressions.cpp`, no real
-  hardware needed) — axis/button values round-trip correctly, `JOYERR_*`
-  codes returned correctly for null/too-small/out-of-range inputs. Also
-  re-verified live: rebuilt free-eggbert against the new code, ran it under
-  `Xvfb`, navigated back to the Setup screen — identical appearance, no
-  crash, no hang (expected: per TASK-0102's finding, free-eggbert's own
-  `m_somethingJoystick` is never set to nonzero, so this new real backend
-  doesn't change any *game* behavior by itself — see `docs/out-of-scope.md`
-  for that caveat). `ctest` now 17/17, including under ASan+UBSan; both
-  free-eggbert and planetblupi still build cleanly.
-* **`plan.md` is now 125 DONE / 1 OBSOLETE — the entire non-superseded
-  backlog is complete.**
-
-**Recently implemented / fixed (prior session, real behavior changes):**
-* `LoadStringA` returns real `STRINGTABLE` text for both games instead of a
-  `"RES_<id>"` placeholder.
-* `DestroyWindow` now synchronously dispatches `WM_DESTROY` to the window's
-  own `WndProc` before tearing it down (previously never happened at all).
-* `ShowCursor`/`SetCursor` are real SDL-backed implementations (previously
-  no-op stubs).
-* `_mkdir`/`CreateDirectoryA` correctly normalize Windows-style backslash
-  paths (e.g. `"\User"`) instead of potentially resolving to the real
-  filesystem root.
-* `WM_MOUSEMOVE`'s `wParam` now carries live `MK_SHIFT`/`MK_CONTROL` state
-  (previously only button-down/up messages did).
-* A hardcoded, machine-specific absolute path in `CMakeLists.txt` was
-  removed; standalone builds now work via `-DFREE_API_USE_SYSTEM_SDL3=ON`.
-* A diagnostic-counter gating bug in `PeekMessageA` was fixed.
-
-**What does NOT work / is not implemented (both permanent, by-design
-limitations, not gaps — everything else in the original P0-P2 backlog is
-now implemented, including `_findfirst`/`_findnext` and real joystick
-support, see above):**
+**What does NOT work / known gaps:**
+* A genuinely standalone free-api build (no sibling game, no full system
+  SDL3 stack) cannot complete configure in this sandbox — see section 4.
 * MCI digital-video (AVI movie codec playback) is **not implemented** —
   confirmed intentional; both games already gracefully skip movies when
-  this is declined (see section 4/5).
+  this is declined (`docs/out-of-scope.md`).
 * `LoadStringA`'s real-text table contains **only one game's strings per
   build** (whichever game's `.rc` was extracted for that specific build) —
   by design, not a bug.
+* MIDI music playback, the `GetDeviceCaps(SIZEPALETTE)` fix, and the
+  `BITMAPFILEHEADER` packing fix (all from an earlier session) still have
+  not had a human-eyes/ears playtest — flagged as needing manual
+  verification since a prior session, status unchanged.
 
 ## 3. Recent changes
 
-In chronological order, most recent last (commit hashes on `develop`):
+Most recent first:
 
-* `4cd7dbd` — Added `plan.md`: full evidence-based usage audit of both
-  target games + 124-item task backlog.
-* `6ce82dd` — Removed hardcoded absolute path from `CMakeLists.txt`; added
-  `FREE_API_USE_SYSTEM_SDL3` option; added `docs/scope.md`,
-  `docs/cmake-options.md`; added `tests/test_header_compile.cpp`,
-  `tests/test_winuser_regressions.cpp`, `tests/test_file_regressions.cpp`;
-  fixed the `WM_MOUSEMOVE` `MK_SHIFT`/`MK_CONTROL` bug.
-* `fa6616a` — Fixed `_mkdir` path normalization (promoted a shared
-  `NormalizeFilesystemPath` helper); implemented real `ShowCursor`/
-  `SetCursor`; gated the `FREE_DIRECT_INPUT` first-20-events log.
-* `3a796de` — `DestroyWindow` now dispatches `WM_DESTROY` synchronously;
-  removed a now-redundant second `PostQuitMessage` in `DefWindowProcA`'s
-  `WM_CLOSE` handling.
-* `b8b6667` — Implemented real `LoadStringA` text via
-  `cmake/ExtractStringTable.cmake` (new) +
-  `src/internal/FreeApiGeneratedStrings.hpp`/`FreeApiStringTable.cpp`
-  (new); investigated MCI digital-video/AVI and documented it as an
-  intentional, evidenced non-issue (`docs/out-of-scope.md`, new; a stale
-  "TODO: segfault" comment removed from `src/winmm.cpp`); added
-  `tests/test_loadstring_regressions.cpp`,
-  `tests/test_mci_avivideo_regressions.cpp`.
-* `8e7cf0a` (current HEAD) — Fixed the `PeekMessageA`
-  diagnostic-counter gating bug; gated `SetTimer`/`KillTimer` logs; added
-  `tests/test_gdi_regressions.cpp` (locks in already-correct `StretchBlt`/
-  `GetPixel`/`SetPixel` behavior, which had no prior test coverage); added
-  `docs/target-games.md`.
+* **`88484a3`** (this session) — "Harden LoadStringA/STRINGTABLE: fail-loud
+  configure + known-ID verification":
+  * `cmake/ExtractStringTable.cmake`: new optional `REQUIRE_STRINGS`
+    (missing `.rc` or zero extracted strings becomes `FATAL_ERROR` instead
+    of `WARNING`), `TARGET_GAME_NAME` (error-message context),
+    `VERIFY_ID`/`VERIFY_TEXT` (a known symbol must resolve to exact
+    expected text, `FATAL_ERROR` on mismatch or not-found).
+  * `CMakeLists.txt`: passes `REQUIRE_STRINGS=ON` and `VERIFY_ID=106`/
+    `VERIFY_TEXT="Quit BLUPI"` (`TX_BUTTON_QUITTER`, present with identical
+    text in both `Eggbert2.rc` and `blupi-e.rc`) only when
+    `CMAKE_PROJECT_NAME` is `SPEEDY_BLUPI_WINDOWS` or
+    `PLANET_BLUPI_WINDOWS`. Also fixed `check_no_hardcoded_paths`'s
+    `add_test` command, which used `CMAKE_SOURCE_DIR` (resolves to the
+    *calling game's* root when free-api is nested) instead of
+    `CMAKE_CURRENT_SOURCE_DIR` (always free-api's own root) — this made the
+    test fail whenever free-api was built as a subdirectory of either game.
+  * `tests/test_loadstring_regressions.cpp`: rewritten to branch on new
+    compile-time macros (`FREE_API_TARGET_GAME_FREE_EGGBERT`/
+    `FREE_API_TARGET_GAME_PLANETBLUPI`, set by `CMakeLists.txt` from the
+    same `CMAKE_PROJECT_NAME` detection) — target-game mode hard-asserts
+    real text and never `RES_<id>` for a known ID; standalone mode only
+    logs either outcome. Added NULL-buffer and `cchBufferMax == 0` cases
+    (both already correctly returned 0 in the existing `LoadStringA`
+    implementation — no production code change was needed there).
+  * `docs/out-of-scope.md` and `include/winuser.h`: documented that
+    `"RES_<id>"` is a debug/developer-only marker, never acceptable in
+    shipped game UI, and that a successful target-game configure is now a
+    real signal the table is populated and correct.
+  * `plan.md`: added `TASK-0127` recording this work, status `DONE`.
+  * Verified: reconfigured through both games (string counts unchanged —
+    364 free-eggbert / 257 planetblupi), full CTest suite 17/17 in both
+    (with `SDL_VIDEODRIVER=dummy`), deliberately-broken-input cases
+    (missing `.rc`, zero strings, wrong `VERIFY_TEXT`, unknown `VERIFY_ID`)
+    each independently reproduced as the expected `FATAL_ERROR` via direct
+    `cmake -P` script invocations before being wired into `CMakeLists.txt`.
+* `c8d44cb` — Implemented real joystick support via SDL (`TASK-0103`);
+  closed out `plan.md`'s backlog to 125 DONE / 1 OBSOLETE at the time.
+* `8193c6a` — Added `examples/` (five standalone WinAPI demos); confirmed
+  the joystick stub is safe via a real Xvfb-driven playtest (`TASK-0102`).
+* `e89d65b` — Fixed a MIDI-playback SIGSEGV (a dangling-pointer race in
+  `MixerThread`), a `GetDeviceCaps(SIZEPALETTE)` contract bug, and a
+  `BITMAPFILEHEADER`/`BITMAPINFOHEADER` struct-packing bug; closed out
+  `plan.md`'s P0–P2 backlog. (Still needs a manual playtest — section 2.)
 
 ## 4. Current blocker / main problem
 
-**There is no blocker preventing further work, and the previously-documented
-one has been resolved (see below) — it was misdiagnosed, not actually an
-environment limitation.**
+**No blocker on the actual feature work** (the LoadStringA hardening pass
+is complete and verified). Two known, separate issues are worth flagging
+for whoever picks this up next:
 
-* **Previously documented here as:** `basic_test` failing with `MCI_OPEN
-  failed (305): Internal MCI error`, attributed to "SDL3's audio subsystem
-  failing to initialize a real audio device/stream in this sandboxed dev
-  environment."
-* **Actual root cause (found this session):** `src/MidiMusic.cpp`'s
-  `MCI_OPEN` handler had a hardcoded `return MCIERR_INTERNAL` behind a
-  `//todo fix sigsegv` comment — a deliberate kill-switch from commit
-  `a35f476c` ("MIDI was disabled"), unrelated to the sandbox's audio
-  hardware. The real bug it was papering over was a dangling-pointer race
-  in `MixerThread` (see section 2's "Recently completed" for the full
-  explanation) — now fixed, and the kill-switch removed.
-* **Current state:** `basic_test` passes; MIDI music (`MCI_OPEN`/
-  `MCI_PLAY`/`MM_MCINOTIFY`/`MCI_CLOSE`) works end-to-end and is covered by
-  `tests/test_mci_sequences.cpp`, including a stress test reproducing the
-  exact race. Verified stable across 5+ repeated runs and a full
-  AddressSanitizer+UBSan pass (zero errors).
-* **Still needed:** a manual playtest of both games' actual background
-  music, since audio correctness/quality cannot be judged in this headless
-  sandbox (SoundFont is also not present here — "No SoundFont found" is
-  expected in this environment and does not indicate a bug; see
-  `src/MidiMusic.cpp`'s file-level doc comment for the lookup order).
+**1. Running `ctest` without `SDL_VIDEODRIVER=dummy` in this sandbox
+produces 6 spurious test failures that are NOT a code bug.**
+* **Exact symptom:** `ctest --output-on-failure` (no env vars set) reports
+  `test_winuser_regressions` failing with 6 `FAIL` lines: `ClientToScreen`
+  (×4, origin/far-corner mapping before and after `MoveWindow`),
+  `ScreenToClient` (the round-trip check), and `GetCursorPos reflects the
+  position set by SetCursorPos`.
+* **Root cause (confirmed by direct reproduction):** this sandbox's
+  default display (`DISPLAY=:0`, `XDG_SESSION_TYPE=wayland`) is a real
+  Wayland session. Wayland's protocol does not let clients set an absolute
+  window position, and (evidently) does not support the exact global mouse
+  warp `SetCursorPos` needs either — so `SDL_SetWindowPosition`/mouse-warp
+  silently don't do what the test expects, and every position-exactness
+  assertion fails. Running the identical binary with
+  `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` (SDL's fully-software,
+  headless driver) makes **all 6 failures disappear** — confirmed via
+  direct A/B reproduction this session in both the free-eggbert and
+  planetblupi build trees.
+* **Affected files:** none need changing — this is a test-execution
+  environment issue, not a defect in `src/winuser_window.cpp`,
+  `src/winuser_misc.cpp`, or `src/internal/FreeApiSdlVideo.cpp`.
+* **What's already been tried:** confirmed the dummy driver fully resolves
+  it (0 failures, both games, full 17/17 suites). Did not investigate
+  whether a real X11 (non-Wayland, non-XWayland) session would also pass —
+  untried.
+* **Action for next session:** always run this repo's tests with
+  `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` set (see section 7) unless
+  specifically doing GUI/visual verification work. If a future session
+  ever needs the *real* SetCursorPos/window-position round-trip verified
+  end-to-end, that needs a proper X11 (not Wayland) session or Xvfb, not
+  this sandbox's default display.
+
+**2. A fully standalone free-api build (no sibling game, no full system
+SDL3 stack) does not configure to completion in this sandbox.**
+* **Exact symptom:** `cmake -S . -B cmake-build-debug` (in `free-api`
+  itself, no `-DFREE_API_USE_SYSTEM_SDL3=ON`) fails with: `CMake Error at
+  /rv/.../free-eggbert/cmake/ThirdPartySDL.cmake:16 (message): Missing
+  vendored dependency 'SDL' in /rv/.../free-api/third_party. Run: git
+  submodule update --init --recursive`.
+* **Suspected cause:** free-api has no `.gitmodules`/vendored SDL3 of its
+  own by design (per `CMakeLists.txt`'s own top-of-file comment); its
+  standalone developer-convenience path reuses whichever sibling game's
+  `cmake/ThirdPartySDL.cmake` it finds, but that script expects a
+  `third_party/SDL` checkout inside **free-api's own** directory, which
+  doesn't exist here. The alternative, `-DFREE_API_USE_SYSTEM_SDL3=ON`,
+  also doesn't fully work in this sandbox: `pkg-config sdl3` finds
+  `3.4.0`, but `SDL3_image`/`SDL3_mixer` dev packages are absent.
+* **This is pre-existing and unrelated to this session's changes** — the
+  standalone-mode CMake logic itself (which `.rc`, if any, gets used, and
+  that `REQUIRE_STRINGS`/`VERIFY_ID` are correctly never set) was verified
+  directly via isolated `cmake -P cmake/ExtractStringTable.cmake`
+  invocations instead of a full build.
+* **Not attempted:** installing `SDL3_image`/`SDL3_mixer` system packages,
+  or vendoring `third_party/SDL` inside `free-api` itself. Either would let
+  a real standalone build+test run complete; neither was done this session
+  since it's outside this pass's LoadStringA-hardening scope.
 
 ## 5. Known bugs and limitations
 
-* **Needs manual verification (real behavior changes made this session,
-  cannot be judged in this headless sandbox):**
-  * MIDI music playback (section 4) — needs an audible playtest.
-  * `GetDeviceCaps(SIZEPALETTE)` fix (`src/wingdi_misc.cpp`, now returns 0
-    instead of 256) — changes which rendering path both games take
-    (planetblupi's minimap should now use its true-color path instead of
-    the untested 8-bit-indexed placeholder; free-eggbert's true-color
-    decor should no longer be force-disabled). Needs a visual playtest.
-  * `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing fix (`include/wingdi.h`,
-    now `#pragma pack(push, 2)`) — both games' `_lopen`/`_lread` real-BMP
-    palette-fallback path was reading these structs misaligned by 2 bytes
-    before this fix. Needs a visual playtest of palette-driven rendering.
-* **Incomplete / needs verification:** the `WM_MOUSEMOVE` `MK_SHIFT`/
-  `MK_CONTROL` fix (`src/internal/FreeApiMessageQueue.cpp`, from a prior
-  session) cannot be automatically tested in this headless environment —
-  confirmed empirically that `SDL_PushEvent`-injected key events do not
-  update `SDL_GetKeyboardState()`. Needs a real manual playtest of Planet
-  Blupi's shift-drag cell-highlight feature to fully confirm.
-* **By design, not a bug:** `LoadStringA`'s generated table holds only one
-  game's strings per compiled build (see section 1/2).
-* **By design, not a bug:** MCI digital-video/AVI is permanently declined;
-  both games already skip movies gracefully as a result (see
-  `docs/out-of-scope.md`).
+* **Suspected environment issue, not a confirmed code bug:** section 4,
+  item 1 (Wayland session breaks exact window-position/cursor-warp test
+  assertions; resolved by `SDL_VIDEODRIVER=dummy`).
+* **Incomplete / needs verification (carried over from a prior session,
+  unchanged this session):**
+  * MIDI music playback — real behavior change, needs an audible playtest;
+    cannot be judged in this headless sandbox.
+  * `GetDeviceCaps(SIZEPALETTE)` fix (now returns 0 instead of 256) —
+    changes which rendering path both games take; needs a visual playtest.
+  * `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing fix — needs a visual
+    playtest of palette-driven rendering.
+  * `WM_MOUSEMOVE`'s `MK_SHIFT`/`MK_CONTROL` fix — confirmed untestable via
+    `SDL_PushEvent` injection in this headless environment; needs a real
+    manual playtest.
+* **By design, not a bug:**
+  * `LoadStringA`'s generated table holds only one game's strings per
+    compiled build.
+  * MCI digital-video/AVI is permanently declined.
+  * `"RES_<id>"` is a debug-only placeholder; target-game builds now fail
+    CMake configure if it would ever appear for a known ID (section 1).
 * **Needs verification / gotcha:** `cmake/ExtractStringTable.cmake` runs at
   CMake **configure** time via `execute_process`, not as a build-time
-  custom command. Editing a game's `.rc`/`resource.h` file and re-running
+  custom command. Editing a game's `.rc`/`resource.h` and re-running
   `cmake --build` alone will **not** pick up the change — a full
-  `cmake -B <dir>` reconfigure is required. Not currently documented
-  anywhere except here.
-* **Resolved this session:** the `STRINGTABLE` parser in
-  `ExtractStringTable.cmake` now emits a `message(WARNING ...)` for an
-  unsupported `L"..."` wide-string entry or an embedded escaped
-  double-quote, instead of silently mis-parsing (`TASK-0126`).
+  `cmake -B <dir>`/`cmake <build-dir>` reconfigure is required.
+* **Unresolved this session (section 4, item 2):** standalone free-api
+  build does not complete in this sandbox.
 * **Unknown:** whether real joystick support is ever actually wanted for
-  Free Eggbert — no evidence of user demand either way; current safe stub
-  is sufficient for correctness.
+  Free Eggbert — `joyGetPosEx`/`joyGetNumDevs` are real (`TASK-0103`), but
+  free-eggbert's own `m_somethingJoystick` flag is never assigned anything
+  but its 0-initialization, so it never actually polls the joystick
+  regardless (editing that is outside this repo's scope).
 
 ## 6. Architecture notes
 
@@ -351,21 +262,32 @@ environment limitation.**
 * `src/wingdi_*.cpp` — GDI bitmap/DC/blit subset (`StretchBlt`, `GetPixel`/
   `SetPixel`, `CreateBitmap`, `CreateCompatibleDC`).
 * `src/winmm.cpp` + `src/MidiMusic.cpp` — WinMM/MCI/MIDI (TinySoundFont +
-  TinyMidiLoader backend).
+  TinyMidiLoader backend); real joystick backend (`joyGetPosEx`) also
+  lives in `src/winmm.cpp`.
 * `src/winbase*.cpp`, `src/crt_*.cpp` — file/path/CRT helpers.
 * `src/internal/*` — shared internal state and helpers: `FreeApiMessageQueue`
   (the message queue itself + SDL event translation), `FreeApiWindowRegistry`
   (`HWND` -> `WNDPROC`/state maps), `FreeApiGdi` (`CompatDC`/`CompatBitmap`),
   `FreeApiPath` (path normalization), `FreeApiDiagnostics`, `FreeApiStringTable`
-  (generated-`LoadStringA`-table lookup), `FreeApiTimers`, `FreeApiSdlVideo`.
+  (generated-`LoadStringA`-table lookup — `FindGeneratedString`, a linear
+  scan over `g_generatedStringTable`), `FreeApiTimers`, `FreeApiSdlVideo`.
 * `src/winmain_bridge.cpp` — `WinMain` -> `main` entry-point bridge.
-* `cmake/ExtractStringTable.cmake` — build-time `STRINGTABLE` extractor.
+* `cmake/ExtractStringTable.cmake` — configure-time `STRINGTABLE` extractor
+  + (as of this session) the fail-loud/known-ID-verification gate for
+  target-game builds.
 
 **Data flow:** SDL3 events -> `FreeApiMessageQueue::PumpSdlEvents` ->
 internal message queue -> `PeekMessageA`/`GetMessageA` -> `DispatchMessageA`
 -> the game's registered `WndProc` (looked up via `FreeApiWindowRegistry`).
 **`WM_CREATE` and `WM_DESTROY` are delivered synchronously** (direct
 `WndProc` call from `CreateWindowExA`/`DestroyWindow`), never via the queue.
+
+`LoadStringA` (`src/winuser_misc.cpp`) calls
+`FreeApi::Internal::FindGeneratedString(uID)`; if it returns non-null, that
+exact text is copied out; otherwise `"RES_%u"` is formatted instead. The
+*only* thing that changed this session is how confidently a target-game
+build can trust that lookup will hit — the lookup function itself is
+unchanged.
 
 **Important invariants — do not break these without re-verifying against
 both target games:**
@@ -378,19 +300,23 @@ both target games:**
 * `WM_MOUSEMOVE`'s `lParam` packing must stay bit-exact (`LOWORD`=x,
   `HIWORD`=y) — both games persist raw message triples for demo-file
   replay; any change breaks demo compatibility.
-* Free API's "window size" **is** the client-area size (`CreateWindowExA`
-  passes `nWidth`/`nHeight` straight to `SDL_CreateWindow`; `GetClientRect`
-  reads it back unchanged) — unlike real Win32. `AdjustWindowRect` is
-  deliberately a no-op identity transform because of this; do not "fix" it
-  to add real Win32 chrome math without changing `CreateWindowExA`/
-  `GetClientRect` in lockstep.
+* Free API's "window size" **is** the client-area size — `AdjustWindowRect`
+  is deliberately a no-op identity transform because of this; do not "fix"
+  it without changing `CreateWindowExA`/`GetClientRect` in lockstep.
 * `LoadStringA`'s real-text backing is per-build, per-game, determined by
-  `CMAKE_PROJECT_NAME` at configure time (section 1).
+  `CMAKE_PROJECT_NAME` at configure time, and (as of this session) is
+  fail-loud-verified for both target games — do not weaken
+  `REQUIRE_STRINGS`/`VERIFY_ID` without understanding why they were added
+  (`plan.md` `TASK-0127`).
+* `cmake/ExtractStringTable.cmake` must stay a narrow `STRINGTABLE`-only
+  parser — confirmed (this session) that neither game's `.rc`/header files
+  actually use hex values, inline comments, or expressions in a way the
+  parser doesn't already handle; do not build this into a general `.rc`
+  compiler absent new evidence of an actual unsupported real-world case.
 * `free-direct` (sibling project) depends on the non-`WINAPI`, non-static C
   entry points `FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC`
-  (`src/wingdi_dc.cpp`) to wrap a DirectDraw surface's pixel buffer as a
-  GDI-compatible `Surface`-kind `HDC`. Their exact signatures must not
-  change without updating `free-direct` too.
+  (`src/wingdi_dc.cpp`). Their exact signatures must not change without
+  updating `free-direct` too.
 * DirectDraw/DirectSound/DirectPlay are explicitly **out of scope** for
   Free API — that's `free-direct`'s responsibility.
 * ANSI-only (`A`-suffixed) functions are implemented; no real Unicode/`W`
@@ -399,126 +325,92 @@ both target games:**
 ## 7. Useful commands
 
 ```bash
-# Standalone configure + build (system SDL3 required)
-cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON -DFREE_API_BUILD_TESTS=ON
-cmake --build build -j"$(nproc)"
+# Build via a real target game (recommended way to verify anything —
+# free-api standalone does not currently configure in this sandbox, see §4)
+cd ../free-eggbert/cmake-build-debug && cmake . && ninja -j"$(nproc)"
+cd ../planetblupi/build && cmake . && make -j"$(nproc)"
 
-# Run the full test suite
-cd build && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
+# Run the full test suite -- SDL_VIDEODRIVER=dummy is NOT optional in this
+# sandbox's default (Wayland) display; without it, 6 window-position tests
+# spuriously fail (see §4, item 1)
+cd ../free-eggbert/cmake-build-debug/FREE_API && \
+  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
+cd ../planetblupi/build/FREE_API && \
+  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
 
-# Reproduce the current known basic_test failure (section 4)
-cd build && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./basic_test
+# Run one specific test binary directly (from the game's own build dir,
+# binaries land in bin/ at that build dir's top level, not under FREE_API/)
+cd ../free-eggbert/cmake-build-debug && SDL_VIDEODRIVER=dummy ./bin/test_loadstring_regressions
 
-# Run one specific test binary directly
-cd build && SDL_VIDEODRIVER=dummy ./test_gdi_regressions
-cd build && SDL_VIDEODRIVER=dummy ./test_loadstring_regressions
-
-# Build via a real target game (integration test; also builds SDL3 from
-# source the first time, which is slow)
-cd ../planetblupi && cmake -B build && cmake --build build -j"$(nproc)"
-cd ../free-eggbert && cmake -B build && cmake --build build -j"$(nproc)"
+# Reproduce the current CMake configure-time known-ID verification directly
+# (useful for testing REQUIRE_STRINGS/VERIFY_ID changes in isolation,
+# without a full project reconfigure)
+cmake -DOUTPUT_CPP=/tmp/out.cpp \
+  -DRC_FILE=../planetblupi/resource/blupi-e.rc -DRC_ENCODING=UTF-8 \
+  "-DRESOURCE_HEADERS=../planetblupi/include/resource.h;../planetblupi/include/resrc1.h" \
+  -DREQUIRE_STRINGS=ON -DTARGET_GAME_NAME=planetblupi \
+  -DVERIFY_ID=106 "-DVERIFY_TEXT=Quit BLUPI" \
+  -P cmake/ExtractStringTable.cmake
 ```
 
 No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-**`plan.md`'s 126-item backlog is now 125 DONE / 1 OBSOLETE — every
-non-superseded task is done.** TASK-0103 (real joystick backend) was the
-last one standing (previously deliberately-deferred/optional) and is now
-implemented too. Nothing code- or doc-shaped remains to *implement*; what's
-left is purely visual/audio human-in-the-loop confirmation:
+1. **Confirm whether a real (non-Wayland) X11 session also passes
+   `test_winuser_regressions` cleanly, or genuinely needs `dummy`.**
+   Goal: rule out a real position/warp bug hiding behind the Wayland
+   explanation. Files: `tests/test_winuser_regressions.cpp`,
+   `src/internal/FreeApiSdlVideo.cpp`. Verification: run the same binary
+   under Xvfb (`Xvfb :99 -screen 0 1024x768x24 & DISPLAY=:99
+   SDL_VIDEODRIVER=x11 ./bin/test_winuser_regressions`) and compare.
 
-1. **Visually verify this session's two visual-rendering fixes**, now that
-   a real GUI playtest is possible here (see capability note below) — not
-   done yet purely for lack of turn scope, not lack of capability:
-   * `GetDeviceCaps(SIZEPALETTE)` now returns 0 instead of 256 — Planet
-     Blupi's minimap should render in real color (16-bit path) instead of
-     greyscale (8-bit placeholder path); free-eggbert's true-color
-     decor/rendering should no longer be force-disabled. (Reaching the
-     actual minimap requires navigating into a real level, not just the
-     menus TASK-0102 explored — budget more turn time for this one.)
-   * `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing fix — both games'
-     palette-driven rendering (via the `_lopen`/`_lread` fallback) should
-     look correct; previously every such read was misaligned by 2 bytes.
-   Files: none to change unless a playtest finds a real regression.
+2. **Get a genuinely standalone free-api build+test working in this
+   sandbox** (currently blocked, section 4 item 2). Smallest viable step:
+   try installing `libsdl3-image-dev`/`libsdl3-mixer-dev` (or equivalent)
+   alongside the already-present system `sdl3` 3.4.0, then
+   `cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON -DFREE_API_BUILD_TESTS=ON`.
+   Files: none expected to change — this is an environment/packaging gap,
+   not a code fix. Verification: `cmake -B build
+   -DFREE_API_USE_SYSTEM_SDL3=ON && cmake --build build -j"$(nproc)"`
+   completes and `SDL_VIDEODRIVER=dummy ctest --output-on-failure` in
+   `build/` shows all tests passing with an empty (0-entry) generated
+   string table.
 
-2. **MIDI music playback** — needs a real/virtual *audio* device (Xvfb
-   alone only provides video), and an AI session still can't literally
-   *hear* output — but the MCI_OPEN/PLAY/NOTIFY sequence executing without
-   error under a real (non-dummy) audio driver, or `examples/
-   05_midi_playback` run by a human with speakers, would confirm it.
-
-3. **`MK_SHIFT`/`MK_CONTROL` fix (TASK-0048/0112)** — worth re-attempting
-   via the Xvfb+xdotool approach below: `xdotool keydown shift` then
-   injecting real mouse motion goes through the actual X11/SDL input path
-   (not synthetic `SDL_PushEvent`), which may update `SDL_GetKeyboardState()`
-   correctly where the old in-process test approach couldn't. Still untried
-   as of this session; worth a dedicated attempt.
-
-4. **(Optional, not evidenced as needed) real joystick *usage* in
-   free-eggbert itself** — free-api's `joyGetPosEx`/`joyGetNumDevs` are now
-   real (TASK-0103), but free-eggbert's own `m_somethingJoystick` flag is
-   never assigned anything but its 0-initialization anywhere in that game's
-   source, so it still never actually polls the joystick regardless. Fixing
-   that would require editing free-eggbert's own source, which is outside
-   this repo's scope (`docs/scope.md`) — noted here only for awareness, not
-   as a free-api task.
-
-### Capability discovered this session: real GUI verification IS possible here
-
-Contrary to earlier sessions' assumption that visual/interactive
-verification "cannot be automated in this environment," it CAN, given one
-one-time setup step:
-
-```bash
-sudo apt-get install -y xvfb   # needs the user's password -- ask them to run
-                                # this themselves via `! sudo apt-get ...`
-Xvfb :99 -screen 0 1024x768x24 &
-DISPLAY=:99 SDL_VIDEODRIVER=x11 ./SPEEDY_BLUPI_WINDOWS &   # or PLANET_BLUPI_WINDOWS
-DISPLAY=:99 xdotool mousemove X Y click 1   # drive it
-DISPLAY=:99 xdotool key Escape              # keyboard works too
-DISPLAY=:99 import -window root screenshot.png   # ImageMagick; screenshot it
-```
-
-This is exactly how TASK-0102 was confirmed this session (launched
-free-eggbert, clicked through Title→Choose Player→Setup, observed the
-joystick-device-slot row via a real screenshot, confirmed clicking it has
-no effect). `xdotool` and `import`/`convert` (ImageMagick) were already
-present; only `xvfb` itself needed installing, which requires `sudo` (the
-sandbox user has a password-protected sudo — ask them to run the install
-command themselves via `! <command>` if you hit this again). Kill both the
-game and the `Xvfb` process when done (they don't self-terminate headless).
+3. **Manual playtests still outstanding from a prior session** (MIDI
+   audio, `GetDeviceCaps(SIZEPALETTE)` visual rendering, BMP palette
+   rendering, `MK_SHIFT`/`MK_CONTROL` drag-highlight) — see section 5.
+   These need a human (or an Xvfb+xdotool-driven session with a human
+   reviewing screenshots/audio) rather than further code changes.
 
 ## 9. Do not do yet
 
-* Do not reintroduce a MIDI "kill switch" (a hardcoded early-return in
-  `MidiMusicSendCommand`'s `MCI_OPEN` handler) if a crash is ever seen again
-  in this area — the real bug was a dangling-pointer race in `MixerThread`
-  (fixed this session by folding find-and-render into one lock
-  acquisition), not something inherent to `MCI_OPEN` itself. Root-cause any
-  future crash the same way (AddressSanitizer + read the exact lock scopes)
-  rather than disabling the feature.
-* Do not revert the `GetDeviceCaps(SIZEPALETTE)` value (now 0) back to a
-  nonzero placeholder, or the `BITMAPFILEHEADER`/`BITMAPINFOHEADER`
-  `#pragma pack(push, 2)`, without re-reading the analysis in `plan.md`
-  TASK-0060/TASK-0084 first — both were real, evidenced bugs affecting both
-  games' actual rendering paths, not stylistic changes.
-* No general `.rc`/`.res` resource compiler — `ExtractStringTable.cmake`
-  must stay narrowly `STRINGTABLE`-only.
+* Do not weaken or remove `REQUIRE_STRINGS`/`VERIFY_ID` in
+  `cmake/ExtractStringTable.cmake`/`CMakeLists.txt` to "fix" a build
+  failure — a `FATAL_ERROR` there means the `.rc`/known-ID data is
+  genuinely broken for that target game; fix the underlying data/parsing,
+  don't silence the check (`plan.md` `TASK-0127`).
+* Do not build a general `.rc`/`.res` compiler — `ExtractStringTable.cmake`
+  must stay narrowly `STRINGTABLE`-only, confirmed sufficient for both
+  games' actual files this session.
+* Do not touch joystick, MCI digital-video, DirectDraw, DirectSound,
+  DirectPlay, or `free-direct` without a specific, separately-scoped
+  request — the most recent two sessions were deliberately scoped away
+  from these areas.
+* Do not assume `test_winuser_regressions` failures under the default
+  display mean a real regression — always try `SDL_VIDEODRIVER=dummy`
+  first (section 4, item 1) before investigating further.
+* Do not revert the `GetDeviceCaps(SIZEPALETTE)` value (now 0) or the
+  `BITMAPFILEHEADER`/`BITMAPINFOHEADER` `#pragma pack(push, 2)` without
+  re-reading `plan.md` TASK-0060/TASK-0084 first.
 * No real Unicode/`W` API implementations.
-* No DirectDraw/DirectSound/DirectPlay work — that belongs to `free-direct`.
 * No consolidating the two timer mechanisms (`timeSetEvent` vs. `SetTimer`)
   into one "unified" implementation.
 * No "fixing" `AdjustWindowRect` to add real Win32 window-chrome math.
 * No new public API without a cited `file:line` usage site in
   `../free-eggbert` or `../planetblupi`.
-* No broad refactor of the GDI blit code in `src/wingdi_blit.cpp` — it is
-  correct and now tested; leave it alone absent a specific new bug report.
-* No rewriting `CMakeLists.txt`'s per-game string-table detection logic
-  without re-verifying by building through both `../free-eggbert` and
-  `../planetblupi` directly afterward (this exact class of bug — "looks
-  right, silently picks the wrong game" — has already happened once).
+* No broad refactor of any currently-passing subsystem absent a specific,
+  evidenced bug report.
 
 ## 10. Resume prompt
 
