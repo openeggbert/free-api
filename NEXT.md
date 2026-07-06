@@ -2,8 +2,9 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `88484a3` (2026-07-05, `develop` branch, pushed to
-`origin/develop`). See [`plan.md`](plan.md) for the full evidence-based
+state as of commit `fd30b9c` (2026-07-06, `develop` branch, pushed to
+`origin/develop`; working tree clean, no changes since `88484a3`'s
+LoadStringA hardening pass). See [`plan.md`](plan.md) for the full evidence-based
 usage audit and 127-item task backlog (every task carries a `Status:` line
 reconciled against actual repository state), and
 [`docs/scope.md`](docs/scope.md) for the scope policy.
@@ -359,29 +360,41 @@ No lint/formatter is configured in this repository.
 
 1. **Confirm whether a real (non-Wayland) X11 session also passes
    `test_winuser_regressions` cleanly, or genuinely needs `dummy`.**
-   Goal: rule out a real position/warp bug hiding behind the Wayland
-   explanation. Files: `tests/test_winuser_regressions.cpp`,
-   `src/internal/FreeApiSdlVideo.cpp`. Verification: run the same binary
-   under Xvfb (`Xvfb :99 -screen 0 1024x768x24 & DISPLAY=:99
-   SDL_VIDEODRIVER=x11 ./bin/test_winuser_regressions`) and compare.
+   * Goal: rule out a real position/warp bug hiding behind the Wayland
+     explanation (section 4, item 1).
+   * Files: `tests/test_winuser_regressions.cpp`,
+     `src/internal/FreeApiSdlVideo.cpp` (read-only investigation expected;
+     no change anticipated unless a real bug surfaces).
+   * Verification: `Xvfb :99 -screen 0 1024x768x24 & DISPLAY=:99
+     SDL_VIDEODRIVER=x11 ./bin/test_winuser_regressions` from
+     `../free-eggbert/cmake-build-debug`, compared against the same binary
+     run with `SDL_VIDEODRIVER=dummy`.
 
 2. **Get a genuinely standalone free-api build+test working in this
-   sandbox** (currently blocked, section 4 item 2). Smallest viable step:
-   try installing `libsdl3-image-dev`/`libsdl3-mixer-dev` (or equivalent)
-   alongside the already-present system `sdl3` 3.4.0, then
-   `cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON -DFREE_API_BUILD_TESTS=ON`.
-   Files: none expected to change — this is an environment/packaging gap,
-   not a code fix. Verification: `cmake -B build
-   -DFREE_API_USE_SYSTEM_SDL3=ON && cmake --build build -j"$(nproc)"`
-   completes and `SDL_VIDEODRIVER=dummy ctest --output-on-failure` in
-   `build/` shows all tests passing with an empty (0-entry) generated
-   string table.
+   sandbox** (currently blocked, section 4 item 2).
+   * Goal: `free-api`'s own `cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON`
+     configures and builds to completion without a sibling game present.
+   * Files: none expected to change — this is an environment/packaging gap
+     (missing `SDL3_image`/`SDL3_mixer` dev packages), not a code fix.
+     Smallest viable step: install `libsdl3-image-dev`/`libsdl3-mixer-dev`
+     (or equivalent for this distro) alongside the already-present system
+     `sdl3` 3.4.0.
+   * Verification: `cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON
+     -DFREE_API_BUILD_TESTS=ON && cmake --build build -j"$(nproc)"`
+     completes, and `SDL_VIDEODRIVER=dummy ctest --output-on-failure` in
+     `build/` shows all tests passing with an empty (0-entry) generated
+     string table.
 
 3. **Manual playtests still outstanding from a prior session** (MIDI
    audio, `GetDeviceCaps(SIZEPALETTE)` visual rendering, BMP palette
-   rendering, `MK_SHIFT`/`MK_CONTROL` drag-highlight) — see section 5.
-   These need a human (or an Xvfb+xdotool-driven session with a human
-   reviewing screenshots/audio) rather than further code changes.
+   rendering, `MK_SHIFT`/`MK_CONTROL` drag-highlight).
+   * Goal: get human (or Xvfb+xdotool-driven, human-reviewed) confirmation
+     that these four already-shipped behavior changes actually look/sound
+     right in both games — see section 5.
+   * Files: none — this is observation, not a code task, unless a playtest
+     reveals an actual defect.
+   * Verification: run each target game normally (not headless) and
+     visually/audibly confirm; no automated command exists for this.
 
 ## 9. Do not do yet
 
