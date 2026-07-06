@@ -14,12 +14,14 @@ instead of real text).
 Each file is a hand-maintained, plain-text list of every numeric
 `STRINGTABLE` ID a target game's own source actually passes to
 `LoadString(A)`, backed by a specific `file:line` citation for every entry —
-never guessed. `cmake/ExtractStringTable.cmake`'s `USED_IDS_FILE` option
-reads this file at CMake configure time and fails loudly (`FATAL_ERROR`,
-listing every missing ID) if any listed ID is absent from that run's
-extracted `STRINGTABLE` table — catching a *specific* used string going
-missing (e.g. a typo'd ID, a deleted `.rc` entry a game still calls, or a
-parser regression on one particular entry), which the pre-existing
+never guessed. Each ID appears exactly once (see "Duplicate-ID validation"
+below): **free-eggbert has 308 unique used string IDs; planetblupi has 257
+unique used string IDs.** `cmake/ExtractStringTable.cmake`'s `USED_IDS_FILE`
+option reads this file at CMake configure time and fails loudly
+(`FATAL_ERROR`, listing every missing ID) if any listed ID is absent from
+that run's extracted `STRINGTABLE` table — catching a *specific* used string
+going missing (e.g. a typo'd ID, a deleted `.rc` entry a game still calls, or
+a parser regression on one particular entry), which the pre-existing
 `REQUIRE_STRINGS`/`VERIFY_ID` checks do not: those only catch "the whole
 table came out empty" or "one known sentinel ID (106) changed," not "one of
 the other 300-odd IDs a game actually uses went missing."
@@ -28,8 +30,9 @@ This is deliberately **not** "every ID defined in `resource.h`" — both
 games' `resource.h` headers define more IDs than are ever passed to
 `LoadString` (e.g. dialog/menu/icon resource IDs, or STRINGTABLE entries
 left over from removed features). Cross-checking confirmed this directly
-(see "Verification" below): free-eggbert uses 308 of its 364 extracted
-strings; planetblupi uses all 257 of its 257 (no unused strings at all).
+(see "Verification" below): free-eggbert's 308 unique used string IDs are a
+subset of its 364 extracted strings; planetblupi's 257 unique used string
+IDs are all 257 of its extracted strings (no unused strings at all).
 
 ## How each ID was found (methodology)
 
@@ -67,22 +70,43 @@ of:
 After deriving each list, it was cross-checked against a *live* extraction
 of the game's own `.rc` (`cmake -P cmake/ExtractStringTable.cmake` with
 `RC_FILE`/`RESOURCE_HEADERS` set, no `USED_IDS_FILE`) by diffing the
-manifest's expanded ID set against the extracted table's actual ID set:
+manifest's expanded, de-duplicated ID set against the extracted table's
+actual ID set:
 
-* **planetblupi**: exact match, 257 == 257, zero difference either
-  direction. Every `STRINGTABLE` entry in `blupi-e.rc` is used, and every
-  used ID this audit found is real.
-* **free-eggbert**: the manifest's 308 IDs are a strict subset of the 364
-  extracted from `Eggbert2.rc` (zero "used but not extracted" — the
-  dangerous direction, which would mean a real gap); the 56 extracted-but-
-  unused IDs are just strings the game's `.rc` defines but never calls
-  `LoadString` on.
+* **planetblupi**: exact match, 257 unique used string IDs == 257 extracted
+  strings, zero difference either direction. Every `STRINGTABLE` entry in
+  `blupi-e.rc` is used, and every used ID this audit found is real.
+* **free-eggbert**: the manifest's 308 unique used string IDs are a strict
+  subset of the 364 extracted from `Eggbert2.rc` (zero "used but not
+  extracted" — the dangerous direction, which would mean a real gap); the
+  56 extracted-but-unused IDs are just strings the game's `.rc` defines but
+  never calls `LoadString` on.
 
 Both manifests were also validated end-to-end via `cmake/ExtractStringTable.cmake`'s
 `USED_IDS_FILE` option itself (configure-time `list(FIND ...)` check against
 the real extracted table, not just the offline diff above) by rebuilding
 through both `../free-eggbert` and `../planetblupi` — see the CMake and
 CTest output cited in the session's commit message for exact counts.
+
+## Duplicate-ID validation
+
+An ID appearing more than once in a manifest — whether a copy-pasted bare
+ID or one already covered by an earlier "A-B" range — makes the "N used
+string ID(s) verified present" count misleading (it silently counts the
+same ID twice) and is easy to introduce by hand. `USED_IDS_FILE` therefore
+tracks each ID's first occurrence and fails configure loudly
+(`FATAL_ERROR`, listing every duplicate) if any ID repeats, checked
+*before* the missing-ID check. This is why both manifests are guaranteed
+to have exactly one entry per used ID: free-eggbert's 308 and
+planetblupi's 257 are unique-ID counts, not raw line counts.
+
+A prior pass of `cmake/used-string-ids/free-eggbert.txt` had IDs 194
+(`TX_CONTENT`) and 288 (`TX_GAMESAVED`) listed twice each — once under
+their symbolic name and once under the numeric-literal call site that
+happens to share the same value (`0xC2` and `0x120u` respectively). Both
+were merged into a single entry citing both call sites; the unique-ID
+count (308) was unaffected since both call sites always referred to the
+same underlying ID.
 
 ## Re-deriving or extending a manifest
 
@@ -97,10 +121,12 @@ If a game's source changes in a way that adds, removes, or changes a
    `cmake -P cmake/ExtractStringTable.cmake` extraction) before committing —
    an incorrect manifest entry would either falsely fail configure (ID
    listed that isn't real) or, worse, give false confidence by omitting a
-   genuinely-used ID.
+   genuinely-used ID. If the same ID has more than one call-site citation,
+   put them in a single entry (see "Duplicate-ID validation" above) rather
+   than listing the ID twice.
 4. Reconfigure through both `../free-eggbert` and `../planetblupi` and
-   confirm the "all N used string ID(s) ... verified present" `STATUS`
-   message still appears with the expected count.
+   confirm the "all N unique used string ID(s) ... verified present"
+   `STATUS` message still appears with the expected count.
 
 Do not use the resource-defines' own numeric range as a shortcut for "which
 IDs are used" — as the free-eggbert cross-check above shows, a game's

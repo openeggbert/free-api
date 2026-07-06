@@ -7,12 +7,17 @@
 # LoadStringA, resolved via g_hInstance -- src/misc.cpp) or by an evidenced
 # computed range.
 #
-# Format: one bare numeric ID per line, or an inclusive "A-B" range.
+# Format: one bare numeric ID per line, or an inclusive "A-B" range. Each ID
+# must appear exactly once -- cmake/ExtractStringTable.cmake's USED_IDS_FILE
+# fails CMake configure loudly if any ID (bare or via a range) repeats, since
+# a duplicate would make the "N unique used string ID(s)" count misleading.
+# If the same ID has more than one call-site citation, list it once with
+# both citations in its comment.
 # '#' starts a comment; blank lines are ignored.
 #
-# Verified (this session): cross-checked against a live extraction of
-# resource/blupi-e.rc -- the 257 IDs below are *exactly* the full set of
-# 257 STRINGTABLE entries extracted from that file (zero mismatch either
+# Verified: cross-checked against a live extraction of resource/blupi-e.rc
+# -- the 257 unique used string IDs below are *exactly* the full set of 257
+# STRINGTABLE entries extracted from that file (zero mismatch either
 # direction). Unlike free-eggbert, planetblupi's .rc has no unused strings.
 
 # --- Direct TX_* symbolic constants and simple wrapper call sites ----------

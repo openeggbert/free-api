@@ -41,7 +41,12 @@
 #                       or configure fails loudly listing the missing IDs --
 #                       this is what catches a *specific* used string going
 #                       missing, not just "the whole table came out empty"
-#                       (which REQUIRE_STRINGS/VERIFY_ID already catch).
+#                       (which REQUIRE_STRINGS/VERIFY_ID already catch). Any
+#                       ID listed more than once (a repeated bare ID, or one
+#                       already covered by an "A-B" range) is also a
+#                       FATAL_ERROR, checked before the missing-ID check --
+#                       duplicates make the manifest's own reported "N used
+#                       string ID(s) verified present" count misleading.
 
 if(NOT DEFINED OUTPUT_CPP)
     message(FATAL_ERROR "ExtractStringTable.cmake: OUTPUT_CPP is required")
@@ -166,7 +171,13 @@ if(DEFINED USED_IDS_FILE)
 
     file(STRINGS "${USED_IDS_FILE}" _used_ids_lines ENCODING UTF-8)
     set(_used_ids_missing "")
-    set(_used_ids_checked 0)
+    # _used_ids_unique accumulates each ID's first occurrence only; a second
+    # occurrence (whether a repeated bare ID or one already covered by an
+    # earlier "A-B" range) is recorded in _used_ids_duplicates instead, so
+    # the manifest's own internal bookkeeping doesn't silently inflate the
+    # "checked" count or mask a copy-paste mistake.
+    set(_used_ids_unique "")
+    set(_used_ids_duplicates "")
     foreach(_used_line IN LISTS _used_ids_lines)
         # Strip a trailing '#...' comment (the whole line if it starts with
         # one), then surrounding whitespace; skip what's left over if blank.
@@ -180,14 +191,30 @@ if(DEFINED USED_IDS_FILE)
             set(_range_lo "${CMAKE_MATCH_1}")
             set(_range_hi "${CMAKE_MATCH_2}")
             foreach(_used_id RANGE ${_range_lo} ${_range_hi})
-                math(EXPR _used_ids_checked "${_used_ids_checked}+1")
+                list(FIND _used_ids_unique "${_used_id}" _used_id_seen_idx)
+                if(_used_id_seen_idx GREATER -1)
+                    list(FIND _used_ids_duplicates "${_used_id}" _used_id_dup_idx)
+                    if(_used_id_dup_idx EQUAL -1)
+                        list(APPEND _used_ids_duplicates "${_used_id}")
+                    endif()
+                    continue()
+                endif()
+                list(APPEND _used_ids_unique "${_used_id}")
                 list(FIND extracted_ids "${_used_id}" _used_id_idx)
                 if(_used_id_idx EQUAL -1)
                     list(APPEND _used_ids_missing "${_used_id}")
                 endif()
             endforeach()
         elseif(_used_line MATCHES "^[0-9]+$")
-            math(EXPR _used_ids_checked "${_used_ids_checked}+1")
+            list(FIND _used_ids_unique "${_used_line}" _used_id_seen_idx)
+            if(_used_id_seen_idx GREATER -1)
+                list(FIND _used_ids_duplicates "${_used_line}" _used_id_dup_idx)
+                if(_used_id_dup_idx EQUAL -1)
+                    list(APPEND _used_ids_duplicates "${_used_line}")
+                endif()
+                continue()
+            endif()
+            list(APPEND _used_ids_unique "${_used_line}")
             list(FIND extracted_ids "${_used_line}" _used_id_idx)
             if(_used_id_idx EQUAL -1)
                 list(APPEND _used_ids_missing "${_used_line}")
@@ -197,11 +224,21 @@ if(DEFINED USED_IDS_FILE)
         endif()
     endforeach()
 
+    list(LENGTH _used_ids_unique _used_ids_checked)
+
+    # Duplicates make the manifest's own reported counts misleading (the
+    # same ID silently counted twice), so this is checked -- and fails
+    # configure -- independently of, and before, the missing-ID check below.
+    if(_used_ids_duplicates)
+        list(LENGTH _used_ids_duplicates _used_ids_duplicates_count)
+        message(FATAL_ERROR "ExtractStringTable.cmake: USED_IDS_FILE ${USED_IDS_FILE} for target game '${TARGET_GAME_NAME}' lists ${_used_ids_duplicates_count} duplicate ID(s) (each appearing more than once, whether as a repeated bare ID or one already covered by an 'A-B' range) -- fix the manifest so each used ID appears exactly once: ${_used_ids_duplicates}")
+    endif()
+
     if(_used_ids_missing)
         list(LENGTH _used_ids_missing _used_ids_missing_count)
         message(FATAL_ERROR "ExtractStringTable.cmake: ${_used_ids_missing_count} of ${_used_ids_checked} used string ID(s) for target game '${TARGET_GAME_NAME}' (per ${USED_IDS_FILE}) are MISSING from the table extracted from ${RC_FILE} -- these would silently fall back to the \"RES_<id>\" placeholder at runtime: ${_used_ids_missing}")
     else()
-        message(STATUS "ExtractStringTable.cmake: all ${_used_ids_checked} used string ID(s) for '${TARGET_GAME_NAME}' verified present (${USED_IDS_FILE})")
+        message(STATUS "ExtractStringTable.cmake: all ${_used_ids_checked} unique used string ID(s) for '${TARGET_GAME_NAME}' verified present (${USED_IDS_FILE})")
     endif()
 endif()
 
