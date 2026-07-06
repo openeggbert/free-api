@@ -2,11 +2,15 @@
 
 This is the hand-maintained, current reference for every public symbol Free
 API implements, keyed to real usage in the two target games. It replaces
-`plan.md` §6 as the living version of that table — `plan.md` §6 is a
+`plan.md` §4 as the living version of that table — `plan.md` §4 is a
 point-in-time audit snapshot and is not updated after the fact; this file
 is. See [`docs/scope.md`](scope.md) for the policy this table enforces
 (every row must have a real usage site) and [`docs/out-of-scope.md`](out-of-scope.md)
 for symbols deliberately *not* implemented.
+
+**Known gap (per `plan.md` TASK-0001):** this table is currently missing
+rows for 28 declared public symbols found in a fresh full-header audit —
+see `plan.md` §4.6/TASK-0001 for the exact list.
 
 **Status legend:** `IMPLEMENTED` (real behavior) · `PARTIAL` (real behavior,
 narrower than full Win32 semantics, sufficient for both games' actual use)

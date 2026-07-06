@@ -1,6 +1,6 @@
 # Free API — Header Usage Audit
 
-Living copy of `plan.md` §3.1's header-usage table — which headers each
+Living copy of `plan.md` §4's header-usage findings — which headers each
 target game actually `#include`s, and what's really used from them. `plan.md`
 is a point-in-time audit and is not updated after the fact; this file is.
 
@@ -21,5 +21,5 @@ or when adding/removing a public header in `include/`.
 | `ddraw.h`, `dsound.h`, `dplay.h`/`"dplay.h"` | Yes | Yes | **Out of scope** — belongs to sibling project `free-direct`. Listed only because these headers co-occur with real WinAPI/GDI symbols in the same files. See `docs/scope.md`'s DirectX boundary statement. |
 
 See [`docs/supported-apis.md`](supported-apis.md) for the symbol-level (not
-header-level) status table, and [`plan.md`](../plan.md) §3.1 for the
-original audit this table was copied from.
+header-level) status table, and [`plan.md`](../plan.md) §4 for the
+original audit this table was derived from.

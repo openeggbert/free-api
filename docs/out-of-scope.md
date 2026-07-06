@@ -9,7 +9,7 @@ document complements (not duplicates).
 ## MCI digital-video / AVI movie playback ("avivideo")
 
 **Decision: permanently declined. This was the single highest-risk unresolved
-item in `plan.md` (section 10) and has since been investigated and resolved
+item in the original audit (`plan.md` section 9, prior version) and has since been investigated and resolved
 as a non-issue.**
 
 Both target games' `CMovie::initAVI()` (`movie.cpp` in each) call:

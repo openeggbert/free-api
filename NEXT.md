@@ -2,11 +2,14 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `911b580` (2026-07-06, `develop` branch, pushed to
-`origin/develop`; working tree clean). See [`plan.md`](plan.md) for the full evidence-based
-usage audit and 127-item task backlog (every task carries a `Status:` line
-reconciled against actual repository state), and
-[`docs/scope.md`](docs/scope.md) for the scope policy.
+state as of commit (see git log for the exact hash of this session's
+`plan.md` rewrite commit), `develop` branch, pushed to `origin/develop`;
+working tree clean. **`plan.md` was fully rewritten this session** — the
+prior 127-item (+TASK-0125–0128) backlog is `DONE`/`OBSOLETE` and archived
+in git history; `plan.md` now holds a fresh, independently-re-derived
+audit and a new, much smaller `TASK-0001`–`TASK-0012` backlog (see section
+3). See [`docs/scope.md`](docs/scope.md) for the scope policy this new
+audit re-verified.
 
 ## 1. Project summary
 
@@ -26,18 +29,27 @@ Wine, not a general WinAPI reimplementation, not a platform for arbitrary
 (`file:line`) in one of the two games' own source (`docs/scope.md`).
 
 **Current development phase:** the original evidence-based audit backlog
-(`plan.md`, 127 tasks) is complete — 126 `DONE`, 1 `OBSOLETE` (superseded),
-plus a follow-on `TASK-0128` closing out a second LoadStringA-hardening
-pass. Work has moved from "implement the missing behavior" to "harden
-what's already implemented" — the two most recent passes made
-`LoadStringA`'s real-text backing fail loudly at CMake configure time
-(rather than only being visible at runtime) both when the whole table is
-broken/missing (`TASK-0127`) and when any *specific* ID a game actually
-uses is missing from it (`TASK-0128`, per-used-ID manifests in
-`cmake/used-string-ids/`). This session additionally confirmed (via a real
-Xvfb/X11 session) that `test_winuser_regressions`'s 6 default-Wayland
-failures are purely an environment artifact, not a hidden bug — see
-section 4.
+(prior `plan.md`, 127 tasks + `TASK-0125`–`0128`) reached full completion
+— 126 `DONE`, 1 `OBSOLETE`, plus 4 more hardening tasks `DONE`. **This
+session then threw that history away and re-derived the whole thing from
+scratch**, per an explicit request to fully re-audit free-api's public
+surface end-to-end and confirm it's still a tight, evidenced subset of
+Win32 (not "trust the old audit," an independent re-verification). Method:
+five parallel research passes — full header-surface inventory; independent
+usage cross-check against free-eggbert's own source; same against
+planetblupi's; verification of every inline `@note Status:` header
+annotation against real `src/` behavior (zero found stale); and
+re-verification of the two long-lived `todo/*.md` backlogs against current
+code. **Result: the codebase holds up well** — 9 of ~15 performance-TODO
+items were already resolved (not previously marked as such), and the new
+`plan.md` (fully rewritten, `TASK-0001`–`TASK-0012`) contains mostly small
+documentation/classification cleanup plus 2 real, bounded correctness gaps
+(a scaled-`StretchBlt` axis-clamp asymmetry, and an unbounded `_findfirst`
+session-table leak triggered by free-eggbert's design-file picker never
+calling `_findclose`) and one header-hygiene gap (`FreeApiCreateSurfaceDC`/
+`FreeApiDestroySurfaceDC` have no shared header declaration with
+`free-direct`, which hand-declares its own copy). None of `TASK-0001`–
+`TASK-0012` are implemented yet — see section 8.
 
 **Important architectural decisions:**
 
@@ -144,6 +156,62 @@ not re-verified this session, no changes made to it.
 
 Most recent first:
 
+* **(this session)** — "Full re-audit; `plan.md` rewritten from scratch":
+  per explicit request, deleted all of `plan.md`'s prior content and
+  re-derived the entire scope audit independently (not carried over from
+  the old version). Five parallel research passes: (1) full public-header
+  inventory (23 headers, 2050 lines, ~101 functions, ~231 `#define`s); (2)
+  free-eggbert usage cross-check; (3) planetblupi usage cross-check; (4)
+  verification of all 143 inline `@note Status:` header annotations
+  against real `src/` behavior, plus a full `TODO`/`FIXME`/`XXX`/`HACK`
+  sweep; (5) re-verification of `todo/free-api-performance-todo.md` (~15
+  items) and `todo/Embedded_Resources_FreeAPI.md` against current code.
+  Findings, synthesized into a new `plan.md` (§1-§9, `TASK-0001`–
+  `TASK-0012`):
+  * **Zero stale/overclaiming header annotations found** — the inline
+    self-documentation system is trustworthy.
+  * **9 of ~15 performance-TODO items already resolved** (not previously
+    marked as such — e.g. the message-queue-mutex-during-sleep P0, the
+    hot-path-logging P0, the StretchBlt 1:1-fast-path P0 are all already
+    fixed in current `src/`); 1 was never free-api's concern (belongs to
+    `free-direct`); 2 correctly deferred by design (uint32_t pixel-buffer
+    refactor, embedded resources); **2 still real**: a scaled `StretchBlt`
+    axis-clamp asymmetry (X clamps to edge, Y skips — `TASK-0003`) and
+    ungated object-lifetime diagnostic counters (`TASK-0004`).
+  * **`docs/supported-apis.md` is missing 28 currently-declared public
+    symbols** it should be tracking (`TASK-0001`).
+  * **`FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC`** (which
+    `free-direct` depends on) **have no shared header declaration** —
+    `free-direct` hand-declares its own local `extern "C"` copy, an
+    unenforced cross-repo signature sync (`TASK-0002`).
+  * **`_findfirst`'s session table can leak**: free-eggbert's one call
+    site (`event.cpp:4736-4747`, design-mission file picker) never calls
+    `_findclose`, leaking one map entry per visit to that screen
+    (`TASK-0009`).
+  * **The "MIDI looping not supported (TODO)" comment in
+    `src/MidiMusic.cpp` is stale** — traced both games' `MM_MCINOTIFY`
+    handlers directly; both already re-trigger playback themselves on
+    song-end, so native MCI-level looping was never actually needed
+    (`TASK-0008`, comment-only fix).
+  * Confirmed a complete list of symbols used by **neither** game, only by
+    free-api's own `tests/basic_test.cpp` (`CloseHandle`, `GetLastError`/
+    `SetLastError`, `RemoveDirectoryA`, `SetEnvironmentVariableA`,
+    `access`/`_access`) — same accepted pattern as the already-documented
+    `Sleep`/`GetTickCount`, just not yet listed alongside them
+    (`TASK-0005`). Separately, `_chdir`/`_getcwd` and `OutputDebugStringW`
+    have **zero call sites anywhere** (not even in tests) — flagged for a
+    keep-or-remove decision (`TASK-0006`/`TASK-0007`).
+  * Verified the `RGB(r,g,b)` macro's unusual-looking parenthesization is
+    byte-for-byte identical to the real Win32 SDK macro — false alarm, no
+    task.
+  * No gaps found: every WinAPI-shaped symbol either game's own source
+    references was already declared somewhere in free-api's headers.
+  * Fixed (immediately, not deferred) the `plan.md` section-number
+    cross-references this rewrite broke in `docs/headers.md`,
+    `docs/out-of-scope.md`, `docs/supported-apis.md` (`TASK-0012`, `DONE`).
+  * No production code changed this session — every `TASK-0001`–
+    `TASK-0012` item is still open (see section 8); this was analysis +
+    planning-document work only.
 * **(this session)** — "Clean up LoadStringA/STRINGTABLE hardening work":
   a documentation/manifest-only pass, no `LoadStringA` runtime behavior
   changed.
@@ -584,7 +652,43 @@ No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-1. **Human sign-off on the two rendering fixes** (`GetDeviceCaps(SIZEPALETTE)`,
+`plan.md` was fully rewritten this session (section 3) into a fresh
+`TASK-0001`–`TASK-0012` backlog — none of it is implemented yet. The three
+below are the real, bounded correctness/hygiene gaps (highest value); the
+rest of `plan.md`'s tasks are small documentation/classification cleanup
+with zero behavior change (`TASK-0001`, `TASK-0005`–`TASK-0008`,
+`TASK-0010`–`TASK-0011`) and can be picked up in any order.
+
+1. **`plan.md` TASK-0003** — fix scaled `StretchBlt`'s asymmetric
+   out-of-range source-clipping (X clamps to the edge pixel, Y skips the
+   destination pixel entirely — pick one consistent policy, recommend
+   clamp-to-edge on both axes) + add a regression test. See `plan.md` for
+   full evidence (`src/wingdi_blit.cpp:115-126`).
+
+2. **`plan.md` TASK-0002** — add a real shared header declaration for
+   `FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC` (currently only
+   implicitly declared via `free-direct`'s own hand-written `extern "C"`
+   copy — a cross-repo signature sync with no compiler check). This one
+   needs coordination with the sibling `free-direct` repo, not just
+   free-api alone.
+
+3. **`plan.md` TASK-0009** — investigate/fix free-eggbert's
+   `_findfirst`-without-`_findclose` leak in the design-mission file
+   picker (one `g_findSessions` map entry leaked per screen visit,
+   unbounded over a long session). See `plan.md` for the two candidate
+   fixes (auto-clean on drain, vs. document as a known low-severity gap).
+
+4. **The remaining `plan.md` tasks are documentation/classification-only**
+   (`TASK-0001` docs/supported-apis.md's 28-symbol gap; `TASK-0005`
+   extending the test-infrastructure-only symbol list; `TASK-0006`/
+   `TASK-0007` keep-or-remove decisions for `_chdir`/`_getcwd`/
+   `OutputDebugStringW`; `TASK-0008` a stale-comment fix in
+   `src/MidiMusic.cpp`; `TASK-0010` a new `LoadImageA` regression test;
+   `TASK-0011` documenting the `free-direct`-bridge scope exception). Each
+   is small and independent — good candidates for a quick session with no
+   cross-repo coordination needed (unlike #2 above).
+
+5. **Human sign-off on the two rendering fixes** (`GetDeviceCaps(SIZEPALETTE)`,
    `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing) — this session's
    Xvfb+xdotool screenshots (section 5) already show clean rendering across
    several real scenes in both games; a human who's played the original
@@ -599,7 +703,7 @@ No lint/formatter is configured in this repository.
      DISPLAY=:98 SDL_VIDEODRIVER=x11 <binary>` + `DISPLAY=:98 import
      -window root <file>.png` if needed).
 
-2. **Human audible playtest of MIDI music** — this session confirmed via a
+6. **Human audible playtest of MIDI music** — this session confirmed via a
    captured-audio non-silence check (section 5) that real, non-clipped,
    structured (not obviously random) audio is produced during gameplay
    with no crash, but could not judge musical correctness (no hearing).
@@ -608,7 +712,7 @@ No lint/formatter is configured in this repository.
    * Files: none — observation only, unless a defect is found.
    * Verification: run either game with real audio output and listen.
 
-3. **Human playtest of `MK_SHIFT`/`MK_CONTROL` drag-highlight in
+7. **Human playtest of `MK_SHIFT`/`MK_CONTROL` drag-highlight in
    planetblupi** (`event.cpp:3440-3504`, `BlupiHiliDown`/`Move`/`Up`) —
    this session could not reach it: planetblupi's attract-mode "Demo"
    exits back to the title screen on any click/drag, and the main menu's
@@ -622,16 +726,21 @@ No lint/formatter is configured in this repository.
    * Verification: get into a real (non-demo) planetblupi session, drag-
      select multiple Blupis with Shift held, and check the highlight.
 
-_(Both earlier items — "confirm X11 vs. Wayland" and "get a standalone build
-working" — are done; see sections 3/4/5.)_
+_(Two earlier items from before this session — "confirm X11 vs. Wayland"
+and "get a standalone build working" — are done; see sections 3/4/5. The
+old LoadStringA-manifest-dedup task from before this session's `plan.md`
+rewrite is also done, same sections.)_
 
 ## 9. Do not do yet
 
-* Do not weaken or remove `REQUIRE_STRINGS`/`VERIFY_ID` in
+* Do not weaken or remove `REQUIRE_STRINGS`/`VERIFY_ID`/`USED_IDS_FILE` in
   `cmake/ExtractStringTable.cmake`/`CMakeLists.txt` to "fix" a build
   failure — a `FATAL_ERROR` there means the `.rc`/known-ID data is
   genuinely broken for that target game; fix the underlying data/parsing,
-  don't silence the check (`plan.md` `TASK-0127`).
+  don't silence the check. (This predates this session's `plan.md`
+  rewrite — see `git log -- plan.md` around `TASK-0127`/`TASK-0128` for
+  the original evidence if needed; those task numbers no longer exist in
+  the current `plan.md`.)
 * Do not build a general `.rc`/`.res` compiler — `ExtractStringTable.cmake`
   must stay narrowly `STRINGTABLE`-only, confirmed sufficient for both
   games' actual files this session.
@@ -646,15 +755,27 @@ working" — are done; see sections 3/4/5.)_
   it absent a genuinely new symptom.
 * Do not revert the `GetDeviceCaps(SIZEPALETTE)` value (now 0) or the
   `BITMAPFILEHEADER`/`BITMAPINFOHEADER` `#pragma pack(push, 2)` without
-  re-reading `plan.md` TASK-0060/TASK-0084 first.
-* No real Unicode/`W` API implementations.
+  understanding why first (predates this session's `plan.md` rewrite —
+  see `git log -- plan.md` around `TASK-0060`/`TASK-0084` for the original
+  evidence; those task numbers no longer exist in the current `plan.md`).
+* No real Unicode/`W` API implementations (this session additionally
+  flagged `OutputDebugStringW` specifically as dead code with a needlessly
+  real implementation — see `plan.md` `TASK-0007`).
 * No consolidating the two timer mechanisms (`timeSetEvent` vs. `SetTimer`)
   into one "unified" implementation.
 * No "fixing" `AdjustWindowRect` to add real Win32 window-chrome math.
 * No new public API without a cited `file:line` usage site in
-  `../free-eggbert` or `../planetblupi`.
+  `../free-eggbert` or `../planetblupi` — except the narrow, now-explicitly-
+  documented `free-direct`-bridge exception (`plan.md` `TASK-0011`;
+  `FreeApiRunWinMain`, `FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC`).
+  Do not read this exception more broadly than that.
 * No broad refactor of any currently-passing subsystem absent a specific,
   evidenced bug report.
+* Do not implement any of `plan.md`'s `TASK-0001`–`TASK-0012` beyond what
+  each task's own "Required work"/"Out of scope" sections state — several
+  are deliberately framed as "pick one, document the choice" decisions
+  (`TASK-0006`, `TASK-0007`, `TASK-0009`), not "implement the obvious
+  fix." Read the specific task in `plan.md` before touching its files.
 
 ## 10. Resume prompt
 
