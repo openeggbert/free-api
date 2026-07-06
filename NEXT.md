@@ -2,9 +2,8 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `3150b5c` (2026-07-06, `develop` branch, pushed to
-`origin/develop`; working tree clean — this session's playtest attempt
-changed only `NEXT.md`, no production code). See [`plan.md`](plan.md) for the full evidence-based
+state as of commit `911b580` (2026-07-06, `develop` branch, pushed to
+`origin/develop`; working tree clean). See [`plan.md`](plan.md) for the full evidence-based
 usage audit and 127-item task backlog (every task carries a `Status:` line
 reconciled against actual repository state), and
 [`docs/scope.md`](docs/scope.md) for the scope policy.
@@ -66,8 +65,10 @@ section 4.
   ID (`TX_BUTTON_QUITTER`, 106, `"Quit BLUPI"` in both games) doesn't
   resolve to its expected text, **or (as of `TASK-0128`) any ID either
   game's own source actually passes to `LoadString`** (per the
-  evidence-based manifests in `cmake/used-string-ids/*.txt`, cross-checked
-  against a live extraction: 308/364 for free-eggbert, an exact 257/257 for
+  evidence-based manifests in `cmake/used-string-ids/*.txt` (each ID listed
+  exactly once — a duplicate entry is itself a configure-time
+  `FATAL_ERROR`), cross-checked against a live extraction: 308 unique used
+  string IDs of 364 extracted for free-eggbert, an exact 257 of 257 for
   planetblupi — see `docs/used-string-ids.md`) is missing from the
   extracted table. Standalone builds (including an explicit
   `-DFREE_API_TARGET_GAME=standalone`) are unaffected and keep the
@@ -83,11 +84,11 @@ section 4.
 * As a subdirectory of `../free-eggbert` (Ninja generator,
   `cmake-build-debug/`): configures and builds cleanly, including
   configure-time verification (`known-ID verification passed for
-  'free-eggbert': ID 106 -> "Quit BLUPI"` and `all 310 used string ID(s)
-  for 'free-eggbert' verified present`).
+  'free-eggbert': ID 106 -> "Quit BLUPI"` and `all 308 unique used string
+  ID(s) for 'free-eggbert' verified present`).
 * As a subdirectory of `../planetblupi` (Unix Makefiles generator,
   `build/`): same, `known-ID verification passed for 'planetblupi'` and
-  `all 257 used string ID(s) for 'planetblupi' verified present`.
+  `all 257 unique used string ID(s) for 'planetblupi' verified present`.
 * Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`, no sibling game): **now
   configures, builds, and passes 17/17 tests cleanly in this sandbox**
   (confirmed this session — see section 4). Via the sibling-lookup
@@ -143,6 +144,44 @@ not re-verified this session, no changes made to it.
 
 Most recent first:
 
+* **(this session)** — "Clean up LoadStringA/STRINGTABLE hardening work":
+  a documentation/manifest-only pass, no `LoadStringA` runtime behavior
+  changed.
+  * `cmake/used-string-ids/free-eggbert.txt`: deduplicated — IDs 194
+    (`TX_CONTENT`) and 288 (`TX_GAMESAVED`) were each listed twice (once
+    under their symbolic name, once under a numeric-literal call site
+    sharing the same value); merged into one entry each citing both call
+    sites. Unique-ID count unaffected (still 308 — the set was already
+    308 even with the duplicate lines, since `USED_IDS_FILE`'s missing-ID
+    check operated on a list, not a set, so duplicates only inflated the
+    reported "checked" count, not correctness). planetblupi's manifest had
+    no duplicates.
+  * `cmake/ExtractStringTable.cmake`: `USED_IDS_FILE` now tracks each ID's
+    first occurrence and fails configure (`FATAL_ERROR`, listing every
+    duplicate) if any ID repeats — a repeated bare ID or one already
+    covered by an earlier `A-B` range — checked before the missing-ID
+    check. The `STATUS` message on success now says "N **unique** used
+    string ID(s) verified present" to make clear the count is
+    post-deduplication. No `STRINGTABLE`-parsing behavior changed.
+  * `docs/used-string-ids.md`: added a "Duplicate-ID validation" section;
+    normalized wording to "free-eggbert: 308 unique used string IDs" /
+    "planetblupi: 257 unique used string IDs" throughout.
+  * `plan.md`: updated the two top-level audit tables' `LoadStringA` rows
+    (previously stale `STUB` ⚠ despite `TASK-0074/0075/0127/0128` being
+    `DONE`) to "Minimally implemented — ... generated `STRINGTABLE`
+    extraction"; updated §10's final risk summary to no longer claim
+    `LoadStringA`/`AdjustWindowRect`/`ShowCursor`/`SetCursor` are
+    "currently `STUB`" (all four were resolved by tasks already marked
+    `DONE`/`OBSOLETE` — the summary just hadn't been updated to say so).
+    `TASK-0074`/`TASK-0075`/`TASK-0127`/`TASK-0128` themselves left
+    untouched, still `DONE`, historical status text describing what was
+    literally true when each was completed (including `TASK-0128`'s "310
+    used-ID checks," accurate before this pass's dedup).
+  * Verified: reconfigured through free-eggbert, planetblupi, and a forced
+    `-DFREE_API_TARGET_GAME=standalone` build; all used-ID checks pass
+    with the corrected unique counts (308 / 257); a deliberately-duplicated
+    test manifest reproduced the new `FATAL_ERROR` exactly as designed;
+    full CTest 17/17 in both target-game builds.
 * **(this session, no commit — playtest attempt)** Made a partial,
   Xvfb+xdotool-driven attempt at the manual playtests from section 5/8:
   launched both real game binaries under a real (non-`dummy`) X11 session,
@@ -542,6 +581,8 @@ cmake -B build -DFREE_API_TARGET_GAME=free-eggbert
 ```
 
 No lint/formatter is configured in this repository.
+
+## 8. Next smallest tasks
 
 1. **Human sign-off on the two rendering fixes** (`GetDeviceCaps(SIZEPALETTE)`,
    `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing) — this session's
