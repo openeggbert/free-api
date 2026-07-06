@@ -2,8 +2,9 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `8272622` (2026-07-06, `develop` branch, pushed to
-`origin/develop`; working tree clean). See [`plan.md`](plan.md) for the full evidence-based
+state as of commit `3150b5c` (2026-07-06, `develop` branch, pushed to
+`origin/develop`; working tree clean — this session's playtest attempt
+changed only `NEXT.md`, no production code). See [`plan.md`](plan.md) for the full evidence-based
 usage audit and 127-item task backlog (every task carries a `Status:` line
 reconciled against actual repository state), and
 [`docs/scope.md`](docs/scope.md) for the scope policy.
@@ -142,6 +143,23 @@ not re-verified this session, no changes made to it.
 
 Most recent first:
 
+* **(this session, no commit — playtest attempt)** Made a partial,
+  Xvfb+xdotool-driven attempt at the manual playtests from section 5/8:
+  launched both real game binaries under a real (non-`dummy`) X11 session,
+  drove them with `xdotool`, and visually inspected screenshots myself
+  (title screens, free-eggbert player-select + an actual tutorial mission,
+  planetblupi's attract-mode demo across two scenes) — all rendered
+  cleanly, no corruption or crash, good evidence for the
+  `GetDeviceCaps(SIZEPALETTE)`/`BITMAPFILEHEADER` fixes. Also captured
+  real gameplay audio via `SDL_AUDIODRIVER=disk` and confirmed it's
+  non-silent, non-clipped, and structured (spectrogram), i.e. the MIDI
+  path produces real output and doesn't crash — but musical correctness
+  itself is unjudgeable without hearing. Could not reach planetblupi's
+  `MK_SHIFT`/`MK_CONTROL` drag-highlight (any click during its demo mode
+  returns to the title screen; didn't have time to map out its
+  undocumented menu navigation to start a real session). No files
+  changed. See section 5 for the honest per-item breakdown and section 8
+  for the three narrower follow-ups this leaves.
 * **(this session, no commit — verification only)** Confirmed the
   standalone free-api build now configures, builds, and passes 17/17
   tests: `cmake -S . -B <dir> -DFREE_API_USE_SYSTEM_SDL3=ON
@@ -339,17 +357,43 @@ passes 17/17 tests in this sandbox.**
   resolved by `SDL_VIDEODRIVER=dummy`, and independently confirmed correct
   via a real X11/Xvfb session this session. Fully closed out — no further
   investigation needed absent a new symptom.
-* **Incomplete / needs verification (carried over from a prior session,
-  unchanged this session):**
-  * MIDI music playback — real behavior change, needs an audible playtest;
-    cannot be judged in this headless sandbox.
-  * `GetDeviceCaps(SIZEPALETTE)` fix (now returns 0 instead of 256) —
-    changes which rendering path both games take; needs a visual playtest.
-  * `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing fix — needs a visual
-    playtest of palette-driven rendering.
-  * `WM_MOUSEMOVE`'s `MK_SHIFT`/`MK_CONTROL` fix — confirmed untestable via
-    `SDL_PushEvent` injection in this headless environment; needs a real
-    manual playtest.
+* **Partially verified this session via an Xvfb-driven playtest (screenshots
+  I visually inspected myself, plus a captured-audio non-silence check) —
+  still needs a real human pass for final sign-off, but no longer
+  "untested":**
+  * `GetDeviceCaps(SIZEPALETTE)`/`BITMAPFILEHEADER`/`BITMAPINFOHEADER`
+    rendering — launched both real game binaries under
+    `DISPLAY=:98 SDL_VIDEODRIVER=x11` (Xvfb), drove them with `xdotool`
+    (free-eggbert: title screen -> player-select -> an actual tutorial
+    mission, WM_PHASE_PLAY; planetblupi: title screen -> its attract-mode
+    "Demo" showing two different real terrain/building scenes), and
+    captured screenshots with `import`. All render cleanly across many
+    distinct sprites/bitmaps/terrain types — no color corruption, no
+    garbled/black rendering, no crash. This is real evidence the two
+    rendering fixes are visually correct, though I can't rule out subtle
+    palette-shade differences from the "correct" 1997 look without a
+    reference image — a human who's played the original should still
+    glance at it.
+  * MIDI music playback — confirmed it does NOT crash during real gameplay
+    (matching the earlier session's dangling-pointer/`MixerThread` SIGSEGV
+    fix) and does NOT silently produce dead/all-zero audio: captured
+    output via `SDL_AUDIODRIVER=disk` while in actual gameplay showed real,
+    non-clipped signal (max amplitude ~31% of full scale) and a spectrogram
+    showed structured periodic content, not random noise. **I cannot judge
+    whether it sounds musically correct** (I have no audio input/hearing) —
+    the bursty, broadband-not-tonal shape of what I captured could be sound
+    effects rather than continuous background music, which may be entirely
+    expected for that moment, or could be a real problem — genuinely
+    inconclusive without human ears. Still needs an audible playtest.
+  * `WM_MOUSEMOVE`'s `MK_SHIFT`/`MK_CONTROL` fix (planetblupi's
+    `BlupiHiliDown`/`Move`/`Up` multi-select drag-highlight,
+    `event.cpp:3440-3504`) — **not reached**: any mouse click/drag during
+    planetblupi's attract-mode "Demo" immediately interrupts it back to the
+    title screen (by design), and I don't know the menu navigation to
+    start a real playable session (French-labeled icons, no docs found)
+    to get into build mode and test a real shift/ctrl drag. Still fully
+    untested; still needs a human (or a session with more time to map out
+    the menu flow).
 * **By design, not a bug:**
   * `LoadStringA`'s generated table holds only one game's strings per
     compiled build.
@@ -499,24 +543,46 @@ cmake -B build -DFREE_API_TARGET_GAME=free-eggbert
 
 No lint/formatter is configured in this repository.
 
-## 8. Next smallest tasks
+1. **Human sign-off on the two rendering fixes** (`GetDeviceCaps(SIZEPALETTE)`,
+   `BITMAPFILEHEADER`/`BITMAPINFOHEADER` packing) — this session's
+   Xvfb+xdotool screenshots (section 5) already show clean rendering across
+   several real scenes in both games; a human who's played the original
+   should give these a quick glance to catch anything subtler than gross
+   corruption.
+   * Goal: final confirmation that palette-driven rendering looks right,
+     not just "doesn't crash/isn't corrupted."
+   * Files: none — observation only, unless a defect is found.
+   * Verification: run each game normally (not headless) and eyeball it;
+     or review the screenshots this session captured (not committed
+     anywhere — regenerate via `Xvfb :98 -screen 0 1024x768x24 &
+     DISPLAY=:98 SDL_VIDEODRIVER=x11 <binary>` + `DISPLAY=:98 import
+     -window root <file>.png` if needed).
 
-1. **Manual playtests still outstanding from a prior session** (MIDI
-   audio, `GetDeviceCaps(SIZEPALETTE)` visual rendering, BMP palette
-   rendering, `MK_SHIFT`/`MK_CONTROL` drag-highlight).
-   * Goal: get human (or Xvfb+xdotool-driven, human-reviewed) confirmation
-     that these four already-shipped behavior changes actually look/sound
-     right in both games — see section 5.
-   * Files: none — this is observation, not a code task, unless a playtest
-     reveals an actual defect.
-   * Verification: run each target game normally (not headless) and
-     visually/audibly confirm; no automated command exists for this.
+2. **Human audible playtest of MIDI music** — this session confirmed via a
+   captured-audio non-silence check (section 5) that real, non-clipped,
+   structured (not obviously random) audio is produced during gameplay
+   with no crash, but could not judge musical correctness (no hearing).
+   * Goal: confirm the music/sound actually sounds right, not garbled/
+     wrong-instrument/wrong-tempo.
+   * Files: none — observation only, unless a defect is found.
+   * Verification: run either game with real audio output and listen.
 
-_(Both prior items — "confirm X11 vs. Wayland" and "get a standalone build
-working" — are done; see sections 3/4/5. This list currently has only the
-one item above. If picking this up with nothing else specified, this is
-the only remaining automatable-ish task, and it genuinely needs a human;
-consider asking the user what to work on next instead of guessing.)_
+3. **Human playtest of `MK_SHIFT`/`MK_CONTROL` drag-highlight in
+   planetblupi** (`event.cpp:3440-3504`, `BlupiHiliDown`/`Move`/`Up`) —
+   this session could not reach it: planetblupi's attract-mode "Demo"
+   exits back to the title screen on any click/drag, and the main menu's
+   icon navigation (French-labeled, undocumented) wasn't mapped out in the
+   time available. A future session with more time could try
+   systematically clicking/hovering every main-menu icon (screenshot after
+   each) to find the "start a real game" path, then test a real shift/ctrl
+   drag in build mode — or just hand this to a human directly.
+   * Goal: confirm the multi-select drag-highlight renders correctly.
+   * Files: none expected — observation only, unless a defect is found.
+   * Verification: get into a real (non-demo) planetblupi session, drag-
+     select multiple Blupis with Shift held, and check the highlight.
+
+_(Both earlier items — "confirm X11 vs. Wayland" and "get a standalone build
+working" — are done; see sections 3/4/5.)_
 
 ## 9. Do not do yet
 
