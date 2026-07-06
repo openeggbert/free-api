@@ -43,9 +43,10 @@ section 4.
 
 * Free API is a **static library**, normally built as a sibling
   `add_subdirectory()` of one of the two target games (which also provide
-  SDL3). It can also build standalone via `-DFREE_API_USE_SYSTEM_SDL3=ON`,
-  though see section 4 for a currently-unresolved gap in that path in this
-  particular sandbox.
+  SDL3). It can also build standalone via `-DFREE_API_USE_SYSTEM_SDL3=ON`
+  — confirmed working end-to-end in this sandbox this session (17/17
+  tests pass) now that `SDL3_image`/`SDL3_mixer` are available under
+  `/usr/local` (see section 4).
 * SDL3 is an **internal backend detail only** — public headers in
   `include/` must never expose SDL types.
 * Both target games are always siblings of each other and of `free-api` on
@@ -86,8 +87,12 @@ section 4.
 * As a subdirectory of `../planetblupi` (Unix Makefiles generator,
   `build/`): same, `known-ID verification passed for 'planetblupi'` and
   `all 257 used string ID(s) for 'planetblupi' verified present`.
-* Standalone (`free-api`'s own `cmake-build-debug/`/`build/`): **does NOT
-  currently configure to completion in this sandbox** — see section 4.
+* Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`, no sibling game): **now
+  configures, builds, and passes 17/17 tests cleanly in this sandbox**
+  (confirmed this session — see section 4). Via the sibling-lookup
+  convenience path it found `../free-eggbert`'s `.rc` and populated a real
+  364-string table rather than an empty one, since free-eggbert happens to
+  be checked out next to `free-api` here.
 
 **Test status:** 17 test binaries registered per target-game build.
 **17/17 pass in both free-eggbert and planetblupi builds** under
@@ -113,12 +118,15 @@ not re-verified this session, no changes made to it.
   (`USED_IDS_FILE`) and the `FREE_API_TARGET_GAME` override, described in
   full in section 3.
 * Confirmed via Xvfb/X11 that the Wayland-only test failures (section 4,
-  previously only suspected as an environment issue) are purely an environment artifact — no code
-  change, investigation only.
+  previously only suspected as an environment issue) are purely an
+  environment artifact — no code change, investigation only.
+* Confirmed the standalone-build environment gap (missing
+  `SDL3_image`/`SDL3_mixer`) has resolved itself — those packages are now
+  present under `/usr/local` in this sandbox (not something this session
+  installed; already there when checked) — no code change, verification
+  only.
 
 **What does NOT work / known gaps:**
-* A genuinely standalone free-api build (no sibling game, no full system
-  SDL3 stack) cannot complete configure in this sandbox — see section 4.
 * MCI digital-video (AVI movie codec playback) is **not implemented** —
   confirmed intentional; both games already gracefully skip movies when
   this is declined (`docs/out-of-scope.md`).
@@ -134,6 +142,21 @@ not re-verified this session, no changes made to it.
 
 Most recent first:
 
+* **(this session, no commit — verification only)** Confirmed the
+  standalone free-api build now configures, builds, and passes 17/17
+  tests: `cmake -S . -B <dir> -DFREE_API_USE_SYSTEM_SDL3=ON
+  -DFREE_API_BUILD_TESTS=ON && cmake --build <dir> -j"$(nproc)"` completed
+  cleanly, and `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest` in that
+  build dir showed 17/17 passing (including `check_no_hardcoded_paths` and
+  `test_loadstring_regressions`, the latter correctly in its ungated
+  standalone mode — logged `INFO: standalone build found a sibling table
+  -- id 106 resolved to "Quit BLUPI"`). Root cause of the prior gap
+  (`SDL3_image`/`SDL3_mixer` dev packages missing) is no longer present in
+  this sandbox — `pkg-config`/CMake config files and libraries for both
+  now exist under `/usr/local`. Not something this session installed;
+  already there when checked, so nothing to attribute to any specific fix.
+  No files changed; this closes out the "next smallest task" that asked to
+  investigate this gap.
 * **(this session, no commit — investigation only)** Confirmed via a real
   Xvfb/X11 session that `test_winuser_regressions`'s 6 failures under this
   sandbox's default Wayland display (section 4) are purely an
@@ -230,9 +253,11 @@ Most recent first:
 
 ## 4. Current blocker / main problem
 
-**No blocker on the actual feature work** (both LoadStringA hardening
-passes are complete and verified, and the Wayland test-failure question is
-now fully closed out — see below). One known issue remains:
+**No blocker at all right now.** Both LoadStringA hardening passes are
+complete and verified, the Wayland test-failure question is fully closed
+out, and the standalone-build environment gap has also resolved itself —
+see below. There is no open blocker item in this section as of this
+session; the "next smallest tasks" (section 8) are non-blocking follow-ups.
 
 **Resolved this session — running `ctest` without `SDL_VIDEODRIVER=dummy`
 in this sandbox's default display produces 6 spurious test failures that
@@ -272,33 +297,40 @@ are CONFIRMED NOT a code bug (previously only suspected).**
   closed investigation, not an open question. There is no further action
   item here; do not re-investigate this absent a *new* symptom.
 
-**Still unresolved: a fully standalone free-api build (no sibling game, no
-full system SDL3 stack) does not configure to completion in this
-sandbox.**
-* **Exact symptom:** `cmake -S . -B cmake-build-debug` (in `free-api`
-  itself, no `-DFREE_API_USE_SYSTEM_SDL3=ON`) fails with: `CMake Error at
-  /rv/.../free-eggbert/cmake/ThirdPartySDL.cmake:16 (message): Missing
-  vendored dependency 'SDL' in /rv/.../free-api/third_party. Run: git
-  submodule update --init --recursive`.
-* **Suspected cause:** free-api has no `.gitmodules`/vendored SDL3 of its
-  own by design (per `CMakeLists.txt`'s own top-of-file comment); its
-  standalone developer-convenience path reuses whichever sibling game's
-  `cmake/ThirdPartySDL.cmake` it finds, but that script expects a
-  `third_party/SDL` checkout inside **free-api's own** directory, which
-  doesn't exist here. The alternative, `-DFREE_API_USE_SYSTEM_SDL3=ON`,
-  also doesn't fully work in this sandbox: `pkg-config sdl3` finds
-  `3.4.0`, but `SDL3_image`/`SDL3_mixer` dev packages are absent.
-* **This is pre-existing and unrelated to recent LoadStringA-hardening
-  work** — the standalone-mode CMake logic itself (which `.rc`, if any,
-  gets used, and that `REQUIRE_STRINGS`/`VERIFY_ID`/`USED_IDS_FILE` are
-  correctly never set) was verified directly via isolated
-  `cmake -P cmake/ExtractStringTable.cmake` invocations, and via the new
-  `FREE_API_TARGET_GAME=standalone` override (confirmed this session to
-  correctly force the ungated path even inside a game's own tree), instead
-  of a full standalone build.
-* **Not attempted:** installing `SDL3_image`/`SDL3_mixer` system packages,
-  or vendoring `third_party/SDL` inside `free-api` itself. Either would let
-  a real standalone build+test run complete.
+**Resolved this session: a fully standalone free-api build (no sibling
+game, using `-DFREE_API_USE_SYSTEM_SDL3=ON`) now configures, builds, and
+passes 17/17 tests in this sandbox.**
+* **Prior symptom (no longer reproducible):** `-DFREE_API_USE_SYSTEM_SDL3=ON`
+  used to fail at `find_package(SDL3_image REQUIRED)`/
+  `find_package(SDL3_mixer REQUIRED)` because those packages' CMake config
+  files weren't installed, even though `pkg-config sdl3` found `3.4.0`.
+  Without `-DFREE_API_USE_SYSTEM_SDL3=ON` at all, configure still fails
+  the same way it always has (see next bullet) — that part is unchanged
+  and expected.
+* **What changed:** `SDL3_image`/`SDL3_mixer` (headers, shared libs,
+  `.pc` files, and CMake `Config.cmake`/`Targets.cmake` files) are now
+  present under `/usr/local` in this sandbox, alongside the
+  already-present SDL3 3.4.0. This was **not** installed by this or any
+  recent `free-api` session — it was simply already there when checked
+  this session (likely a side effect of other work in a sibling repo in
+  this same machine, e.g. one of the `cna_*` projects' `.sdl-prebuilt`
+  vendoring, or a manual install — not investigated further, out of scope
+  for this repo).
+* **Verified:** `cmake -S . -B <dir> -DFREE_API_USE_SYSTEM_SDL3=ON
+  -DFREE_API_BUILD_TESTS=ON && cmake --build <dir> -j"$(nproc)"` completes
+  with no errors; `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest` in
+  that directory shows 17/17 passing, including `check_no_hardcoded_paths`
+  and `test_loadstring_regressions` (correctly ungated, logging
+  `INFO: standalone build found a sibling table` since `../free-eggbert`
+  is present as a sibling here).
+* **Still true, unchanged:** the *other* standalone path — no
+  `-DFREE_API_USE_SYSTEM_SDL3=ON` at all, relying purely on a sibling
+  game's `cmake/ThirdPartySDL.cmake` vendoring script — still requires
+  `third_party/SDL` inside **free-api's own** directory (which doesn't
+  exist, by design; see `CMakeLists.txt`'s top-of-file comment) and will
+  still fail with `CMake Error ... Missing vendored dependency 'SDL'` if
+  attempted. This was never the recommended standalone path (system SDL3
+  always was); nothing about it changed or needs to.
 
 ## 5. Known bugs and limitations
 
@@ -329,9 +361,13 @@ sandbox.**
   custom command. Editing a game's `.rc`/`resource.h` and re-running
   `cmake --build` alone will **not** pick up the change — a full
   `cmake -B <dir>`/`cmake <build-dir>` reconfigure is required.
-* **Still unresolved (section 4):** standalone free-api build does not
-  complete in this sandbox (missing `SDL3_image`/`SDL3_mixer` dev
-  packages).
+* **Resolved this session (section 4):** the standalone free-api build gap
+  (missing `SDL3_image`/`SDL3_mixer` dev packages) is gone — those
+  packages are now present in this sandbox and
+  `-DFREE_API_USE_SYSTEM_SDL3=ON` builds+tests cleanly (17/17). The
+  no-`-DFREE_API_USE_SYSTEM_SDL3` sibling-vendoring path still requires a
+  `third_party/SDL` free-api doesn't have, by design — unchanged, not a
+  bug.
 * **Unknown:** whether real joystick support is ever actually wanted for
   Free Eggbert — `joyGetPosEx`/`joyGetNumDevs` are real (`TASK-0103`), but
   free-eggbert's own `m_somethingJoystick` flag is never assigned anything
@@ -420,10 +456,17 @@ both target games:**
 ## 7. Useful commands
 
 ```bash
-# Build via a real target game (recommended way to verify anything —
-# free-api standalone does not currently configure in this sandbox, see §4)
+# Build via a real target game (still the primary way most work gets
+# verified against real .rc/behavior, though a standalone build now also
+# works in this sandbox -- see the next block and §4)
 cd ../free-eggbert/cmake-build-debug && cmake . && ninja -j"$(nproc)"
 cd ../planetblupi/build && cmake . && make -j"$(nproc)"
+
+# Standalone build (no sibling game needed) -- confirmed working this
+# session now that SDL3_image/SDL3_mixer are available in this sandbox
+cmake -S . -B build -DFREE_API_USE_SYSTEM_SDL3=ON -DFREE_API_BUILD_TESTS=ON
+cmake --build build -j"$(nproc)"
+cd build && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
 
 # Run the full test suite -- SDL_VIDEODRIVER=dummy is NOT optional in this
 # sandbox's default (Wayland) display; without it, 6 window-position tests
@@ -458,22 +501,7 @@ No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-1. **Get a genuinely standalone free-api build+test working in this
-   sandbox** (currently blocked, section 4).
-   * Goal: `free-api`'s own `cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON`
-     configures and builds to completion without a sibling game present.
-   * Files: none expected to change — this is an environment/packaging gap
-     (missing `SDL3_image`/`SDL3_mixer` dev packages), not a code fix.
-     Smallest viable step: install `libsdl3-image-dev`/`libsdl3-mixer-dev`
-     (or equivalent for this distro) alongside the already-present system
-     `sdl3` 3.4.0.
-   * Verification: `cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON
-     -DFREE_API_BUILD_TESTS=ON && cmake --build build -j"$(nproc)"`
-     completes, and `SDL_VIDEODRIVER=dummy ctest --output-on-failure` in
-     `build/` shows all tests passing with an empty (0-entry) generated
-     string table.
-
-2. **Manual playtests still outstanding from a prior session** (MIDI
+1. **Manual playtests still outstanding from a prior session** (MIDI
    audio, `GetDeviceCaps(SIZEPALETTE)` visual rendering, BMP palette
    rendering, `MK_SHIFT`/`MK_CONTROL` drag-highlight).
    * Goal: get human (or Xvfb+xdotool-driven, human-reviewed) confirmation
@@ -484,8 +512,11 @@ No lint/formatter is configured in this repository.
    * Verification: run each target game normally (not headless) and
      visually/audibly confirm; no automated command exists for this.
 
-_(The prior "confirm X11 vs. Wayland" task is done — see sections 3/4/5;
-this list has no third item right now beyond the two above.)_
+_(Both prior items — "confirm X11 vs. Wayland" and "get a standalone build
+working" — are done; see sections 3/4/5. This list currently has only the
+one item above. If picking this up with nothing else specified, this is
+the only remaining automatable-ish task, and it genuinely needs a human;
+consider asking the user what to work on next instead of guessing.)_
 
 ## 9. Do not do yet
 
