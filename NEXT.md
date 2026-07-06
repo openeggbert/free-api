@@ -2,9 +2,8 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `fd30b9c` (2026-07-06, `develop` branch, pushed to
-`origin/develop`; working tree clean, no changes since `88484a3`'s
-LoadStringA hardening pass). See [`plan.md`](plan.md) for the full evidence-based
+state as of commit `8272622` (2026-07-06, `develop` branch, pushed to
+`origin/develop`; working tree clean). See [`plan.md`](plan.md) for the full evidence-based
 usage audit and 127-item task backlog (every task carries a `Status:` line
 reconciled against actual repository state), and
 [`docs/scope.md`](docs/scope.md) for the scope policy.
@@ -27,12 +26,18 @@ Wine, not a general WinAPI reimplementation, not a platform for arbitrary
 (`file:line`) in one of the two games' own source (`docs/scope.md`).
 
 **Current development phase:** the original evidence-based audit backlog
-(`plan.md`, 127 tasks) is complete — 126 `DONE`, 1 `OBSOLETE` (superseded).
-Work has moved from "implement the missing behavior" to "harden what's
-already implemented" — the most recent pass (this session) hardened
-`LoadStringA`'s real-text backing so a broken/missing resource silently
-degrading to placeholder text in a *shipped* build is now caught at CMake
-configure time instead of only being visible at runtime.
+(`plan.md`, 127 tasks) is complete — 126 `DONE`, 1 `OBSOLETE` (superseded),
+plus a follow-on `TASK-0128` closing out a second LoadStringA-hardening
+pass. Work has moved from "implement the missing behavior" to "harden
+what's already implemented" — the two most recent passes made
+`LoadStringA`'s real-text backing fail loudly at CMake configure time
+(rather than only being visible at runtime) both when the whole table is
+broken/missing (`TASK-0127`) and when any *specific* ID a game actually
+uses is missing from it (`TASK-0128`, per-used-ID manifests in
+`cmake/used-string-ids/`). This session additionally confirmed (via a real
+Xvfb/X11 session) that `test_winuser_regressions`'s 6 default-Wayland
+failures are purely an environment artifact, not a hidden bug — see
+section 4.
 
 **Important architectural decisions:**
 
@@ -51,13 +56,20 @@ configure time instead of only being visible at runtime.
 * Real UI text for `LoadStringA` is extracted at **CMake configure time**
   from whichever game's own `resource/*.rc` is driving the build, via a
   narrow, `STRINGTABLE`-only parser (`cmake/ExtractStringTable.cmake`) —
-  deliberately not a general `.rc`/`.res` compiler. **As of this session,
-  target-game builds (`SPEEDY_BLUPI_WINDOWS`/`PLANET_BLUPI_WINDOWS`) fail
-  CMake configure loudly** if that game's `.rc` is missing, yields zero
-  extracted strings, or a known string ID (`TX_BUTTON_QUITTER`, 106,
-  `"Quit BLUPI"` in both games) doesn't resolve to its expected text.
-  Standalone builds are unaffected and keep the placeholder-fallback
-  behavior.
+  deliberately not a general `.rc`/`.res` compiler. Target-game builds
+  (`SPEEDY_BLUPI_WINDOWS`/`PLANET_BLUPI_WINDOWS`, or an explicit
+  `-DFREE_API_TARGET_GAME=free-eggbert`/`planetblupi` override — see
+  `docs/cmake-options.md`) **fail CMake configure loudly** if that game's
+  `.rc` is missing, yields zero extracted strings, a known sentinel string
+  ID (`TX_BUTTON_QUITTER`, 106, `"Quit BLUPI"` in both games) doesn't
+  resolve to its expected text, **or (as of `TASK-0128`) any ID either
+  game's own source actually passes to `LoadString`** (per the
+  evidence-based manifests in `cmake/used-string-ids/*.txt`, cross-checked
+  against a live extraction: 308/364 for free-eggbert, an exact 257/257 for
+  planetblupi — see `docs/used-string-ids.md`) is missing from the
+  extracted table. Standalone builds (including an explicit
+  `-DFREE_API_TARGET_GAME=standalone`) are unaffected and keep the
+  placeholder-fallback behavior.
 * The two target games use **two different, mutually-exclusive live timer
   mechanisms** as their frame pump: Free Eggbert uses
   `timeSetEvent`/`timeKillEvent` (WinMM multimedia timer); Planet Blupi
@@ -67,20 +79,25 @@ configure time instead of only being visible at runtime.
 
 **Build status:**
 * As a subdirectory of `../free-eggbert` (Ninja generator,
-  `cmake-build-debug/`): configures and builds cleanly, including the new
+  `cmake-build-debug/`): configures and builds cleanly, including
   configure-time verification (`known-ID verification passed for
-  'free-eggbert': ID 106 -> "Quit BLUPI"`).
+  'free-eggbert': ID 106 -> "Quit BLUPI"` and `all 310 used string ID(s)
+  for 'free-eggbert' verified present`).
 * As a subdirectory of `../planetblupi` (Unix Makefiles generator,
-  `build/`): same, `known-ID verification passed for 'planetblupi'`.
+  `build/`): same, `known-ID verification passed for 'planetblupi'` and
+  `all 257 used string ID(s) for 'planetblupi' verified present`.
 * Standalone (`free-api`'s own `cmake-build-debug/`/`build/`): **does NOT
   currently configure to completion in this sandbox** — see section 4.
 
 **Test status:** 17 test binaries registered per target-game build.
-**17/17 pass in both free-eggbert and planetblupi builds**, but *only* when
-run with `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` (see section 4 for
-why this matters — it is not optional in this sandbox's default display).
-`test_loadstring_regressions` now hard-asserts, in target-game mode, that a
-known game string ID never falls back to the `"RES_<id>"` placeholder.
+**17/17 pass in both free-eggbert and planetblupi builds** under
+`SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`, **and (confirmed this
+session) also 17/17 under a real X11 session (Xvfb)** — see section 4: the
+6 failures seen under this sandbox's *default* Wayland display are a
+confirmed environment artifact, not a code bug or a `dummy`-driver-specific
+pass. `test_loadstring_regressions` hard-asserts, in target-game mode,
+that 10 known game string IDs per game (not just one) never fall back to
+the `"RES_<id>"` placeholder.
 
 **CLI/tools/apps/libraries:** Free API produces one artifact,
 `libfree-api.a`, plus its test binaries. It has no standalone CLI/app of its
@@ -91,9 +108,13 @@ link successfully against the current code (verified this session).
 `-DFREE_API_BUILD_EXAMPLES=ON`, default `OFF`) from a prior session —
 not re-verified this session, no changes made to it.
 
-**Recently implemented features (this session, committed `88484a3`):**
-fail-loud CMake configure-time checks and known-ID verification for
-`LoadStringA`'s STRINGTABLE extraction, described in full in section 3.
+**Recently implemented features (this session):**
+* `TASK-0128` (commit `8272622`): per-used-ID configure-time verification
+  (`USED_IDS_FILE`) and the `FREE_API_TARGET_GAME` override, described in
+  full in section 3.
+* Confirmed via Xvfb/X11 that the Wayland-only test failures (section 4,
+  previously only suspected as an environment issue) are purely an environment artifact — no code
+  change, investigation only.
 
 **What does NOT work / known gaps:**
 * A genuinely standalone free-api build (no sibling game, no full system
@@ -113,7 +134,57 @@ fail-loud CMake configure-time checks and known-ID verification for
 
 Most recent first:
 
-* **`88484a3`** (this session) — "Harden LoadStringA/STRINGTABLE: fail-loud
+* **(this session, no commit — investigation only)** Confirmed via a real
+  Xvfb/X11 session that `test_winuser_regressions`'s 6 failures under this
+  sandbox's default Wayland display (section 4) are purely an
+  environment artifact: `Xvfb :99 -screen 0 1024x768x24` +
+  `DISPLAY=:99 SDL_VIDEODRIVER=x11` reproduces **ALL TESTS PASSED**,
+  including the exact `ClientToScreen`(×4)/`ScreenToClient`/`GetCursorPos`
+  checks that fail under Wayland — in both the free-eggbert and
+  planetblupi build trees, and for the full 17/17 CTest suite, not just
+  the one binary. This rules out a real position/warp bug hiding behind
+  the Wayland explanation. No files changed; `NEXT.md` §4/§5/§8/§9 updated
+  to reflect the closed-out investigation.
+* **`8272622`** (this session) — "Harden LoadStringA/STRINGTABLE:
+  per-used-ID verification, explicit target-game override (`TASK-0128`)":
+  * `cmake/used-string-ids/{free-eggbert,planetblupi}.txt` (new): hand-
+    maintained, evidence-based manifests of every numeric `STRINGTABLE` ID
+    each game's own source actually passes to `LoadString`, each entry
+    cited to a `file:line` or to the concrete array/loop/enum a computed
+    range derives from (see `docs/used-string-ids.md` for the full
+    methodology). 308 IDs for free-eggbert (of 364 extracted — the rest
+    are defined-but-unused strings), an exact 257/257 for planetblupi (it
+    uses every string it defines).
+  * `cmake/ExtractStringTable.cmake`: new optional `USED_IDS_FILE` — for
+    target-game builds, every ID (or `A-B` range) listed in the manifest
+    must be present in that run's extracted table, or configure fails
+    loudly listing every missing ID. Catches a *specific* used ID going
+    missing, which the pre-existing `REQUIRE_STRINGS`/`VERIFY_ID` (which
+    only ever checks id 106) would not.
+  * `CMakeLists.txt`: new `FREE_API_TARGET_GAME` cache variable
+    (`auto`/`free-eggbert`/`planetblupi`/`standalone`), overriding the
+    `CMAKE_PROJECT_NAME` auto-detection explicitly; when forced to a game
+    we are not actually that game's own subdirectory of, falls back to the
+    `../<game>` sibling path (same layout the standalone convenience path
+    already used) instead. Default (`auto`) behavior is unchanged.
+  * `tests/test_loadstring_regressions.cpp`: added a 10-case
+    `kKnownIdSamples` table per game (direct symbols, computed offsets,
+    button-tooltip-table IDs), each hard-asserted for exact text and
+    never `RES_<id>` — not just the single id-106 sentinel as before.
+  * `docs/used-string-ids.md` (new): full audit methodology and re-
+    verification instructions. `docs/cmake-options.md`/`docs/out-of-
+    scope.md`: documented `FREE_API_TARGET_GAME`/`USED_IDS_FILE`.
+    `plan.md`: added `TASK-0128`, status `DONE`.
+  * Verified: reconfigured+rebuilt through both games (`all 310 used
+    string ID(s) ... verified present` / `all 257 ...`, string counts
+    unchanged), full CTest 17/17 in both (`SDL_VIDEODRIVER=dummy`),
+    deliberately-broken `USED_IDS_FILE` cases (missing ID, missing file,
+    out-of-range ID via a bogus range) each independently reproduced the
+    expected `FATAL_ERROR`, `FREE_API_TARGET_GAME` override verified in
+    both directions (forcing `standalone` inside a game's own tree skips
+    gating; forcing one game while inside the other's tree falls back to
+    the sibling path and gates on the forced game).
+* **`88484a3`** — "Harden LoadStringA/STRINGTABLE: fail-loud
   configure + known-ID verification":
   * `cmake/ExtractStringTable.cmake`: new optional `REQUIRE_STRINGS`
     (missing `.rc` or zero extracted strings becomes `FATAL_ERROR` instead
@@ -159,44 +230,51 @@ Most recent first:
 
 ## 4. Current blocker / main problem
 
-**No blocker on the actual feature work** (the LoadStringA hardening pass
-is complete and verified). Two known, separate issues are worth flagging
-for whoever picks this up next:
+**No blocker on the actual feature work** (both LoadStringA hardening
+passes are complete and verified, and the Wayland test-failure question is
+now fully closed out — see below). One known issue remains:
 
-**1. Running `ctest` without `SDL_VIDEODRIVER=dummy` in this sandbox
-produces 6 spurious test failures that are NOT a code bug.**
+**Resolved this session — running `ctest` without `SDL_VIDEODRIVER=dummy`
+in this sandbox's default display produces 6 spurious test failures that
+are CONFIRMED NOT a code bug (previously only suspected).**
 * **Exact symptom:** `ctest --output-on-failure` (no env vars set) reports
   `test_winuser_regressions` failing with 6 `FAIL` lines: `ClientToScreen`
   (×4, origin/far-corner mapping before and after `MoveWindow`),
   `ScreenToClient` (the round-trip check), and `GetCursorPos reflects the
   position set by SetCursorPos`.
-* **Root cause (confirmed by direct reproduction):** this sandbox's
-  default display (`DISPLAY=:0`, `XDG_SESSION_TYPE=wayland`) is a real
-  Wayland session. Wayland's protocol does not let clients set an absolute
-  window position, and (evidently) does not support the exact global mouse
-  warp `SetCursorPos` needs either — so `SDL_SetWindowPosition`/mouse-warp
-  silently don't do what the test expects, and every position-exactness
-  assertion fails. Running the identical binary with
-  `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` (SDL's fully-software,
-  headless driver) makes **all 6 failures disappear** — confirmed via
-  direct A/B reproduction this session in both the free-eggbert and
-  planetblupi build trees.
+* **Root cause (confirmed by direct reproduction, twice over):** this
+  sandbox's default display (`DISPLAY=:0`, `XDG_SESSION_TYPE=wayland`) is a
+  real Wayland session. Wayland's protocol does not let clients set an
+  absolute window position, and (evidently) does not support the exact
+  global mouse warp `SetCursorPos` needs either — so
+  `SDL_SetWindowPosition`/mouse-warp silently don't do what the test
+  expects, and every position-exactness assertion fails.
+  * A prior session confirmed `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`
+    (SDL's fully-software, headless driver) makes all 6 failures disappear.
+  * **This session additionally confirmed a REAL, non-headless X11 session
+    also passes cleanly** — not just the software `dummy` driver papering
+    over the assertions. Started `Xvfb :99 -screen 0 1024x768x24`, ran
+    `DISPLAY=:99 SDL_VIDEODRIVER=x11 ./bin/test_winuser_regressions` (and
+    the full CTest suite) in both the free-eggbert and planetblupi build
+    trees: **ALL TESTS PASSED / 17/17**, including the exact 6 checks that
+    fail under this sandbox's default Wayland session. This rules out the
+    remaining open question ("is `dummy` just skipping the real
+    functionality rather than proving it works?") — a real X11 compositor
+    genuinely honors `SDL_SetWindowPosition`/`SetCursorPos` the way the
+    test expects; Wayland genuinely does not.
 * **Affected files:** none need changing — this is a test-execution
   environment issue, not a defect in `src/winuser_window.cpp`,
-  `src/winuser_misc.cpp`, or `src/internal/FreeApiSdlVideo.cpp`.
-* **What's already been tried:** confirmed the dummy driver fully resolves
-  it (0 failures, both games, full 17/17 suites). Did not investigate
-  whether a real X11 (non-Wayland, non-XWayland) session would also pass —
-  untried.
-* **Action for next session:** always run this repo's tests with
+  `src/winuser_misc.cpp`, or `src/internal/FreeApiSdlVideo.cpp`. No code
+  changes were made or are warranted.
+* **Action for future sessions:** always run this repo's tests with
   `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` set (see section 7) unless
-  specifically doing GUI/visual verification work. If a future session
-  ever needs the *real* SetCursorPos/window-position round-trip verified
-  end-to-end, that needs a proper X11 (not Wayland) session or Xvfb, not
-  this sandbox's default display.
+  specifically doing GUI/visual verification work — this is now a fully
+  closed investigation, not an open question. There is no further action
+  item here; do not re-investigate this absent a *new* symptom.
 
-**2. A fully standalone free-api build (no sibling game, no full system
-SDL3 stack) does not configure to completion in this sandbox.**
+**Still unresolved: a fully standalone free-api build (no sibling game, no
+full system SDL3 stack) does not configure to completion in this
+sandbox.**
 * **Exact symptom:** `cmake -S . -B cmake-build-debug` (in `free-api`
   itself, no `-DFREE_API_USE_SYSTEM_SDL3=ON`) fails with: `CMake Error at
   /rv/.../free-eggbert/cmake/ThirdPartySDL.cmake:16 (message): Missing
@@ -210,21 +288,25 @@ SDL3 stack) does not configure to completion in this sandbox.**
   doesn't exist here. The alternative, `-DFREE_API_USE_SYSTEM_SDL3=ON`,
   also doesn't fully work in this sandbox: `pkg-config sdl3` finds
   `3.4.0`, but `SDL3_image`/`SDL3_mixer` dev packages are absent.
-* **This is pre-existing and unrelated to this session's changes** — the
-  standalone-mode CMake logic itself (which `.rc`, if any, gets used, and
-  that `REQUIRE_STRINGS`/`VERIFY_ID` are correctly never set) was verified
-  directly via isolated `cmake -P cmake/ExtractStringTable.cmake`
-  invocations instead of a full build.
+* **This is pre-existing and unrelated to recent LoadStringA-hardening
+  work** — the standalone-mode CMake logic itself (which `.rc`, if any,
+  gets used, and that `REQUIRE_STRINGS`/`VERIFY_ID`/`USED_IDS_FILE` are
+  correctly never set) was verified directly via isolated
+  `cmake -P cmake/ExtractStringTable.cmake` invocations, and via the new
+  `FREE_API_TARGET_GAME=standalone` override (confirmed this session to
+  correctly force the ungated path even inside a game's own tree), instead
+  of a full standalone build.
 * **Not attempted:** installing `SDL3_image`/`SDL3_mixer` system packages,
   or vendoring `third_party/SDL` inside `free-api` itself. Either would let
-  a real standalone build+test run complete; neither was done this session
-  since it's outside this pass's LoadStringA-hardening scope.
+  a real standalone build+test run complete.
 
 ## 5. Known bugs and limitations
 
-* **Suspected environment issue, not a confirmed code bug:** section 4,
-  item 1 (Wayland session breaks exact window-position/cursor-warp test
-  assertions; resolved by `SDL_VIDEODRIVER=dummy`).
+* **Confirmed environment issue, not a code bug (section 4):** Wayland
+  session breaks exact window-position/cursor-warp test assertions;
+  resolved by `SDL_VIDEODRIVER=dummy`, and independently confirmed correct
+  via a real X11/Xvfb session this session. Fully closed out — no further
+  investigation needed absent a new symptom.
 * **Incomplete / needs verification (carried over from a prior session,
   unchanged this session):**
   * MIDI music playback — real behavior change, needs an audible playtest;
@@ -247,8 +329,9 @@ SDL3 stack) does not configure to completion in this sandbox.**
   custom command. Editing a game's `.rc`/`resource.h` and re-running
   `cmake --build` alone will **not** pick up the change — a full
   `cmake -B <dir>`/`cmake <build-dir>` reconfigure is required.
-* **Unresolved this session (section 4, item 2):** standalone free-api
-  build does not complete in this sandbox.
+* **Still unresolved (section 4):** standalone free-api build does not
+  complete in this sandbox (missing `SDL3_image`/`SDL3_mixer` dev
+  packages).
 * **Unknown:** whether real joystick support is ever actually wanted for
   Free Eggbert — `joyGetPosEx`/`joyGetNumDevs` are real (`TASK-0103`), but
   free-eggbert's own `m_somethingJoystick` flag is never assigned anything
@@ -274,8 +357,13 @@ SDL3 stack) does not configure to completion in this sandbox.**
   scan over `g_generatedStringTable`), `FreeApiTimers`, `FreeApiSdlVideo`.
 * `src/winmain_bridge.cpp` — `WinMain` -> `main` entry-point bridge.
 * `cmake/ExtractStringTable.cmake` — configure-time `STRINGTABLE` extractor
-  + (as of this session) the fail-loud/known-ID-verification gate for
-  target-game builds.
+  + the fail-loud/known-ID-verification gate (`REQUIRE_STRINGS`/
+  `VERIFY_ID`/`VERIFY_TEXT`, `TASK-0127`) + the per-used-ID verification
+  gate (`USED_IDS_FILE`, `TASK-0128`) for target-game builds.
+* `cmake/used-string-ids/{free-eggbert,planetblupi}.txt` — evidence-based
+  manifests of every ID each game's own source actually passes to
+  `LoadString` (see `docs/used-string-ids.md`); consumed by
+  `USED_IDS_FILE` above.
 
 **Data flow:** SDL3 events -> `FreeApiMessageQueue::PumpSdlEvents` ->
 internal message queue -> `PeekMessageA`/`GetMessageA` -> `DispatchMessageA`
@@ -285,10 +373,10 @@ internal message queue -> `PeekMessageA`/`GetMessageA` -> `DispatchMessageA`
 
 `LoadStringA` (`src/winuser_misc.cpp`) calls
 `FreeApi::Internal::FindGeneratedString(uID)`; if it returns non-null, that
-exact text is copied out; otherwise `"RES_%u"` is formatted instead. The
-*only* thing that changed this session is how confidently a target-game
-build can trust that lookup will hit — the lookup function itself is
-unchanged.
+exact text is copied out; otherwise `"RES_%u"` is formatted instead. What's
+changed across the two hardening passes (`TASK-0127`/`TASK-0128`) is how
+confidently a target-game build can trust that lookup will hit — the
+lookup function itself is unchanged.
 
 **Important invariants — do not break these without re-verifying against
 both target games:**
@@ -305,15 +393,21 @@ both target games:**
   is deliberately a no-op identity transform because of this; do not "fix"
   it without changing `CreateWindowExA`/`GetClientRect` in lockstep.
 * `LoadStringA`'s real-text backing is per-build, per-game, determined by
-  `CMAKE_PROJECT_NAME` at configure time, and (as of this session) is
-  fail-loud-verified for both target games — do not weaken
-  `REQUIRE_STRINGS`/`VERIFY_ID` without understanding why they were added
-  (`plan.md` `TASK-0127`).
+  `CMAKE_PROJECT_NAME` at configure time (or the `FREE_API_TARGET_GAME`
+  override), and is fail-loud-verified for both target games at two
+  levels — do not weaken `REQUIRE_STRINGS`/`VERIFY_ID` (`TASK-0127`) or
+  `USED_IDS_FILE` (`TASK-0128`) without understanding why they were added.
+* `cmake/used-string-ids/*.txt` manifests must stay evidence-based (every
+  entry cited to a `file:line` or a concrete computed-range derivation,
+  per `docs/used-string-ids.md`) — do not add an ID "to be safe" without
+  a real `LoadString` call site behind it, and do not remove/shrink an
+  entry to silence a `USED_IDS_FILE` failure without first confirming the
+  game genuinely no longer uses that ID.
 * `cmake/ExtractStringTable.cmake` must stay a narrow `STRINGTABLE`-only
-  parser — confirmed (this session) that neither game's `.rc`/header files
-  actually use hex values, inline comments, or expressions in a way the
-  parser doesn't already handle; do not build this into a general `.rc`
-  compiler absent new evidence of an actual unsupported real-world case.
+  parser — confirmed that neither game's `.rc`/header files actually use
+  hex values, inline comments, or expressions in a way the parser doesn't
+  already handle; do not build this into a general `.rc` compiler absent
+  new evidence of an actual unsupported real-world case.
 * `free-direct` (sibling project) depends on the non-`WINAPI`, non-static C
   entry points `FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC`
   (`src/wingdi_dc.cpp`). Their exact signatures must not change without
@@ -333,7 +427,7 @@ cd ../planetblupi/build && cmake . && make -j"$(nproc)"
 
 # Run the full test suite -- SDL_VIDEODRIVER=dummy is NOT optional in this
 # sandbox's default (Wayland) display; without it, 6 window-position tests
-# spuriously fail (see §4, item 1)
+# spuriously fail (see §4)
 cd ../free-eggbert/cmake-build-debug/FREE_API && \
   SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
 cd ../planetblupi/build/FREE_API && \
@@ -343,35 +437,29 @@ cd ../planetblupi/build/FREE_API && \
 # binaries land in bin/ at that build dir's top level, not under FREE_API/)
 cd ../free-eggbert/cmake-build-debug && SDL_VIDEODRIVER=dummy ./bin/test_loadstring_regressions
 
-# Reproduce the current CMake configure-time known-ID verification directly
-# (useful for testing REQUIRE_STRINGS/VERIFY_ID changes in isolation,
-# without a full project reconfigure)
+# Reproduce the current CMake configure-time known-ID + used-ID
+# verification directly (useful for testing REQUIRE_STRINGS/VERIFY_ID/
+# USED_IDS_FILE changes in isolation, without a full project reconfigure)
 cmake -DOUTPUT_CPP=/tmp/out.cpp \
   -DRC_FILE=../planetblupi/resource/blupi-e.rc -DRC_ENCODING=UTF-8 \
   "-DRESOURCE_HEADERS=../planetblupi/include/resource.h;../planetblupi/include/resrc1.h" \
   -DREQUIRE_STRINGS=ON -DTARGET_GAME_NAME=planetblupi \
   -DVERIFY_ID=106 "-DVERIFY_TEXT=Quit BLUPI" \
+  -DUSED_IDS_FILE=cmake/used-string-ids/planetblupi.txt \
   -P cmake/ExtractStringTable.cmake
+
+# Force a specific target game's gating without needing that game's full
+# build tree (falls back to the ../<game> sibling path) -- see
+# docs/cmake-options.md
+cmake -B build -DFREE_API_TARGET_GAME=free-eggbert
 ```
 
 No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-1. **Confirm whether a real (non-Wayland) X11 session also passes
-   `test_winuser_regressions` cleanly, or genuinely needs `dummy`.**
-   * Goal: rule out a real position/warp bug hiding behind the Wayland
-     explanation (section 4, item 1).
-   * Files: `tests/test_winuser_regressions.cpp`,
-     `src/internal/FreeApiSdlVideo.cpp` (read-only investigation expected;
-     no change anticipated unless a real bug surfaces).
-   * Verification: `Xvfb :99 -screen 0 1024x768x24 & DISPLAY=:99
-     SDL_VIDEODRIVER=x11 ./bin/test_winuser_regressions` from
-     `../free-eggbert/cmake-build-debug`, compared against the same binary
-     run with `SDL_VIDEODRIVER=dummy`.
-
-2. **Get a genuinely standalone free-api build+test working in this
-   sandbox** (currently blocked, section 4 item 2).
+1. **Get a genuinely standalone free-api build+test working in this
+   sandbox** (currently blocked, section 4).
    * Goal: `free-api`'s own `cmake -B build -DFREE_API_USE_SYSTEM_SDL3=ON`
      configures and builds to completion without a sibling game present.
    * Files: none expected to change — this is an environment/packaging gap
@@ -385,7 +473,7 @@ No lint/formatter is configured in this repository.
      `build/` shows all tests passing with an empty (0-entry) generated
      string table.
 
-3. **Manual playtests still outstanding from a prior session** (MIDI
+2. **Manual playtests still outstanding from a prior session** (MIDI
    audio, `GetDeviceCaps(SIZEPALETTE)` visual rendering, BMP palette
    rendering, `MK_SHIFT`/`MK_CONTROL` drag-highlight).
    * Goal: get human (or Xvfb+xdotool-driven, human-reviewed) confirmation
@@ -395,6 +483,9 @@ No lint/formatter is configured in this repository.
      reveals an actual defect.
    * Verification: run each target game normally (not headless) and
      visually/audibly confirm; no automated command exists for this.
+
+_(The prior "confirm X11 vs. Wayland" task is done — see sections 3/4/5;
+this list has no third item right now beyond the two above.)_
 
 ## 9. Do not do yet
 
@@ -412,7 +503,9 @@ No lint/formatter is configured in this repository.
   from these areas.
 * Do not assume `test_winuser_regressions` failures under the default
   display mean a real regression — always try `SDL_VIDEODRIVER=dummy`
-  first (section 4, item 1) before investigating further.
+  first (section 4). This is now a **closed investigation** (confirmed via
+  a real X11/Xvfb session, not just the `dummy` driver) — do not re-open
+  it absent a genuinely new symptom.
 * Do not revert the `GetDeviceCaps(SIZEPALETTE)` value (now 0) or the
   `BITMAPFILEHEADER`/`BITMAPINFOHEADER` `#pragma pack(push, 2)` without
   re-reading `plan.md` TASK-0060/TASK-0084 first.
