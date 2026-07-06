@@ -25,7 +25,14 @@
  *   - Target-game mode (either macro defined): CMake configure already
  *     failed loudly if the .rc were missing/empty/wrong, so a known game ID
  *     MUST resolve to its real text and must NEVER be the "RES_<id>"
- *     placeholder -- that is hard-asserted here.
+ *     placeholder -- that is hard-asserted here, for both the single id-106
+ *     sentinel (also used by ExtractStringTable.cmake's own VERIFY_ID/
+ *     VERIFY_TEXT) and a broader sample of IDs spanning several distinct
+ *     used-ID categories (direct symbols, computed offsets, the button-
+ *     tooltip table) drawn from cmake/used-string-ids/*.txt -- see
+ *     docs/used-string-ids.md for the full evidence-based manifest and how
+ *     CMake configure-time verification of every used ID (not just this
+ *     sample) works.
  * An ID far outside either game's real STRINGTABLE range always falls back
  * to the placeholder in every mode -- that is also hard-asserted.
  */
@@ -61,6 +68,45 @@ static const char* kKnownText = "Quit BLUPI";
 // Far outside either game's real STRINGTABLE ID range in every build mode.
 static const unsigned int kUnknownId = 999999u;
 
+struct KnownIdCase {
+    unsigned int id;
+    const char* text;
+};
+
+// A handful of IDs proven used by the actual game (see
+// cmake/used-string-ids/*.txt and docs/used-string-ids.md for the full,
+// evidence-based manifest this sample is drawn from), spanning several
+// distinct categories -- not just the single VERIFY_ID/VERIFY_TEXT sentinel
+// (id 106) checked at CMake configure time. Text taken directly from a live
+// extraction of each game's own .rc.
+#if defined(FREE_API_TARGET_GAME_FREE_EGGBERT)
+static const KnownIdCase kKnownIdSamples[] = {
+    {106u, "Quit BLUPI"},                                              // direct TX_BUTTON_QUITTER
+    {125u, "<<<<    P A U S E    >>>>"},                                // direct TX_PAUSE
+    {149u, "Choose music"},                                             // direct TX_MUSIC
+    {288u, "Game saved ..."},                                           // direct TX_GAMESAVED
+    {400u, "Hi, I'm Blupi. Press the Right arrow to make me move ..."}, // computed: table_tutorial[] direct
+    {500u, "Hi, I'm Blupi. Press the Right arrow to make me move ..."}, // computed: table_tutorial[] +100 (joystick variant)
+    {600u, "Left or Right"},                                            // computed: joystick/key setup label range
+    {3000u, "Well done!"},                                              // computed: TX_WIN1 + GetWorld()%5
+    {3100u, "You have failed, try again..."},                           // computed: TX_LOST1 + GetWorld()%5
+    {107u, "Previous mission"},                                         // button-tooltip table
+};
+#elif defined(FREE_API_TARGET_GAME_PLANETBLUPI)
+static const KnownIdCase kKnownIdSamples[] = {
+    {106u, "Quit BLUPI"},                            // direct TX_BUTTON_QUITTER
+    {150u, "Training number"},                        // direct TX_SCHOOL
+    {178u, "Scenery choice"},                          // direct TX_REGION, via DrawTextCenter
+    {1u, "Go"},                                        // computed: TX_ACTION_GO + rank (GetText helper)
+    {1000u, "Impossible"},                             // computed: TX_ERROR_MISC + rank (GetErr helper)
+    {500u, "1: Grow tomatoes\n2: Eat"},                // computed: TX_REPEAT_* (ListSearch helper)
+    {2000u, "Sick Blupi"},                             // computed: TX_OBJ_* range (GetResHili)
+    {3000u, "Well done !"},                            // computed: TX_WIN1 + GetWorld()%5
+    {3100u, "You have failed, try again..."},          // computed: TX_LOST1 + GetWorld()%5
+    {126u, "Blupi's energy"},                          // computed: TX_JAUGE1 + i
+};
+#endif
+
 static void TestUnknownIdAlwaysFallsBackToPlaceholder()
 {
     char buffer[64] = {};
@@ -83,6 +129,29 @@ static void TestKnownGameIdReturnsRealTextNeverPlaceholder()
           "LoadStringA returns the exact real STRINGTABLE text for a known game string ID (target-game build)");
     Check(!IsPlaceholderFor(buffer, kKnownId),
           "LoadStringA never falls back to \"RES_<id>\" for a known game string ID in a target-game build");
+}
+
+// Exercises several distinct used-ID categories from cmake/used-string-ids/
+// (direct symbols, computed offsets, and the button-tooltip table), not
+// just the single id-106 sentinel above -- a broken STRINGTABLE parse or a
+// used ID silently missing from the generated table could otherwise still
+// slip past a check that only ever looks at id 106.
+static void TestSeveralKnownGameIdsReturnRealTextNeverPlaceholder()
+{
+    char nameBuf[64];
+    for (const KnownIdCase& sample : kKnownIdSamples) {
+        char buffer[256] = {};
+        int len = LoadStringA(nullptr, sample.id, buffer, sizeof(buffer));
+
+        snprintf(nameBuf, sizeof(nameBuf), "id %u returns a positive length", sample.id);
+        Check(len > 0, nameBuf);
+
+        snprintf(nameBuf, sizeof(nameBuf), "id %u returns its exact real STRINGTABLE text", sample.id);
+        Check(strcmp(buffer, sample.text) == 0, nameBuf);
+
+        snprintf(nameBuf, sizeof(nameBuf), "id %u never falls back to \"RES_<id>\"", sample.id);
+        Check(!IsPlaceholderFor(buffer, sample.id), nameBuf);
+    }
 }
 
 #else
@@ -145,6 +214,7 @@ int main()
     TestUnknownIdAlwaysFallsBackToPlaceholder();
 #if defined(FREE_API_TARGET_GAME_FREE_EGGBERT) || defined(FREE_API_TARGET_GAME_PLANETBLUPI)
     TestKnownGameIdReturnsRealTextNeverPlaceholder();
+    TestSeveralKnownGameIdsReturnRealTextNeverPlaceholder();
 #else
     TestStandaloneKnownIdMayReturnEitherRealTextOrPlaceholder();
 #endif

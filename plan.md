@@ -3276,6 +3276,38 @@ Out of scope:
 
 ---
 
+### TASK-0128: Harden LoadStringA/STRINGTABLE further — per-used-ID configure-time verification, explicit target-game override
+
+Status: DONE — Added `cmake/used-string-ids/{free-eggbert,planetblupi}.txt` (evidence-based manifests of every numeric ID each game actually passes to `LoadString`, 308 and 257 IDs respectively); `cmake/ExtractStringTable.cmake` gained `USED_IDS_FILE` (fails configure loudly listing every missing ID); `CMakeLists.txt` gained the `FREE_API_TARGET_GAME` cache variable (`auto`/`free-eggbert`/`planetblupi`/`standalone`) overriding `CMAKE_PROJECT_NAME` auto-detection; `tests/test_loadstring_regressions.cpp` now checks 10 known used IDs per game (not just id 106), spanning direct symbols, computed ranges, and the button-tooltip table. `docs/used-string-ids.md` (new) records the full audit methodology; `docs/cmake-options.md`/`docs/out-of-scope.md` updated. Verified: reconfigured and rebuilt through both free-eggbert (310 used-ID checks, 364 strings) and planetblupi (257 used-ID checks == 257 strings, exact match), full CTest 17/17 in both (`SDL_VIDEODRIVER=dummy`); deliberately-broken `USED_IDS_FILE` cases (missing ID, missing file, out-of-range ID via a bogus range) each independently reproduced the expected `FATAL_ERROR`; `FREE_API_TARGET_GAME` override verified in both directions (forcing `standalone` inside free-eggbert's own tree skips all gating; forcing `free-eggbert` inside planetblupi's tree correctly falls back to the sibling path and applies free-eggbert's gating instead).
+Priority: P1
+Area: Build system / Resources
+Type: Hardening
+Evidence: `cmake/used-string-ids/free-eggbert.txt`, `cmake/used-string-ids/planetblupi.txt`, `cmake/ExtractStringTable.cmake` (`USED_IDS_FILE`), `CMakeLists.txt` (`FREE_API_TARGET_GAME`), `docs/used-string-ids.md`
+Depends on: TASK-0127
+
+Problem:
+TASK-0127's `VERIFY_ID`/`VERIFY_TEXT` only ever checks a single sentinel ID (106, `TX_BUTTON_QUITTER`) at configure time. A target-game build could still silently ship `"RES_<id>"` placeholder text for any *other* used ID (a typo'd symbol, a deleted `.rc` entry a game still calls, a parser edge case hitting only one particular entry) without CMake configure ever failing, since the existing checks only prove "the table isn't empty" and "one known ID is correct" — not "every ID this specific game actually uses is present."
+
+Required work:
+* Enumerate every `LoadString`/`LoadStringA` call site in both `../free-eggbert` and `../planetblupi` from source evidence only (no guessing), including helper wrappers (`CEvent::DrawTextCenter`, planetblupi's `GetText`/`GetErr`) and computed IDs/ranges (traced to their concrete bound via the actual array/loop/enum each derives from, with the evidence cited inline).
+* Record the result as a hand-maintained manifest per game (`cmake/used-string-ids/*.txt`), verified by diffing against a live `.rc` extraction (planetblupi: exact 257/257 match; free-eggbert: 308 of 364, zero "used but not extracted" mismatches).
+* Extend `cmake/ExtractStringTable.cmake` with `USED_IDS_FILE`: for target-game builds only, every ID (or `A-B` range) listed must be present in that run's extracted table, or configure fails loudly listing every missing ID.
+* Add `FREE_API_TARGET_GAME` (`auto`/`free-eggbert`/`planetblupi`/`standalone`) as an explicit override on top of the existing `CMAKE_PROJECT_NAME` auto-detection, falling back to the sibling-directory layout when forced to a game we are not currently that game's own subdirectory of.
+* Strengthen `tests/test_loadstring_regressions.cpp` to hard-assert real text (never `RES_<id>`) for several known used IDs per game, not only 106.
+
+Acceptance criteria:
+* Reconfiguring through both games logs "all N used string ID(s) ... verified present" alongside the existing known-ID message, with N matching each manifest's count.
+* A deliberately-broken `USED_IDS_FILE` (an ID not in the extracted table) reproduces as a `FATAL_ERROR` listing the specific missing ID(s).
+* `FREE_API_TARGET_GAME` explicit overrides verified in both directions (forcing `standalone` skips gating even inside a game's own tree; forcing one game while physically inside the other's tree falls back to the sibling path and gates on the forced game instead).
+* No new failures introduced in either game's CTest suite (both remain 17/17 with `SDL_VIDEODRIVER=dummy`).
+
+Out of scope:
+* No new WinAPI features, no resource types beyond `LoadStringA`/`STRINGTABLE`, no joystick/MCI-video/DirectDraw/DirectSound/DirectPlay/free-direct changes.
+* `cmake/ExtractStringTable.cmake` remains a narrow `STRINGTABLE`-only parser; `USED_IDS_FILE` is a small, targeted addition (a manifest-presence check against data the parser already extracted in memory), not a step toward a general resource compiler.
+* Did not attempt the standalone-build SDL3_image/mixer gap (section 4 item 2 of `NEXT.md`) — unrelated, pre-existing, separately scoped.
+
+---
+
 ## 8. Mandatory Task Themes — Coverage Map
 
 Every theme requested for this plan is addressed by the milestones above; this section is a cross-reference index, not new content.

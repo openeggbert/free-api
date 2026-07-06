@@ -67,54 +67,115 @@ endif()
 # a placeholder. Building free-api standalone (neither sibling game present)
 # simply yields an empty generated table, and LoadStringA falls back to its
 # documented placeholder behavior -- see docs/cmake-options.md.
+
+# Explicit override for which game is authoritative, on top of the
+# CMAKE_PROJECT_NAME auto-detection below -- see docs/cmake-options.md.
+# Kept intentionally tiny (four fixed values, no further sub-options): this
+# is a targeted override for the two known games plus a forced-off switch,
+# not a general build-configuration framework.
+set(FREE_API_TARGET_GAME "auto" CACHE STRING
+        "Which target game's resources drive LoadStringA's real-text table \
+and fail-loud verification. 'auto' (default) detects via CMAKE_PROJECT_NAME. \
+'free-eggbert'/'planetblupi' force that game (and its REQUIRE_STRINGS/known-ID/ \
+used-ID gating) even when CMAKE_PROJECT_NAME doesn't currently say so -- falls \
+back to the ../<game> sibling layout if we are not actually that game's own \
+subdirectory. 'standalone' forces the ungated placeholder-fallback path even \
+if CMAKE_PROJECT_NAME would otherwise select a game.")
+set_property(CACHE FREE_API_TARGET_GAME PROPERTY STRINGS auto free-eggbert planetblupi standalone)
+
+if(NOT FREE_API_TARGET_GAME MATCHES "^(auto|free-eggbert|planetblupi|standalone)$")
+    message(FATAL_ERROR "free-api: FREE_API_TARGET_GAME must be one of: auto, free-eggbert, planetblupi, standalone (got '${FREE_API_TARGET_GAME}')")
+endif()
+
 set(_free_api_string_table_rc "")
 set(_free_api_string_table_encoding "UTF-8")
 set(_free_api_string_table_headers "")
 set(_free_api_target_game "")
 set(_free_api_verify_id "")
 set(_free_api_verify_text "")
+set(_free_api_used_ids_file "")
 
-# Prefer detecting which game is ACTUALLY building free-api right now via
-# the top-level project name (CMAKE_PROJECT_NAME), not just "does a sibling
-# directory happen to exist next to free-api" -- both target games are
-# always siblings of each other on a typical development machine, so sibling
-# *existence* alone cannot tell planetblupi's own build from free-eggbert's:
-# whichever one is the top-level project is unambiguous, since CMake sets
-# CMAKE_PROJECT_NAME from the first project() call in the whole configure run.
+# Resolve which game (if any) is authoritative for this build. Default
+# (FREE_API_TARGET_GAME=auto) prefers detecting which game is ACTUALLY
+# building free-api right now via the top-level project name
+# (CMAKE_PROJECT_NAME), not just "does a sibling directory happen to exist
+# next to free-api" -- both target games are always siblings of each other
+# on a typical development machine, so sibling *existence* alone cannot
+# tell planetblupi's own build from free-eggbert's: whichever one is the
+# top-level project is unambiguous, since CMake sets CMAKE_PROJECT_NAME
+# from the first project() call in the whole configure run.
+# FREE_API_TARGET_GAME=free-eggbert/planetblupi/standalone overrides that
+# detection explicitly (see the CACHE STRING docstring above).
 #
 # _free_api_target_game is also the fail-loud switch: when set, a missing
-# .rc file, a zero-string extraction, or a known-ID mismatch below is a
-# configure-time FATAL_ERROR -- shipped game UI must never silently fall
-# back to placeholder/RES_<id> text. It stays unset for standalone free-api
-# builds (including the sibling-lookup convenience path below), which keep
-# the placeholder-fallback behavior documented in docs/cmake-options.md.
-if(CMAKE_PROJECT_NAME STREQUAL "SPEEDY_BLUPI_WINDOWS")
-    # free-eggbert is building us directly; CMAKE_SOURCE_DIR is its own root.
+# .rc file, a zero-string extraction, a known-ID mismatch, or a missing
+# used-ID (docs/used-string-ids.md) below is a configure-time FATAL_ERROR --
+# shipped game UI must never silently fall back to placeholder/RES_<id>
+# text. It stays unset for standalone free-api builds (including the
+# sibling-lookup convenience path below), which keep the placeholder-
+# fallback behavior documented in docs/cmake-options.md.
+if(FREE_API_TARGET_GAME STREQUAL "standalone")
+    set(_free_api_resolved_game "")
+elseif(FREE_API_TARGET_GAME STREQUAL "free-eggbert")
+    set(_free_api_resolved_game "free-eggbert")
+elseif(FREE_API_TARGET_GAME STREQUAL "planetblupi")
+    set(_free_api_resolved_game "planetblupi")
+elseif(CMAKE_PROJECT_NAME STREQUAL "SPEEDY_BLUPI_WINDOWS")
+    set(_free_api_resolved_game "free-eggbert")
+elseif(CMAKE_PROJECT_NAME STREQUAL "PLANET_BLUPI_WINDOWS")
+    set(_free_api_resolved_game "planetblupi")
+else()
+    set(_free_api_resolved_game "")
+endif()
+
+if(_free_api_resolved_game STREQUAL "free-eggbert")
     set(_free_api_target_game "free-eggbert")
-    set(_free_api_string_table_rc "${CMAKE_SOURCE_DIR}/resource/Eggbert2.rc")
+    if(CMAKE_PROJECT_NAME STREQUAL "SPEEDY_BLUPI_WINDOWS")
+        # free-eggbert is building us directly; CMAKE_SOURCE_DIR is its own root.
+        set(_free_api_game_root "${CMAKE_SOURCE_DIR}")
+    else()
+        # FREE_API_TARGET_GAME explicitly forced free-eggbert, but we are not
+        # actually being built as free-eggbert's own subdirectory right now
+        # -- fall back to the sibling-directory layout instead.
+        set(_free_api_game_root "${CMAKE_CURRENT_SOURCE_DIR}/../free-eggbert")
+    endif()
+    set(_free_api_string_table_rc "${_free_api_game_root}/resource/Eggbert2.rc")
     set(_free_api_string_table_encoding "UTF-16LE")
-    set(_free_api_string_table_headers "${CMAKE_SOURCE_DIR}/resource/resource.h")
+    set(_free_api_string_table_headers "${_free_api_game_root}/resource/resource.h")
     # TX_BUTTON_QUITTER (id 106) is a known STRINGTABLE entry in Eggbert2.rc
     # that must resolve to "Quit BLUPI" -- catches silent parsing regressions.
     set(_free_api_verify_id "106")
     set(_free_api_verify_text "Quit BLUPI")
-elseif(CMAKE_PROJECT_NAME STREQUAL "PLANET_BLUPI_WINDOWS")
-    # planetblupi is building us directly; CMAKE_SOURCE_DIR is its own root.
+    set(_free_api_used_ids_file "${CMAKE_CURRENT_SOURCE_DIR}/cmake/used-string-ids/free-eggbert.txt")
+    unset(_free_api_game_root)
+elseif(_free_api_resolved_game STREQUAL "planetblupi")
     set(_free_api_target_game "planetblupi")
-    set(_free_api_string_table_rc "${CMAKE_SOURCE_DIR}/resource/blupi-e.rc")
+    if(CMAKE_PROJECT_NAME STREQUAL "PLANET_BLUPI_WINDOWS")
+        # planetblupi is building us directly; CMAKE_SOURCE_DIR is its own root.
+        set(_free_api_game_root "${CMAKE_SOURCE_DIR}")
+    else()
+        # FREE_API_TARGET_GAME explicitly forced planetblupi, but we are not
+        # actually being built as planetblupi's own subdirectory right now --
+        # fall back to the sibling-directory layout instead.
+        set(_free_api_game_root "${CMAKE_CURRENT_SOURCE_DIR}/../planetblupi")
+    endif()
+    set(_free_api_string_table_rc "${_free_api_game_root}/resource/blupi-e.rc")
     set(_free_api_string_table_encoding "UTF-8")
     set(_free_api_string_table_headers
-            "${CMAKE_SOURCE_DIR}/include/resource.h;${CMAKE_SOURCE_DIR}/include/resrc1.h")
+            "${_free_api_game_root}/include/resource.h;${_free_api_game_root}/include/resrc1.h")
     # TX_BUTTON_QUITTER (id 106) is a known STRINGTABLE entry in blupi-e.rc
     # that must resolve to "Quit BLUPI" -- catches silent parsing regressions.
     set(_free_api_verify_id "106")
     set(_free_api_verify_text "Quit BLUPI")
+    set(_free_api_used_ids_file "${CMAKE_CURRENT_SOURCE_DIR}/cmake/used-string-ids/planetblupi.txt")
+    unset(_free_api_game_root)
 else()
-    # Standalone free-api build (its own project() call is the top-level
-    # one): fall back to a developer-convenience sibling lookup, purely for
-    # local iteration -- checked in order, first match wins. Never fails
-    # configure over missing/empty resources: _free_api_target_game stays
-    # unset, so REQUIRE_STRINGS/VERIFY_ID are never passed below.
+    # Standalone free-api build (FREE_API_TARGET_GAME=standalone, or auto
+    # with neither game's CMAKE_PROJECT_NAME detected): fall back to a
+    # developer-convenience sibling lookup, purely for local iteration --
+    # checked in order, first match wins. Never fails configure over
+    # missing/empty resources: _free_api_target_game stays unset, so
+    # REQUIRE_STRINGS/VERIFY_ID/USED_IDS_FILE are never passed below.
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../free-eggbert/resource/Eggbert2.rc")
         set(_free_api_string_table_rc "${CMAKE_CURRENT_SOURCE_DIR}/../free-eggbert/resource/Eggbert2.rc")
         set(_free_api_string_table_encoding "UTF-16LE")
@@ -126,6 +187,7 @@ else()
                 "${CMAKE_CURRENT_SOURCE_DIR}/../planetblupi/include/resource.h;${CMAKE_CURRENT_SOURCE_DIR}/../planetblupi/include/resrc1.h")
     endif()
 endif()
+unset(_free_api_resolved_game)
 
 set(FREE_API_GENERATED_STRINGS_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/FreeApiGeneratedStrings.cpp")
 
@@ -135,7 +197,8 @@ if(_free_api_target_game)
             -DREQUIRE_STRINGS=ON
             "-DTARGET_GAME_NAME=${_free_api_target_game}"
             "-DVERIFY_ID=${_free_api_verify_id}"
-            "-DVERIFY_TEXT=${_free_api_verify_text}")
+            "-DVERIFY_TEXT=${_free_api_verify_text}"
+            "-DUSED_IDS_FILE=${_free_api_used_ids_file}")
 endif()
 
 if(_free_api_string_table_rc)
@@ -174,6 +237,7 @@ unset(_free_api_string_table_result)
 unset(_free_api_target_game)
 unset(_free_api_verify_id)
 unset(_free_api_verify_text)
+unset(_free_api_used_ids_file)
 unset(_free_api_extract_extra_args)
 
 add_library(free-api STATIC)

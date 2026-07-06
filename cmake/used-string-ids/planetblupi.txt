@@ -1,0 +1,205 @@
+# Planet Blupi's actually-used LoadStringA/STRINGTABLE numeric IDs.
+#
+# Hand-maintained from direct source-code evidence in ../planetblupi (see
+# docs/used-string-ids.md for the full audit methodology and how this file
+# is regenerated/re-verified). Every ID below is proven used by an actual
+# LoadString(...) call site (LoadString is planetblupi's own wrapper around
+# LoadStringA, resolved via g_hInstance -- src/misc.cpp) or by an evidenced
+# computed range.
+#
+# Format: one bare numeric ID per line, or an inclusive "A-B" range.
+# '#' starts a comment; blank lines are ignored.
+#
+# Verified (this session): cross-checked against a live extraction of
+# resource/blupi-e.rc -- the 257 IDs below are *exactly* the full set of
+# 257 STRINGTABLE entries extracted from that file (zero mismatch either
+# direction). Unlike free-eggbert, planetblupi's .rc has no unused strings.
+
+# --- Direct TX_* symbolic constants and simple wrapper call sites ----------
+# One LoadString(TX_SYMBOL, ...) or CEvent::DrawTextCenter(TX_SYMBOL, ...)
+# (src/event.cpp:1757) call site each, unless noted otherwise.
+100    # TX_IONAMEEX          (event.cpp:2086)
+101    # TX_IOFREE            (event.cpp:2093)
+102    # TX_TERMMIN           (event.cpp:2108)
+103    # TX_TERMMAX           (event.cpp:2114)
+104    # TX_BUTTON_JOUER      (tooltip table only, see below)
+105    # TX_BUTTON_APPRENDRE  (tooltip table only, see below)
+106    # TX_BUTTON_QUITTER    (tooltip table only, see below)
+107    # TX_BUTTON_PREVP      (tooltip table only, see below)
+108    # TX_BUTTON_NEXTP      (tooltip table only, see below)
+109    # TX_BUTTON_PLAYP      (tooltip table only, see below)
+110    # TX_BUTTON_BUILDP     (tooltip table only, see below)
+111    # TX_BUTTON_TERM       (tooltip table only, see below)
+112    # TX_BUTTON_READP      (event.cpp:2049)
+113    # TX_BUTTON_WRITEP     (event.cpp:2053)
+114    # TX_BUTTON_CANCELP    (tooltip table only, see below)
+115    # TX_BUTTON_CONTP      (tooltip table only, see below)
+116    # TX_BUTTON_REPEAT     (tooltip table only, see below)
+117    # TX_BUTTON_BUTTON     (tooltip table only, see below)
+118    # TX_BUTTON_CTERM      (tooltip table only, see below)
+119    # TX_BUTTON_TERMC      (tooltip table only, see below)
+120    # TX_BUTTON_TERMHBLUPI (tooltip table only, see below)
+121    # TX_BUTTON_TERMHPLANCHE (tooltip table only, see below)
+122    # TX_BUTTON_TERMFIRE   (tooltip table only, see below)
+123    # TX_BUTTON_TERMDEC    (tooltip table only, see below)
+124    # TX_BUTTON_TERMINC    (tooltip table only, see below)
+125    # TX_PAUSE             (event.cpp:1951 and 2156, via DrawTextCenter/LoadString)
+128    # TX_BUTTON_SETUP      (tooltip table only, see below)
+129    # TX_BUTTON_MUSIC      (tooltip table only, see below)
+130    # TX_BUTTON_SETUP1     (tooltip table only, see below)
+131    # TX_BUTTON_SETUP2     (tooltip table only, see below)
+132    # TX_BUTTON_SETUP3     (tooltip table only, see below)
+133    # TX_BUTTON_SETUP4     (tooltip table only, see below)
+134    # TX_BUTTON_MUSIC1     (tooltip table only, see below)
+135    # TX_BUTTON_MUSIC2     (tooltip table only, see below)
+136    # TX_BUTTON_MUSIC3     (tooltip table only, see below)
+137    # TX_BUTTON_MUSIC4     (tooltip table only, see below)
+138    # TX_BUTTON_MUSIC5     (tooltip table only, see below)
+139    # TX_BUTTON_MUSIC6     (tooltip table only, see below)
+140    # TX_BUTTON_MUSIC7     (tooltip table only, see below)
+141    # TX_BUTTON_MUSIC8     (tooltip table only, see below)
+142    # TX_BUTTON_MUSIC9     (tooltip table only, see below)
+143    # TX_BUTTON_MUSIC10    (tooltip table only, see below)
+144    # TX_BUTTON_REGION     (tooltip table only, see below)
+145    # TX_BUTTON_TERMMBLUPI (tooltip table only, see below)
+146    # TX_BUTTON_TERMKILL   (tooltip table only, see below)
+147    # TX_TERM              (event.cpp:2104, via DrawTextCenter)
+148    # TX_BUTTON            (event.cpp:2122, via DrawTextCenter)
+149    # TX_MUSIC             (event.cpp:2128, via DrawTextCenter)
+150    # TX_SCHOOL            (event.cpp:2140)
+151    # TX_MISSION           (event.cpp:2141)
+152    # TX_IONAMEMI          (event.cpp:2081)
+153    # TX_BUTTON_TERMHTOMATE (tooltip table only, see below)
+154    # TX_BUTTON_SETUP5     (tooltip table only, see below)
+155    # TX_BUTTON_SETUP6     (tooltip table only, see below)
+156    # TX_BUTTON_SETUP7     (tooltip table only, see below)
+157    # TX_BUTTON_SETUP8     (tooltip table only, see below)
+158    # TX_OUI               (event.cpp:2320)
+159    # TX_NON               (event.cpp:2321,2325)
+160    # TX_BUTTON_SETUP9     (tooltip table only, see below)
+161    # TX_BUTTON_SETUP10    (tooltip table only, see below)
+162    # TX_INFO_SETUP1       (event.cpp:2291, via DrawTextCenter)
+163    # TX_INFO_SETUP2       (event.cpp:2293, via DrawTextCenter)
+164    # TX_INFO_SETUP3       (event.cpp:2294, via DrawTextCenter)
+165    # TX_INFO_SETUP4       (event.cpp:2296, via DrawTextCenter)
+166    # TX_INFO_SETUP5       (event.cpp:2292, via DrawTextCenter)
+173    # TX_INFO_NOSCROLL     (event.cpp:2333)
+174    # TX_BUTTON_REGION1    (tooltip table only, see below)
+175    # TX_BUTTON_REGION2    (tooltip table only, see below)
+176    # TX_BUTTON_REGION3    (tooltip table only, see below)
+177    # TX_BUTTON_REGION4    (tooltip table only, see below)
+178    # TX_REGION            (event.cpp:2134, via DrawTextCenter)
+179    # TX_BUTTON_PLAY_STOP  (decstat.cpp:762, m_statHili==100)
+180    # TX_BUTTON_PLAY_SETUP (decstat.cpp:763, m_statHili==101)
+181    # TX_BUTTON_PLAY_WRITE (decstat.cpp:764, m_statHili==102)
+182    # TX_INSERT            (event.cpp:2386, via DrawTextCenter)
+183    # TX_BUTTON_PREVH      (tooltip table only, see below)
+184    # TX_BUTTON_NEXTH      (tooltip table only, see below)
+185    # TX_BUTTON_TERMHMETAL (tooltip table only, see below)
+186    # TX_BUTTON_HELP       (tooltip table only, see below)
+187    # TX_HELP              (event.cpp:2169)
+188    # TX_BUTTON_PRIVE      (tooltip table only, see below)
+189    # TX_PRIVATE           (event.cpp:2142)
+190    # TX_IONAMEPR          (event.cpp:2076)
+191    # TX_PRIVATE_HACHBLUPI (event.cpp:4138, via `res` local)
+192    # TX_PRIVATE_HACHPLANCHE (event.cpp:4143, via `res` local)
+193    # TX_PRIVATE_HACHTOMATE (event.cpp:4148, via `res` local)
+194    # TX_PRIVATE_HACHMETAL (event.cpp:4153, via `res` local)
+195    # TX_PRIVATE_STOPFIRE  (event.cpp:4168, via `res` local)
+196    # TX_PRIVATE_HOMEBLUPI (event.cpp:4163, via `res` local)
+197    # TX_PRIVATE_KILLROBOTS (event.cpp:4133, via `res` local)
+198    # TX_BUTTON_UNDO       (tooltip table only, see below)
+199    # TX_DEMO_END1         (event.cpp:2345)
+200    # TX_DEMO_END2         (event.cpp:2354)
+201    # TX_DEMO_END3         (event.cpp:2364)
+202    # TX_DEMO_END4         (event.cpp:2373)
+203    # TX_FULL_END1         (event.cpp:2347)
+204    # TX_FULL_END2         (event.cpp:2356)
+205    # TX_FULL_END3         (event.cpp:2366)
+206    # TX_FULL_END4         (event.cpp:2375)
+207    # TX_PRIVATE_OBJECTIF  (event.cpp:4123)
+208    # TX_PRIVATE_NBBLUPI   (event.cpp:4180)
+209    # TX_BUTTON_SKILL      (tooltip table only, see below)
+210    # TX_SKILL1            (event.cpp:2205)
+211    # TX_SKILL2            (event.cpp:2221)
+212    # TX_BUTTON_DEMO       (tooltip table only, see below)
+213    # TX_DEMOREC           (event.cpp:1957, via DrawTextCenter)
+214    # TX_DEMOPLAY          (event.cpp:1961, via DrawTextCenter)
+215    # TX_BUTTON_TERMHROBOT (tooltip table only, see below)
+216    # TX_PRIVATE_HACHROBOT (event.cpp:4158, via `res` local)
+512    # TX_DIRECT_N          (event.cpp:1968, via DrawTextCenter)
+513    # TX_DIRECT_S          (event.cpp:1969, via DrawTextCenter)
+514    # TX_DIRECT_E          (event.cpp:1971, via DrawTextCenter)
+515    # TX_DIRECT_O          (event.cpp:1970, via DrawTextCenter)
+3200   # TX_LASTWIN1          (event.cpp:2279)
+3201   # TX_LASTWIN2          (event.cpp:2280)
+3202   # TX_LASTWIN3          (event.cpp:2281)
+
+# --- Computed range: TX_JAUGE1/TX_JAUGE2 (gauge tooltips) -------------------
+# event.cpp:2562 `LoadString(TX_JAUGE1+i, ...)` inside `for (i=0; i<2; i++)`.
+126-127
+
+# --- Computed range: menu action tooltips (GetText helper) ------------------
+# menu.cpp:64-67 `void GetText(int rank, ...) { LoadString(TX_ACTION_GO+rank, ...); }`,
+# called as `GetText(m_buttons[i], ...)` (menu.cpp:232) where m_buttons[i]
+# indexes `table_button_icon[]` (menu.cpp:24-58, 35 entries, index 0-34).
+# resource.h defines exactly TX_ACTION_GO(1)..TX_ACTION_FABARMURE(35), a
+# contiguous 1-for-1 match confirming the full range is exercised.
+1-35
+
+# --- Computed range: menu error tooltips (GetErr helper) --------------------
+# menu.cpp:69-72 `void GetErr(int rank, ...) { LoadString(TX_ERROR_MISC+rank, ...); }`,
+# called as `GetErr(m_errors[i]-1, ...)` (menu.cpp:270) where m_errors[i] is
+# populated from CDecor::BlupiGetButtons's `error` local (decblupi.cpp:4535-4721),
+# itself assigned only ERROR_MISC(1)..ERROR_TELE2(8) (include/def.h:361-368) by
+# CDecor::CelOkForAction (decor.cpp). rank = error-1 spans 0-7; resource.h
+# defines exactly TX_ERROR_MISC(1000)..TX_ERROR_TELE2(1007), a contiguous
+# 1-for-1 match.
+1000-1007
+
+# --- Computed range: "repeat action" tooltip (ListSearch helper) -----------
+# decblupi.cpp:4710-4715: `rank = ListSearch(..., textForButton); ... pErrors[nb] = textForButton;`
+# then surfaced via menu.cpp:226/264 `LoadString(m_errors[i], ...)` whenever
+# m_errors[i] >= 100. CDecor::ListSearch (decblupi.cpp:1043-1090) only ever
+# assigns `textForButton` from its `table_series[]` literal, which lists
+# exactly these 12 TX_REPEAT_* symbols (decblupi.cpp:1048-1082).
+500-511
+
+# --- Computed range: hover-highlight object names (GetResHili) --------------
+# decor.cpp:3020-3202 `int CDecor::GetResHili(...)`, called from decor.cpp:1527
+# (`n = GetResHili(posMouse); ... LoadString(n, ...)`). Returns one of its two
+# static tables' (table_object[], table_floor[]) TX_OBJ_* entries directly, or
+# (for the highlighted-blupi/enemy branch) one of a fixed set of `res = TX_OBJ_*`
+# assignments (decor.cpp:3130-3202). Also the source of decstat.cpp's
+# `table_statistic[]` (decstat.cpp:41-360) `text` field, read via `textRes`
+# (decstat.cpp:735, `LoadString(textRes, ...)` at line 778) -- entirely the
+# same TX_OBJ_* symbol family. resource.h defines TX_OBJ_BLUPIm(2000) through
+# TX_OBJ_ARMURE(2059) contiguously, plus TX_OBJ_DALLESPEC(2060) through
+# TX_OBJ_BARENNEMIS(2073) (used only via the button-tooltip table below) --
+# together forming one contiguous block.
+2000-2073
+
+# --- Computed range: win/lose screen text (TX_WIN1.., TX_LOST1..) ----------
+# event.cpp:2261 `LoadString(TX_LOST1 + GetWorld() % 5, ...)` and
+# event.cpp:2270 `LoadString(TX_WIN1 + GetWorld() % 5, ...)`. `% 5` bounds
+# the offset to 0..4; resource.h defines exactly TX_LOST1..TX_LOST5
+# (3100-3104) and TX_WIN1..TX_WIN5 (3000-3004), confirming the intended
+# range is fully covered (5 worlds), matching free-eggbert's identical
+# convention.
+3000-3004
+3100-3104
+
+# --- Button-tooltip table (evidence for all "(tooltip table only, ...)" IDs
+#     annotated in the direct-symbols section above, plus the TX_OBJ_2060-2073
+#     and TX_ACTION_* sub-ranges folded into the ranges above) ---------------
+# event.cpp:2578-2591: `res = m_buttons[i].GetToolTips(pos); ... LoadString(res, ...)`.
+# CButton::GetToolTips (button.cpp) returns m_toolTips[rank], populated from
+# the static `table[]` array of type `Phase`/`Button` (event.cpp:71-1433,
+# include/event.h:25-33) -- each button's `toolTips` field is a
+# `{count, TX_SYMBOL...}` literal, using symbolic names here (unlike
+# free-eggbert's equivalent table, which uses bare numeric literals). All 125
+# distinct TX_* symbols referenced by every `Button.toolTips` entry across
+# all 31 `Phase` entries were extracted and resolved via resource.h; every
+# one of them already appears above, either as an individually listed ID or
+# inside one of the computed ranges (TX_ACTION_* 1-35, TX_OBJ_* 2000-2073).
+# No IDs beyond what's already listed above come from this table.

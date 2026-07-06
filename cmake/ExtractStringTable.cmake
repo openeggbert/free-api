@@ -31,6 +31,17 @@
 #                       extracted table (known-ID regression check).
 #   VERIFY_TEXT       - if VERIFY_ID is set, the exact text it must resolve
 #                       to; mismatch is a FATAL_ERROR.
+#   USED_IDS_FILE     - path to a manifest file (see cmake/used-string-ids/)
+#                       listing every numeric STRINGTABLE ID a target game
+#                       actually calls LoadString(A)/LoadString with, proven
+#                       by source evidence (docs/used-string-ids.md). One
+#                       bare integer or inclusive "A-B" range per line;
+#                       '#' comments and blank lines ignored. Every ID it
+#                       lists must be present in this run's extracted table,
+#                       or configure fails loudly listing the missing IDs --
+#                       this is what catches a *specific* used string going
+#                       missing, not just "the whole table came out empty"
+#                       (which REQUIRE_STRINGS/VERIFY_ID already catch).
 
 if(NOT DEFINED OUTPUT_CPP)
     message(FATAL_ERROR "ExtractStringTable.cmake: OUTPUT_CPP is required")
@@ -41,6 +52,7 @@ if(NOT DEFINED REQUIRE_STRINGS)
 endif()
 
 set(entries "")
+set(extracted_ids "")
 set(_verify_found FALSE)
 set(_verify_actual "")
 
@@ -119,6 +131,7 @@ if(DEFINED RC_FILE AND DEFINED RESOURCE_HEADERS)
                     # meaning in the generated C++ string literal.
                     string(REPLACE "\"" "\\\"" text_escaped "${text}")
                     list(APPEND entries "    {${numeric_id}u, \"${text_escaped}\"},")
+                    list(APPEND extracted_ids "${numeric_id}")
 
                     if(DEFINED VERIFY_ID AND numeric_id STREQUAL "${VERIFY_ID}")
                         set(_verify_found TRUE)
@@ -143,6 +156,52 @@ if(DEFINED VERIFY_ID)
         message(FATAL_ERROR "ExtractStringTable.cmake: known-ID verification failed for target game '${TARGET_GAME_NAME}': ID ${VERIFY_ID} resolved to \"${_verify_actual}\", expected \"${VERIFY_TEXT}\"")
     else()
         message(STATUS "ExtractStringTable.cmake: known-ID verification passed for '${TARGET_GAME_NAME}': ID ${VERIFY_ID} -> \"${_verify_actual}\"")
+    endif()
+endif()
+
+if(DEFINED USED_IDS_FILE)
+    if(NOT EXISTS "${USED_IDS_FILE}")
+        message(FATAL_ERROR "ExtractStringTable.cmake: USED_IDS_FILE not found for target game '${TARGET_GAME_NAME}': ${USED_IDS_FILE}")
+    endif()
+
+    file(STRINGS "${USED_IDS_FILE}" _used_ids_lines ENCODING UTF-8)
+    set(_used_ids_missing "")
+    set(_used_ids_checked 0)
+    foreach(_used_line IN LISTS _used_ids_lines)
+        # Strip a trailing '#...' comment (the whole line if it starts with
+        # one), then surrounding whitespace; skip what's left over if blank.
+        string(REGEX REPLACE "#.*$" "" _used_line "${_used_line}")
+        string(STRIP "${_used_line}" _used_line)
+        if(_used_line STREQUAL "")
+            continue()
+        endif()
+
+        if(_used_line MATCHES "^([0-9]+)-([0-9]+)$")
+            set(_range_lo "${CMAKE_MATCH_1}")
+            set(_range_hi "${CMAKE_MATCH_2}")
+            foreach(_used_id RANGE ${_range_lo} ${_range_hi})
+                math(EXPR _used_ids_checked "${_used_ids_checked}+1")
+                list(FIND extracted_ids "${_used_id}" _used_id_idx)
+                if(_used_id_idx EQUAL -1)
+                    list(APPEND _used_ids_missing "${_used_id}")
+                endif()
+            endforeach()
+        elseif(_used_line MATCHES "^[0-9]+$")
+            math(EXPR _used_ids_checked "${_used_ids_checked}+1")
+            list(FIND extracted_ids "${_used_line}" _used_id_idx)
+            if(_used_id_idx EQUAL -1)
+                list(APPEND _used_ids_missing "${_used_line}")
+            endif()
+        else()
+            message(FATAL_ERROR "ExtractStringTable.cmake: USED_IDS_FILE ${USED_IDS_FILE}: unparseable line (expected a bare integer or 'A-B' range): ${_used_line}")
+        endif()
+    endforeach()
+
+    if(_used_ids_missing)
+        list(LENGTH _used_ids_missing _used_ids_missing_count)
+        message(FATAL_ERROR "ExtractStringTable.cmake: ${_used_ids_missing_count} of ${_used_ids_checked} used string ID(s) for target game '${TARGET_GAME_NAME}' (per ${USED_IDS_FILE}) are MISSING from the table extracted from ${RC_FILE} -- these would silently fall back to the \"RES_<id>\" placeholder at runtime: ${_used_ids_missing}")
+    else()
+        message(STATUS "ExtractStringTable.cmake: all ${_used_ids_checked} used string ID(s) for '${TARGET_GAME_NAME}' verified present (${USED_IDS_FILE})")
     endif()
 endif()
 

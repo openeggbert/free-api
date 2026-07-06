@@ -51,6 +51,33 @@ cmake --build build
 ctest --test-dir build
 ```
 
+## LoadStringA / STRINGTABLE target-game selection
+
+`FREE_API_TARGET_GAME` controls which game's resources drive `LoadStringA`'s
+real-text table (see `cmake/ExtractStringTable.cmake` and
+[`used-string-ids.md`](used-string-ids.md)). Allowed values:
+
+* `auto` (default) — detect via `CMAKE_PROJECT_NAME`: `SPEEDY_BLUPI_WINDOWS`
+  selects free-eggbert, `PLANET_BLUPI_WINDOWS` selects planetblupi, anything
+  else (including Free API's own standalone `project()`) falls back to the
+  ungated developer-convenience sibling lookup.
+* `free-eggbert` / `planetblupi` — force that game's resources and its
+  fail-loud `REQUIRE_STRINGS`/known-ID/used-ID gating, even if
+  `CMAKE_PROJECT_NAME` doesn't currently say so. If Free API is not actually
+  being built as that game's own subdirectory, this falls back to reading
+  `../free-eggbert` or `../planetblupi`'s resources by sibling path instead
+  — useful for exercising the full verification pipeline (including the
+  used-ID manifest checks) without a complete game build tree.
+* `standalone` — force the ungated placeholder-fallback path even if
+  `CMAKE_PROJECT_NAME` would otherwise select a game.
+
+```bash
+cmake -B build -DFREE_API_TARGET_GAME=planetblupi
+```
+
+Passing an unrecognized value fails configure immediately with a clear
+error listing the four allowed values.
+
 ## Examples
 
 `FREE_API_BUILD_EXAMPLES` defaults to `OFF` (these are interactive

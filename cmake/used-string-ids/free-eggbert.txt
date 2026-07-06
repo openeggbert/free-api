@@ -1,0 +1,231 @@
+# Free Eggbert's actually-used LoadStringA/STRINGTABLE numeric IDs.
+#
+# Hand-maintained from direct source-code evidence in ../free-eggbert (see
+# docs/used-string-ids.md for the full audit methodology and how this file
+# is regenerated/re-verified). Every ID below is proven used by an actual
+# LoadString(...) call site (LoadString is free-eggbert's own wrapper around
+# LoadStringA, resolved via g_hInstance -- src/misc.cpp) or by an evidenced
+# computed range. This is NOT the same as "every ID defined in resource.h":
+# free-eggbert's resource.h defines many more IDs than the game actually
+# loads through LoadString (364 STRINGTABLE entries exist; only 308 of them
+# are used, per this file, as of this audit).
+#
+# Format: one bare numeric ID per line, or an inclusive "A-B" range.
+# '#' starts a comment; blank lines are ignored.
+#
+# Verified (this session): cross-checked against a live extraction of
+# resource/Eggbert2.rc -- every ID below is present in the extracted table
+# (zero "used but not extracted" mismatches).
+
+# --- Direct TX_* symbolic constants -----------------------------------------
+# One LoadString(TX_SYMBOL, ...) or CEvent::DrawTextCenter(TX_SYMBOL, ...)
+# call site each (src/event.cpp), resolved via resource/resource.h.
+125    # TX_PAUSE           (event.cpp:2561, via CEvent::DrawTextCenter)
+145    # TX_DISCARDGAME     (event.cpp:2501)
+147    # TX_DESIGNMISSION   (event.cpp:2480,2516,2640,2797 -- TX_OPENMISS at 2797 is separate, see below)
+148    # TX_CHOOSEGAMER     (event.cpp:2440,2464,2496)
+149    # TX_MUSIC           (event.cpp:2624)
+166    # TX_OPENMISS        (event.cpp:2797)
+167    # TX_READINFO        (event.cpp:5392)
+168    # TX_PLAYERFREE      (event.cpp:4574)
+169    # TX_NUMDOOROPEN     (event.cpp:4560)
+170    # TX_NUMDOORSOPEN    (event.cpp:4566)
+172    # TX_WRITENAME       (event.cpp:2469)
+178    # TX_REGION          (event.cpp:2632)
+182    # TX_INSERT          (event.cpp:2910, via CEvent::DrawTextCenter)
+184    # TX_DELETEMISSION   (event.cpp:2521)
+186    # TX_NAMEOFMISSION   (event.cpp:2485)
+187    # TX_NONAME          (event.cpp:2531,2664)
+189    # TX_MISSNUM         (event.cpp:2651)
+191    # TX_MISSION2D       (event.cpp:4794)
+194    # TX_CONTENT         (event.cpp:2802)
+197    # TX_GAMEPAUSE       (event.cpp:2586)
+203    # TX_FULL_END1       (event.cpp:2887)
+204    # TX_FULL_END2       (event.cpp:2892)
+205    # TX_FULL_END3       (event.cpp:2897)
+206    # TX_FULL_END4       (event.cpp:2902)
+213    # TX_DEMOREC         (event.cpp:2568)
+214    # TX_DEMOPLAY        (event.cpp:2573)
+250    # TX_MULTI_CREATE    (event.cpp:2451)
+251    # TX_MULTI_GNAME     (event.cpp:2456)
+268    # TX_HELP            (event.cpp:2594)
+269    # TX_LOAD_CGAME      (event.cpp:2844)
+270    # TX_SAVE_CGAME      (event.cpp:2840)
+272    # TX_MISSIONFREE     (event.cpp:4812)
+288    # TX_GAMESAVED       (event.cpp:4183)
+3201   # TX_LASTWIN2        (event.cpp:2689, via local `string` variable)
+3202   # TX_LASTWIN3        (event.cpp:2689, via local `string` variable)
+
+# --- Direct numeric/hex literals --------------------------------------------
+# LoadString() called with a bare literal instead of a symbolic TX_ name.
+102    # decor.cpp:979  (0x66)
+103    # decor.cpp:985  (0x67)
+161    # event.cpp:2820 (0xA1)
+194    # event.cpp:2822 (0xC2) -- same numeric value as TX_CONTENT above
+239    # event.cpp:2725 (0xEF)
+240    # event.cpp:2727 (0xF0)
+243    # event.cpp:2742 (0xF3)
+244    # event.cpp:2744 (0xF4)
+253    # event.cpp:2759 (0xFD)
+254    # event.cpp:2761 (0xFE)
+255    # event.cpp:2771 (0xFF)
+256    # event.cpp:2765 (0x100)
+257    # decnet.cpp:239
+258    # decnet.cpp:247
+259    # decnet.cpp:265
+260    # decnet.cpp:261
+261    # decnet.cpp:257
+271    # event.cpp:2847 (0x10F)
+286    # event.cpp:2763 (0x11E)
+287    # decblupi.cpp:3918
+288    # event.cpp:5851 (0x120u) -- same numeric value as TX_GAMESAVED above
+
+# --- Computed range: table_tutorial tutorial-hint strings -------------------
+# decor.cpp:927-945 walks `table_tutorial[]` (src/dectables.cpp:676-689);
+# column 6 (index i*6+5) of each of its 13 rows is a direct STRINGTABLE ID
+# (0x190-0x19c = 400-412), passed straight to LoadString(). When
+# m_bJoystick is set, decor.cpp:938 instead passes that same value +100
+# (500-512) to select the joystick-phrased variant of the same hint.
+400-412
+500-512
+
+# --- Computed range: joystick/key-binding setup labels ----------------------
+# event.cpp:2601-2620: `for (j = 601; j < 625; j += 3)` combined with
+# `pos.y = (m_somethingJoystick == NULL) ? j-1 : j` and a second
+# `LoadString(j+1, ...)` call. Working through j = 601,604,...,622, the
+# three expressions (j-1, j, j+1) together cover every integer in [600,623]
+# exactly once per step -- i.e. the full contiguous range, not just the
+# j-multiples-of-3 values.
+600-623
+
+# --- Computed range: win/lose screen text (TX_WIN1.., TX_LOST1..) ----------
+# event.cpp:2673 `LoadString(TX_LOST1 + GetWorld() % 5, ...)` and
+# event.cpp:2678 `LoadString(TX_WIN1 + GetWorld() % 5, ...)`. `% 5` bounds
+# the offset to 0..4; resource.h defines exactly TX_LOST1..TX_LOST5
+# (3100-3104) and TX_WIN1..TX_WIN5 (3000-3004), confirming the intended
+# range is fully covered (5 worlds).
+3000-3004
+3100-3104
+
+# --- Computed range: button tooltips ----------------------------------------
+# event.cpp:4019-4022: `res = m_buttons[i].GetToolTips(pos); LoadString(res, ...)`.
+# CButton::GetToolTips (src/button.cpp:269-303) returns m_toolTips[rank],
+# populated in CEvent::DrawButtons (event.cpp:2013) from the static
+# `table[]` array of type `Phase`/`Button` (event.cpp:92-1763,
+# include/event.hpp:11-28) -- each button's `toolTips` field is a
+# `{count, id...}` literal. The 194 distinct IDs below were extracted
+# directly from every `Button.toolTips` entry in that table (all 41
+# `Phase` entries), listed individually since they are not a contiguous
+# range.
+106
+107
+108
+109
+110
+111
+112
+113
+117
+118
+119
+121
+122
+123
+124
+126
+127
+128
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+154
+155
+156
+157
+171
+174
+175
+176
+177
+183
+185
+188
+192
+193
+195
+196
+207
+208
+212
+215
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+235
+236
+237
+238
+241
+242
+245
+246
+247
+248
+249
+252
+262
+263
+264
+265
+266
+267
+297
+298
+299
+300
+301
+302
+303
+304
+305
+306
+1000-1016
+1018-1084
+2004
+2007
+2030
+2033
+2038
+2041
+2044
+2047
+2072

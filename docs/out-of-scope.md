@@ -178,9 +178,15 @@ Consolidates the resource-subsystem findings above into one statement:
   ID (`TX_BUTTON_QUITTER`, 106, "Quit BLUPI" — present in both games'
   `.rc` files) resolves correctly — so a successful configure in either
   target game is a real signal the table is populated, not just present.
-  Standalone free-api builds intentionally do **not** set these checks and
-  may legitimately return `"RES_<id>"` for any ID — see
-  `tests/test_loadstring_regressions.cpp` for the build-mode split.
+  Beyond that single sentinel ID, `USED_IDS_FILE` (also target-game only)
+  verifies *every* ID either game's own source actually passes to
+  `LoadString`, per the evidence-based manifests in
+  `cmake/used-string-ids/*.txt` — see
+  [`used-string-ids.md`](used-string-ids.md) for how those manifests were
+  derived and re-verified. Standalone free-api builds intentionally do
+  **not** set any of these checks and may legitimately return `"RES_<id>"`
+  for any ID — see `tests/test_loadstring_regressions.cpp` for the
+  build-mode split.
 
 **Confirmed (re-checked this session, TASK-0076/0077/0080):**
 * `LoadIconA`/`LoadCursorA` remain safe, sufficient stubs after
