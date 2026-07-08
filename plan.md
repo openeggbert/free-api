@@ -4197,7 +4197,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0903: Add regression test coverage for the missing-soundfont silent-success MCI_PLAY path
-Status: TODO
+Status: DONE — TestMissingSoundFontStillSucceedsAndNotifiesPromptly (tests/test_mci_sequences.cpp). Confirmed via direct evidence read that no .sf2 ships anywhere in free-api/free-eggbert/planetblupi and FREE_API_SOUNDFONT is unset by default, so this environment already naturally exercises the no-soundfont path in every sequencer test -- this makes that deliberate and explicit rather than an unlabeled coincidence, without needing subprocess/env-var isolation.
 Priority: P1
 Area: WinMM
 Type: Test
@@ -4225,7 +4225,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0904: Add regression test coverage for NormalizeMidiPath's uppercase case-fallback behavior
-Status: TODO
+Status: DONE — TestMidiOpenFindsUppercaseFixtureViaLowercaseName (tests/test_mci_sequences.cpp) exercises the file-local NormalizeMidiPath indirectly through the public MCI_OPEN path: an uppercase-named fixture opened via a lowercase element name, plus an exact-match control case.
 Priority: P1
 Area: WinMM
 Type: Test

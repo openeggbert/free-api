@@ -169,6 +169,53 @@ static void TestSequencerOpenPlayNotifyCloseSequence()
     DestroyWindow(hwnd);
 }
 
+// TASK-24H-0903: when no SoundFont is found, EnsureMidiBackend() still
+// returns success but never starts real audio rendering, and
+// MidiMusicSendCommand's MCI_PLAY handler detects !g_midi.soundFont, marks
+// the session finished, and immediately posts MM_MCINOTIFY itself -- a
+// deliberate "degrade to silent success" behavior guarding against the
+// game's notify-driven replay loop (see the stress test above/TASK-0090)
+// stalling forever waiting for a notification that would otherwise never
+// arrive. This session's evidence read confirmed neither free-api,
+// free-eggbert, nor planetblupi ships any .sf2 file, and FREE_API_SOUNDFONT
+// is unset by default -- so this exact no-soundfont path is what every
+// other test in this file already runs under in this environment; this
+// test makes that deliberate and explicit rather than an unlabeled
+// coincidence, and would fail if the graceful-degradation behavior ever
+// regressed into a hard failure or a stalled notification.
+static void TestMissingSoundFontStillSucceedsAndNotifiesPromptly()
+{
+    HWND hwnd = MakeTestWindow("RegTest_MciNoSoundFont");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the no-SoundFont test");
+    if (!hwnd) return;
+
+    const std::string path = "test_mci_no_soundfont_fixture.mid";
+    Check(WriteMinimalMidi(path), "MIDI fixture file is written for the no-SoundFont test");
+
+    MCIDEVICEID id = 0;
+    MCIERROR openRc = OpenSequencer(path, &id);
+    Check(openRc == 0, "MCI_OPEN(\"sequencer\") still succeeds with no SoundFont available");
+
+    if (openRc == 0) {
+        MCIERROR playRc = PlayWithNotify(id, hwnd);
+        Check(playRc == 0, "MCI_PLAY still succeeds with no SoundFont available (silent-success degradation, not a hard failure)");
+
+        // The no-soundfont path posts MM_MCINOTIFY immediately (it doesn't
+        // wait for real audio rendering to finish), so this should resolve
+        // much faster than the real-audio TestSequencerOpenPlayNotifyCloseSequence
+        // case above -- but use the same generous bound to avoid flakiness.
+        bool notified = WaitForMciNotifySuccessful(hwnd, 3000);
+        Check(notified, "MM_MCINOTIFY with MCI_NOTIFY_SUCCESSFUL is still posted promptly with no SoundFont available "
+                        "(the game's notify-driven replay loop does not stall)");
+
+        MCIERROR closeRc = mciSendCommandA(id, MCI_CLOSE, 0, 0);
+        Check(closeRc == 0, "MCI_CLOSE still succeeds after the no-SoundFont session finishes");
+    }
+
+    remove(path.c_str());
+    DestroyWindow(hwnd);
+}
+
 // TASK-0090/regression: free-eggbert's own MM_MCINOTIFY handler
 // (blupi.cpp:562-580) closes and immediately reopens+replays on every
 // successful notification (its own game-side looping mechanism). This
@@ -294,6 +341,57 @@ static void TestMciGetDeviceIdaResultSafelyClosable()
     (void)closeRc; // not fatal either way -- both an "unknown id" or a real close are acceptable outcomes here
 }
 
+// TASK-24H-0904: NormalizeMidiPath (src/MidiMusic.cpp, file-local) is
+// plausibly the exact mechanism that makes MIDI music load at all for
+// free-eggbert on a case-sensitive filesystem: free-eggbert's CSound::
+// PlayMusic constructs a lowercase path via sprintf ("sound/music%.3d.blp"),
+// but the shipped asset may be uppercase-named. It cannot be unit-tested
+// directly (file-local linkage), so this exercises it indirectly through
+// the public MCI_OPEN path: an uppercase-named fixture file, opened via a
+// lowercase element name that only matches after the case-fallback.
+static void TestMidiOpenFindsUppercaseFixtureViaLowercaseName()
+{
+    HWND hwnd = MakeTestWindow("RegTest_MciCaseFallback");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the case-fallback test");
+    if (!hwnd) return;
+
+    // Control case: the path already matches exactly -- no fallback needed.
+    const std::string exactPath = "test_mci_case_exact_fixture.mid";
+    Check(WriteMinimalMidi(exactPath), "exact-case MIDI fixture file is written");
+    MCIDEVICEID exactId = 0;
+    MCIERROR exactOpenRc = OpenSequencer(exactPath, &exactId);
+    Check(exactOpenRc == 0, "MCI_OPEN succeeds when the given path already matches exactly (control case, no fallback needed)");
+    if (exactOpenRc == 0) {
+        mciSendCommandA(exactId, MCI_CLOSE, 0, 0);
+    }
+    remove(exactPath.c_str());
+
+    // The real case-fallback case: fixture file is uppercase-named on disk;
+    // the element name passed to MCI_OPEN is the lowercase-cased
+    // equivalent, matching free-eggbert's sprintf-constructed lowercase
+    // path shape against a possibly-uppercase-shipped asset.
+    const std::string uppercasePath = "TEST_MCI_CASE_FALLBACK_FIXTURE.MID";
+    const std::string lowercaseRequestedPath = "test_mci_case_fallback_fixture.mid";
+    Check(WriteMinimalMidi(uppercasePath), "uppercase-named MIDI fixture file is written to disk");
+
+    MCIDEVICEID fallbackId = 0;
+    MCIERROR fallbackOpenRc = OpenSequencer(lowercaseRequestedPath, &fallbackId);
+    Check(fallbackOpenRc == 0,
+          "MCI_OPEN succeeds against a lowercase-cased element name when only an uppercase-named file exists on disk "
+          "(NormalizeMidiPath's uppercase-suffix fallback)");
+
+    if (fallbackOpenRc == 0) {
+        MCIERROR playRc = PlayWithNotify(fallbackId, hwnd);
+        Check(playRc == 0, "MCI_PLAY succeeds on the case-fallback-resolved session");
+        bool notified = WaitForMciNotifySuccessful(hwnd, 3000);
+        Check(notified, "the case-fallback-resolved session actually plays and notifies (not just a hollow open)");
+        mciSendCommandA(fallbackId, MCI_CLOSE, 0, 0);
+    }
+
+    remove(uppercasePath.c_str());
+    DestroyWindow(hwnd);
+}
+
 int main()
 {
     printf("[mci-sequences] Starting\n");
@@ -304,10 +402,12 @@ int main()
     }
 
     TestSequencerOpenPlayNotifyCloseSequence();
+    TestMissingSoundFontStillSucceedsAndNotifiesPromptly();
     TestNotifyTriggeredCloseAndReopenStressTest();
     TestCdaudioGracefulDeclineDoesNotBreakSequencerFallback();
     TestMidiOutVolumeIterationSequence();
     TestMciGetDeviceIdaResultSafelyClosable();
+    TestMidiOpenFindsUppercaseFixtureViaLowercaseName();
 
     // Deliberately not calling SDL_Quit() here: MidiState's static-global
     // destructor (src/MidiMusic.cpp ~MidiState) tears down its SDL audio
