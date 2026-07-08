@@ -131,6 +131,109 @@ static void TestKillTimerStopsWmTimerDelivery()
     DestroyWindow(hwnd);
 }
 
+// TASK-24H-0508: SetTimer has two implemented edge-case behaviors with no
+// prior test coverage -- passing nIDEvent==0 triggers auto-ID generation
+// (via the shared g_nextTimerId counter also used by timeSetEvent), and
+// passing uElapse==0 clamps the interval to a minimum of 1ms rather than
+// never firing. Every other SetTimer call in this file uses an explicit
+// non-zero ID and interval, so neither branch was previously exercised.
+static void TestSetTimerAutoIdAndMinimumIntervalClamp()
+{
+    HWND hwnd = MakeTestWindow("RegTest_SetTimerAutoId");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for SetTimer auto-id/clamp test window");
+    if (!hwnd) return;
+
+    UINT_PTR autoId = SetTimer(hwnd, 0, 5, nullptr);
+    Check(autoId != 0, "SetTimer(nIDEvent=0) returns a non-zero auto-generated timer id");
+
+    bool sawAutoIdFire = false;
+    {
+        const Uint64 deadline = SDL_GetTicks() + 200;
+        MSG msg{};
+        while (SDL_GetTicks() < deadline && !sawAutoIdFire) {
+            if (PeekMessageA(&msg, hwnd, 0, 0, PM_REMOVE)) {
+                if (msg.message == WM_TIMER && msg.wParam == autoId) sawAutoIdFire = true;
+            } else {
+                SDL_Delay(1);
+            }
+        }
+    }
+    Check(sawAutoIdFire, "SetTimer(nIDEvent=0)'s auto-generated id actually fires WM_TIMER carrying that same id");
+    KillTimer(hwnd, autoId);
+    CountWmTimerFor(hwnd, autoId, 0); // drain any straggler already queued
+
+    UINT_PTR clampedId = SetTimer(hwnd, 99, 0, nullptr);
+    Check(clampedId == 99, "SetTimer(uElapse=0) still returns the requested timer id");
+    int clampedFireCount = CountWmTimerFor(hwnd, 99, 100);
+    Check(clampedFireCount > 0,
+          "SetTimer(uElapse=0) still delivers WM_TIMER (clamped to a fast minimum interval) rather than never firing");
+    KillTimer(hwnd, 99);
+
+    DestroyWindow(hwnd);
+}
+
+// TASK-24H-0505: FreeApiMessageQueue coalesces WM_TIMER (at most one pending
+// per hwnd+timer-id) so stale timer messages don't pile up -- but this must
+// not come at the cost of delaying/dropping real, concurrently-posted
+// non-timer input, which is exactly the scenario both games' frame pumps
+// create every frame (a fast game-tick timer running alongside real player
+// input). Proves all posted non-timer messages are still received, each
+// exactly once, while a fast timer fires concurrently.
+static void TestFastTimerDoesNotStarveConcurrentNonTimerMessages()
+{
+    HWND hwnd = MakeTestWindow("RegTest_TimerStarvation");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for timer-starvation test window");
+    if (!hwnd) return;
+
+    CountWmTimerFor(hwnd, 3, 0); // drain any startup messages
+
+    const UINT intervalMs = 2; // deliberately fast, to maximize WM_TIMER pressure
+    SetTimer(hwnd, 3, intervalMs, nullptr);
+
+    const UINT kInputMsg = WM_USER + 300;
+    const int kInputCount = 10;
+
+    // Post one input message every ~15ms, interleaved with draining, rather
+    // than all up front -- WM_TIMER only fires inside PeekMessageA when the
+    // queue was already empty on entry (src/winuser_message.cpp), so
+    // front-loading every input message would itself starve the *timer*
+    // (queue never goes empty) rather than testing whether the timer
+    // starves *input*. Interleaving matches a real game loop, where player
+    // input and a fast frame-pump timer both compete for the same queue
+    // over time, not all at once.
+    int timerCount = 0;
+    std::set<int> seenInputIndices;
+    const Uint64 deadline = SDL_GetTicks() + 400;
+    int nextInputToPost = 0;
+    Uint64 lastPostTick = SDL_GetTicks();
+    MSG msg{};
+    while (SDL_GetTicks() < deadline && static_cast<int>(seenInputIndices.size()) < kInputCount) {
+        if (nextInputToPost < kInputCount && SDL_GetTicks() - lastPostTick >= 15) {
+            PostMessageA(hwnd, kInputMsg, static_cast<WPARAM>(nextInputToPost), 0);
+            ++nextInputToPost;
+            lastPostTick = SDL_GetTicks();
+        }
+
+        if (PeekMessageA(&msg, hwnd, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_TIMER && msg.wParam == 3) {
+                ++timerCount;
+            } else if (msg.message == kInputMsg) {
+                seenInputIndices.insert(static_cast<int>(msg.wParam));
+            }
+        } else {
+            SDL_Delay(1);
+        }
+    }
+
+    Check(static_cast<int>(seenInputIndices.size()) == kInputCount,
+          "all posted non-timer input messages are received despite a concurrently fast-firing SetTimer "
+          "(WM_TIMER coalescing does not starve them)");
+    Check(timerCount > 0, "the fast timer also continues firing WM_TIMER concurrently with input delivery");
+
+    KillTimer(hwnd, 3);
+    DestroyWindow(hwnd);
+}
+
 // TASK-0043: timeSetEvent's callback fires repeatedly at approximately the
 // requested interval, and can safely call PostMessageA (mirroring
 // free-eggbert's TimerStep, blupi.cpp:891,628,641-648) without corrupting
@@ -403,6 +506,8 @@ int main()
 
     TestSetTimerFiresWmTimerAtApproximateInterval();
     TestKillTimerStopsWmTimerDelivery();
+    TestSetTimerAutoIdAndMinimumIntervalClamp();
+    TestFastTimerDoesNotStarveConcurrentNonTimerMessages();
     TestTimeSetEventFiresCallbackAtApproximateInterval();
     TestTimeKillEventStopsCallback();
     TestCrossThreadPostMessageAStressTest();

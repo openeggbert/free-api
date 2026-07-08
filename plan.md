@@ -1825,7 +1825,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0203: Add a timing regression test proving PeekMessageA never sleeps/blocks on an empty queue
-Status: TODO
+Status: DONE — TestPeekMessageANeverSleepsOnEmptyQueue (tests/test_winuser_regressions.cpp) runs 20000 empty-queue PeekMessageA calls and asserts total elapsed time stays well under what a reintroduced per-call SDL_Delay(1) would take.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -1876,7 +1876,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0205: Add a regression test proving WaitMessage returns TRUE unconditionally even when the queue is still empty
-Status: TODO
+Status: DONE — TestWaitMessageDoesNotBusySpin (tests/test_winuser_regressions.cpp) now also asserts every WaitMessage() call in its confirmed-empty-queue busy-spin window returns TRUE.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -2000,7 +2000,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0210: Strengthen WM_CLOSE→DestroyWindow test with a direct teardown assertion
-Status: TODO
+Status: DONE — TestDefWindowProcHandlesWmClose (tests/test_winuser_regressions.cpp) now uses a dedicated WmCloseTrackingWndProc and directly asserts WM_DESTROY was delivered to the correct HWND, not just that WM_QUIT eventually appeared.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -3028,7 +3028,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0505: Add regression coverage that WM_TIMER coalescing does not starve concurrent input
-Status: TODO
+Status: DONE — TestFastTimerDoesNotStarveConcurrentNonTimerMessages (tests/test_timer_regressions.cpp) interleaves posting 10 non-timer messages with a 2ms SetTimer and asserts all are received exactly once while the timer keeps firing concurrently.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -3107,7 +3107,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0508: Add missing SetTimer edge-case coverage: auto-ID generation and minimum-interval clamp
-Status: TODO
+Status: DONE — TestSetTimerAutoIdAndMinimumIntervalClamp (tests/test_timer_regressions.cpp) covers both nIDEvent=0 auto-ID generation and uElapse=0 clamping to a fast minimum interval.
 Priority: P1
 Area: WinUser
 Type: Test

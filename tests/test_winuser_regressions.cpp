@@ -182,10 +182,29 @@ static void TestCreateWindowExAFullscreenPath()
     DrainMessages();
 }
 
+// TASK-24H-0210: the original version of this test only observed the
+// downstream WM_QUIT, a correct but indirect proxy -- a regression that
+// broke the WM_CLOSE->DestroyWindow call specifically (while some other
+// path still happened to produce WM_QUIT) would not have been caught.
+// This dedicated WndProc lets the test assert WM_DESTROY was directly
+// delivered to the closed window's own procedure as a consequence of
+// WM_CLOSE processing.
+static bool g_wmCloseDestroyReceived = false;
+static HWND g_wmCloseDestroyReceivedHwnd = nullptr;
+
+static LRESULT WINAPI WmCloseTrackingWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_DESTROY) {
+        g_wmCloseDestroyReceived = true;
+        g_wmCloseDestroyReceivedHwnd = hwnd;
+    }
+    return DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
 static void TestDefWindowProcHandlesWmClose()
 {
     WNDCLASSA wc{};
-    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpfnWndProc   = WmCloseTrackingWndProc;
     wc.lpszClassName = "RegTest_WmClose";
     wc.hInstance     = (HINSTANCE)1;
     RegisterClassA(&wc);
@@ -199,6 +218,9 @@ static void TestDefWindowProcHandlesWmClose()
 
     // Drain startup messages so they don't interfere with the assertions below.
     DrainMessages();
+
+    g_wmCloseDestroyReceived = false;
+    g_wmCloseDestroyReceivedHwnd = nullptr;
 
     // Both target games post WM_CLOSE and never handle it explicitly --
     // they rely entirely on the default window procedure to destroy the
@@ -217,6 +239,10 @@ static void TestDefWindowProcHandlesWmClose()
     }
 
     Check(sawQuit, "WM_CLOSE's default handling leads to WM_QUIT via DefWindowProcA");
+    Check(g_wmCloseDestroyReceived,
+          "WM_CLOSE's default handling directly delivers WM_DESTROY to the window's own WndProc "
+          "(not just an eventual WM_QUIT via some other path)");
+    Check(g_wmCloseDestroyReceivedHwnd == hwnd, "WM_DESTROY from WM_CLOSE handling carries the correct HWND");
 }
 
 static bool g_destroyReceived = false;
@@ -306,6 +332,33 @@ static void TestPeekMessageNoRemoveAndRemove()
 
     DestroyWindow(hwnd);
     DrainMessages();
+}
+
+// TASK-24H-0203: src/winuser_message.cpp documents, in a code comment, that
+// PeekMessageA "must NEVER sleep or block" -- a prior regression that added
+// a per-call SDL_Delay(1) produced a real, player-visible "rubbery/laggy
+// feel" in both games' tight main loops. This is a real historical
+// regression class with no dedicated timing regression guard until now:
+// a tight empty-queue polling loop must complete near-instantly, not take
+// ~1ms per call.
+static void TestPeekMessageANeverSleepsOnEmptyQueue()
+{
+    MSG msg{};
+    const int kIterations = 20000;
+    const Uint64 start = SDL_GetTicks();
+    for (int i = 0; i < kIterations; ++i) {
+        PeekMessageA(&msg, nullptr, 0, 0, PM_NOREMOVE);
+    }
+    const Uint64 elapsedMs = SDL_GetTicks() - start;
+
+    // A regression that reintroduces SDL_Delay(1) per call would take at
+    // least ~20000ms for 20000 iterations; a correct zero-sleep
+    // implementation completes in a handful of milliseconds. Use a generous
+    // threshold well below the "no-sleep" ceiling to avoid flakiness while
+    // still catching any reintroduced per-call sleep.
+    Check(elapsedMs < 2000,
+          "PeekMessageA never sleeps on an empty queue (20000 calls completed well under "
+          "what a reintroduced per-call SDL_Delay(1) would take)");
 }
 
 static void TestGetMessageReturnsFalseOnQuit()
@@ -638,13 +691,24 @@ static void TestWaitMessageDoesNotBusySpin()
     const Uint64 windowMs = 50;
     const Uint64 deadline = SDL_GetTicks() + windowMs;
     long long iterations = 0;
+    bool allReturnedTrue = true;
     while (SDL_GetTicks() < deadline) {
-        WaitMessage();
+        if (!WaitMessage()) allReturnedTrue = false;
         ++iterations;
     }
     Check(iterations < 1000,
           "WaitMessage idles (sleeps) rather than busy-spinning when no message is available "
           "(iteration count stayed low over a fixed wall-clock window)");
+    // TASK-24H-0205: WaitMessage is not a true OS-level blocking wait -- it
+    // checks the queue twice around a single ~1ms delay and then returns
+    // TRUE *unconditionally*, even if the queue is still empty afterward.
+    // Both games' idle loops depend on exactly this contract; a future
+    // refactor that "fixed" this into a real block or a FALSE-on-timeout
+    // return could hang or busy-loop them. Confirmed here across every
+    // iteration above, where the queue is guaranteed to stay empty the
+    // entire window (nothing posts to it).
+    Check(allReturnedTrue,
+          "WaitMessage returns TRUE unconditionally on every call, even while the queue is confirmed still empty");
 
     // Now verify it still returns promptly once a message actually arrives,
     // posted from a background thread after a short delay.
@@ -782,6 +846,7 @@ int main()
     TestDefWindowProcHandlesWmClose();
     TestDestroyWindowDispatchesWmDestroySynchronously();
     TestPeekMessageNoRemoveAndRemove();
+    TestPeekMessageANeverSleepsOnEmptyQueue();
     TestGetMessageReturnsFalseOnQuit();
     TestMouseMoveLParamPackingAndModifierFlags();
     TestClientToScreenTracksWindowPositionNotStale();
