@@ -122,8 +122,13 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
 
     for (int dstY = dyBegin; dstY < dyEnd; ++dstY) {
         const int dstRow0 = dstY - yDest; // 0-based row within hDest
-        const int srcY = ySrc + static_cast<int>((static_cast<int64_t>(dstRow0) * static_cast<int64_t>(hSrc)) / static_cast<int64_t>(hDest));
-        if (srcY < 0 || srcY >= srcBitmap->height) continue;
+        int srcY = ySrc + static_cast<int>((static_cast<int64_t>(dstRow0) * static_cast<int64_t>(hSrc)) / static_cast<int64_t>(hDest));
+        // Clamp to the nearest edge row, matching srcXTable's edge-clamp policy
+        // above — out-of-range source coordinates must degrade identically on
+        // both axes rather than X repeating the edge pixel while Y skips the
+        // row and leaves the destination untouched.
+        if (srcY < 0) srcY = 0;
+        if (srcY >= srcBitmap->height) srcY = srcBitmap->height - 1;
 
         auto* dstRow = dst->surfacePixels + static_cast<size_t>(dstY) * static_cast<size_t>(dst->surfacePitch);
         const auto* srcRow = srcPixels + static_cast<size_t>(srcY) * static_cast<size_t>(srcBitmap->pitch);

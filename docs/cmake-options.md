@@ -1,7 +1,7 @@
 # Free API — Build Modes
 
 Free API never vendors SDL3 itself. It acquires `SDL3::SDL3`,
-`SDL3_image::SDL3_image` and `SDL3_mixer::SDL3_mixer` in one of three ways,
+`SDL3_image::SDL3_image` and `SDL3_mixer::SDL3_mixer` in one of two ways,
 tried in this order:
 
 ## 1. Parent-provided (default when built as a subdirectory)
@@ -27,18 +27,17 @@ Requires SDL3, SDL3_image and SDL3_mixer development packages (headers +
 CMake config files) to be discoverable by `find_package()` — e.g. via
 `CMAKE_PREFIX_PATH` if they're installed to a non-standard location.
 
-## 3. Sibling-vendored (developer convenience)
+If neither of the above applies, configuration fails with a clear error
+message explaining the two options above.
 
-If neither of the above applies and Free API is checked out next to one of
-its two target games (`../free-eggbert` or `../planetblupi`), it will reuse
-that game's own `cmake/ThirdPartySDL.cmake` vendoring helper. This only works
-when that sibling game is also the top-level CMake project (its own
-`third_party/SDL` submodules must be checked out), so it is mainly useful
-when iterating on Free API from within a full game checkout rather than for
-a fully standalone Free API build.
-
-If none of the three apply, configuration fails with a clear error message
-explaining the three options above.
+A third "sibling-vendored" tier — reusing a sibling game's own
+`cmake/ThirdPartySDL.cmake` vendoring helper when Free API itself is the
+top-level project — previously existed here but was removed (see
+`plan.md` `TASK-24H-0001`): that helper always resolves its vendored-
+dependency root relative to `CMAKE_SOURCE_DIR`, which is Free API's own
+root in exactly the situation where this fallback could ever be reached, so
+it could never actually succeed — it only produced a confusing, wrongly-
+attributed "missing submodule" error instead of the clear guidance above.
 
 ## Tests
 
@@ -48,8 +47,15 @@ defaults to `OFF`). Run with:
 ```bash
 cmake -B build -DFREE_API_BUILD_TESTS=ON
 cmake --build build
-ctest --test-dir build
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --test-dir build --output-on-failure
 ```
+
+`SDL_VIDEODRIVER=dummy`/`SDL_AUDIODRIVER=dummy` are **not optional** under
+this environment's default (Wayland) display — without them,
+`test_winuser_regressions` spuriously fails 6 window-position-exactness
+assertions (`ClientToScreen`/`ScreenToClient`/`GetCursorPos`); this is a
+confirmed environment artifact, not a real bug (see `NEXT.md` §5). Under a
+real X11/Xvfb session or the dummy drivers, all tests pass cleanly.
 
 ## LoadStringA / STRINGTABLE target-game selection
 

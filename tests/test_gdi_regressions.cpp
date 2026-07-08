@@ -283,6 +283,51 @@ static void TestStretchBltScaledNearestNeighborSamplesCorrectSourcePixel()
     DeleteDC(srcDc);
 }
 
+static void TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX()
+{
+    // 2x2 source: row 0 red, row 1 green. Claim a source rect taller than the
+    // real bitmap (hSrc=4 against a 2-row bitmap) so the scaled path's source-Y
+    // sampling goes out of range for destination row 1 -- this is the exact
+    // asymmetry TASK-0003/TASK-24H-0601 fixed: X already clamped out-of-range
+    // source columns to the nearest edge pixel, but Y instead skipped the
+    // whole destination row, leaving it as stale/untouched sentinel data.
+    // wDest(2)==wSrc(2) but hDest(2)!=hSrc(4), so the scaled (non-1:1) path is
+    // exercised even though the X axis itself doesn't need scaling.
+    const int srcW = 2, srcH = 2;
+    std::vector<uint8_t> srcPixels(static_cast<size_t>(srcW) * srcH * 4);
+    auto setRow = [&](int y, uint8_t r, uint8_t g, uint8_t b) {
+        for (int x = 0; x < srcW; ++x) {
+            size_t off = (static_cast<size_t>(y) * srcW + x) * 4;
+            srcPixels[off + 0] = r; srcPixels[off + 1] = g; srcPixels[off + 2] = b; srcPixels[off + 3] = 255;
+        }
+    };
+    setRow(0, 255, 0, 0); // row 0: red
+    setRow(1, 0, 255, 0); // row 1: green (the clamped "edge row" once srcY overflows)
+
+    HBITMAP srcBitmap = MakeSourceBitmap(srcW, srcH, srcPixels);
+    HDC srcDc = CreateCompatibleDC(nullptr);
+    SelectObject(srcDc, srcBitmap);
+
+    TestSurface dest(2, 2);
+    // hSrc=4 claims twice the real bitmap height; dstRow0=1 -> srcY = 1*4/2 = 2,
+    // which is out of range for a 2-row (indices 0-1) bitmap.
+    BOOL ok = StretchBlt(dest.hdc, 0, 0, 2, 2, srcDc, 0, 0, srcW, 4, SRCCOPY);
+    Check(ok == TRUE, "StretchBlt(scaled, out-of-range source Y) returns TRUE");
+
+    COLORREF row0 = GetPixel(dest.hdc, 0, 0);
+    COLORREF row1 = GetPixel(dest.hdc, 0, 1);
+
+    Check(GetRValue(row0) == 255 && GetGValue(row0) == 0 && GetBValue(row0) == 0,
+          "in-range destination row 0 samples source row 0 (red) normally");
+    Check(!dest.IsSentinelAt(0, 1),
+          "out-of-range source Y clamps to the nearest edge row instead of leaving the destination row untouched");
+    Check(GetRValue(row1) == 0 && GetGValue(row1) == 255 && GetBValue(row1) == 0,
+          "out-of-range source Y clamps to the last real source row (green), matching the X-axis edge-clamp policy");
+
+    DeleteObject(srcBitmap);
+    DeleteDC(srcDc);
+}
+
 static void TestGetSetPixelRoundTripOnSurfaceDc()
 {
     TestSurface dest(2, 2);
@@ -616,6 +661,7 @@ int main()
     TestStretchBlt1to1ClippedAtDestinationEdgeStaysInBounds();
     TestStretchBlt1to1OutOfRangeSourceRectClipsSafely();
     TestStretchBltScaledNearestNeighborSamplesCorrectSourcePixel();
+    TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX();
     TestGetSetPixelRoundTripOnSurfaceDc();
     TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba();
     TestCreateBitmap16BitRgb565ConvertsToExpectedRgba32();

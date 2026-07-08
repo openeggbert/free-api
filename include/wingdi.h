@@ -134,7 +134,9 @@ COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color);
  * @brief Copies/scales a region from a source DC to a destination DC.
  *
  * Only SRCCOPY from a memory DC with selected bitmap to an internal surface DC
- * is implemented. Uses nearest-neighbor scaling.
+ * is implemented. Uses nearest-neighbor scaling. In the scaled path, an
+ * out-of-range source coordinate is clamped to the nearest edge pixel on
+ * both the X and Y axes (consistent edge-clamp policy on both axes).
  * @note Status: PARTIAL
  */
 BOOL WINAPI StretchBlt(HDC hdcDest,

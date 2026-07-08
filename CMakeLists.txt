@@ -16,35 +16,22 @@ include(GNUInstallDirs)
 #      building free-api as part of their own tree).
 #   2) Find a system-installed SDL3/SDL3_image/SDL3_mixer via find_package()
 #      when configured with -DFREE_API_USE_SYSTEM_SDL3=ON.
-#   3) As a developer convenience only, reuse one of the two target games'
-#      existing SDL3-vendoring CMake helper if that game happens to be
-#      checked out next to this repo (no absolute/machine-specific path).
-# See docs/cmake-options.md for details.
+# A third "sibling-vendored" tier (reusing a sibling game's own SDL3-vendoring
+# CMake helper when free-api itself is the top-level project) previously
+# existed here but was removed (TASK-24H-0001): that helper always resolves
+# its vendored-dependency root relative to CMAKE_SOURCE_DIR, which is
+# free-api's own root in exactly the situation where this fallback could ever
+# be reached -- so it could never actually succeed, and only produced a
+# confusing, wrongly-attributed "missing submodule" error instead of the
+# clear guidance below. See docs/cmake-options.md for details.
 option(FREE_API_USE_SYSTEM_SDL3
-        "Find SDL3/SDL3_image/SDL3_mixer via find_package() instead of a sibling game project's vendoring script"
+        "Find SDL3/SDL3_image/SDL3_mixer via find_package() instead of relying on a parent project"
         OFF)
 
 if(NOT TARGET SDL3::SDL3 AND FREE_API_USE_SYSTEM_SDL3)
     find_package(SDL3 REQUIRED)
     find_package(SDL3_image REQUIRED)
     find_package(SDL3_mixer REQUIRED)
-endif()
-
-if(NOT TARGET SDL3::SDL3)
-    # Developer convenience only: if free-api is checked out next to one of
-    # its two target games, reuse that game's own SDL3 vendoring script
-    # instead of duplicating it here. This is optional; it is skipped
-    # entirely if neither sibling directory is present.
-    foreach(_free_api_sibling IN ITEMS free-eggbert planetblupi)
-        set(_free_api_sibling_sdl_cmake
-                "${CMAKE_CURRENT_SOURCE_DIR}/../${_free_api_sibling}/cmake/ThirdPartySDL.cmake")
-        if(EXISTS "${_free_api_sibling_sdl_cmake}")
-            include("${_free_api_sibling_sdl_cmake}")
-            configure_vendored_sdl()
-            break()
-        endif()
-    endforeach()
-    unset(_free_api_sibling_sdl_cmake)
 endif()
 
 if(NOT TARGET SDL3::SDL3 OR NOT TARGET SDL3_image::SDL3_image OR NOT TARGET SDL3_mixer::SDL3_mixer)
