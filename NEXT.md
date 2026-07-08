@@ -2,11 +2,11 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `e70d2bf` (2026-07-08, `develop` branch, 5 commits
-ahead of `origin/develop` — the previous 26 were pushed earlier this
-session, then 5 more landed after; **not yet pushed**; working tree clean).
-See [`plan.md`](plan.md) for the full task backlog (12 original tasks +
-177-task `TASK-24H-0001`–`1222` backlog, grew by 2 this session) and
+state as of commit `157b2d7` (2026-07-08, `develop` branch, 6 commits
+ahead of `origin/develop`, **not yet pushed**; working tree clean; the
+prior 32 commits were pushed earlier this session). See [`plan.md`](plan.md)
+for the full task backlog (12 original tasks + 181-task
+`TASK-24H-0001`–`1226` backlog, grew by 4 this session) and
 [`docs/audit-24h-free-api.md`](docs/audit-24h-free-api.md) for the full
 24-hour deep audit that backlog was derived from.
 
@@ -31,23 +31,34 @@ functions, declared in `include/free_api_bridge.h`).
 
 **Current development phase:** four sessions this cycle. Sessions 1-3
 produced the audit, the 175-task backlog, and closed all P0/P1 work.
-**Session 4 (this pass)** began with an independent, skeptical audit fork
-(user-requested, "verify whether 'all P0/P1 closed' is actually true") that
-re-confirmed the P0/P1 claim but found 5 concrete follow-up gaps; implemented
-all 5, then continued through 8 more P2/P3 tasks (13 total, first half).
-The user then asked for a genuine, independent MIDI-audio/rendering
-human-sign-off tracking gap (found by that same audit) to be closed
-properly: added `TASK-24H-1221`/`1222` (formal, P1, human-playtest-only
-tasks with concrete acceptance criteria) and
-`docs/target-game-verification.md` (`TASK-24H-1209`, one consolidated,
-runnable checklist covering all four remaining human playtests), then
-continued through 7 more P2 cleanup tasks (path-normalization
-consolidation, duplicate-declaration cleanup, documentation consistency).
-**77 of 177 new tasks are now DONE**, 1 marked OBSOLETE (superseded by
+**Session 4 (this pass)** ran in several waves: (1) an independent,
+skeptical audit fork re-confirmed the P0/P1 claim but found 5 concrete
+follow-up gaps, all implemented; (2) 8 more P2/P3 cleanup tasks; (3) a
+genuine MIDI-audio/rendering human-sign-off tracking gap closed with
+`TASK-24H-1221`/`1222` (formal P1 human-playtest tasks) and
+`docs/target-game-verification.md` (`TASK-24H-1209`, one consolidated
+checklist); (4) 7 more P2 cleanup tasks (path-normalization consolidation,
+duplicate-declaration cleanup, documentation consistency); (5) **a second,
+independent strict test-coverage audit fork** (user-requested: "prove or
+disprove whether free-api is sufficiently tested for the actual WinAPI
+subset used by both games") that produced a full symbol-by-symbol
+coverage table and found **4 real, previously-untracked test-coverage
+gaps** — `FreeApiRunWinMain` (the actual process-bootstrap bridge both
+games launch through, flagged as the single highest-risk untested
+function), `wsprintfA`, `OutputDebugStringA`, and `SetWindowTextA` — all
+four real, live, used-by-both-games functions with zero test coverage and,
+for three of them, zero documentation trail at all. All 4 are now closed
+(`TASK-24H-1223`–`1226`) with direct tests, each verified across all three
+build trees plus repeated stress runs. Two of those new tests themselves
+had real bugs found and fixed during verification (a stack-lifetime
+use-after-free in the `FreeApiRunWinMain` test, and two distinct bugs — a
+`fopen`-macro path-normalization surprise and a stdio-buffering-vs-`dup2`
+ordering bug — in the `OutputDebugStringA` test); see §3/§6 for detail.
+**87 of 181 new tasks are now DONE**, 1 marked OBSOLETE (superseded by
 another this session) — all verified, tested, and committed; **0 P0, 0
 AI-doable P1 tasks remain** (3 P1 left — `TASK-24H-0401`/`1221`/`1222` —
 all human-only, all with acceptance criteria and one consolidated
-checklist doc). 49 P2 and 47 P3 tasks remain — see section 8.
+checklist doc). 44 P2 and 46 P3 tasks remain — see section 8.
 
 **Important architectural decisions (unchanged across all sessions):**
 
@@ -80,28 +91,25 @@ checklist doc). 49 P2 and 47 P3 tasks remain — see section 8.
 
 **Build status — all confirmed working after every change this session:**
 * Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): configures, builds,
-  **23/23** tests pass.
+  **24/24** tests pass.
 * As a subdirectory of `../free-eggbert` (Ninja), including the
   `free-api`+`free-direct` diamond dependency (`FREEDIRECT` backend):
-  23/23.
-* As a subdirectory of `../planetblupi` (Make): 23/23.
+  24/24.
+* As a subdirectory of `../planetblupi` (Make): 24/24.
 * `../free-direct` standalone: configures, builds, links `FREE_DIRECT`
   cleanly against `include/free_api_bridge.h`.
-* The same 23-test suite also passes cleanly (0 sanitizer reports) under
+* The same 24-test suite also passes cleanly (0 sanitizer reports) under
   both `-DFREE_API_SANITIZE=thread` and `=address`, via plain `ctest`
   (no manual env vars beyond `SDL_VIDEODRIVER`/`SDL_AUDIODRIVER`).
 
-**Test status:** 23 test binaries/CTest entries (up from 22), 23/23 passing
-in all three build modes and both sanitizer builds. Session 4 added:
-`test_midi_backend_failure` (new binary), plus new tests in
-`test_timer_regressions.cpp` (`TestGDebugInputSurvivesRaceUnderSanitizer`),
-`test_gdi_regressions.cpp` (`TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd`),
-`test_winuser_regressions.cpp`
-(`TestDispatchMessageARoutesNullHwndToSoleRegisteredWindow`,
-`TestWmMouseMoveCoalescingKeepsOnlyLatestPosition`,
-`TestWmTimerCoalescingKeepsOnlyOneQueuedMessagePerHwndAndId`), and
-`test_file_paths.cpp` (`TestNormalizeFilesystemPathCharacterization`,
-`TestFreeApiFopenPrefixNormalizationCharacterization`).
+**Test status:** 24 test binaries/CTest entries (started session 4 at 22),
+24/24 passing in all three build modes and both sanitizer builds. Session 4
+added 2 new binaries (`test_midi_backend_failure`, `test_winmain_bridge`)
+plus many new test functions across `test_timer_regressions.cpp`,
+`test_gdi_regressions.cpp`, `test_winuser_regressions.cpp`, and
+`test_file_paths.cpp` — see §3 below for the latest batch
+(`FreeApiRunWinMain`/`wsprintfA`/`OutputDebugStringA`/`SetWindowTextA`
+coverage) and git log for the full list.
 
 **What does NOT work / known gaps:** unchanged except for items closed in
 section 3 below. MCI digital-video remains intentionally unimplemented.
@@ -115,6 +123,43 @@ checklist covering all of them:
 
 ## 3. Recent changes (session 4, this pass, most recent first)
 
+* **Closed all 4 gaps found by the strict test-coverage audit fork**
+  (`TASK-24H-1223`-`1226`, plus companions `TASK-24H-0313`/`0309`):
+  - `FreeApiRunWinMain` (`src/winmain_bridge.cpp`, the real process-
+    bootstrap bridge both games launch through): new
+    `tests/test_winmain_bridge.cpp` covers NULL-entryPoint rejection,
+    the full argv→hInstance/hPrevInstance/lpCmdLine/nCmdShow contract,
+    and exit-code passthrough. Needed a dummy `WinMain` definition to
+    satisfy the linker (documented as dead code). **Found a real bug in
+    the test itself**: comparing `lpCmdLine`'s content after
+    `FreeApiRunWinMain` had already returned was a genuine
+    use-after-free (small-string-optimized onto that function's own
+    stack frame) that happened to "work" in 2 of 3 build trees by luck
+    — fixed by capturing the content inside the fake `WinMain` while
+    the pointer is still valid.
+  - `wsprintfA` (`src/winuser_message.cpp`): new test matches both
+    games' exact call shape, NULL-argument safety, and the internal
+    1024-byte buffer-edge truncation behavior. Added a
+    `docs/supported-apis.md` row (previously undocumented anywhere).
+  - `OutputDebugStringA` (`src/winbase.cpp`): new test captures real
+    stdout output via `dup2`. **Found two more real bugs, both in the
+    test**: (1) the read-back `fopen()` call was silently rewritten by
+    free-api's own global `fopen`→`free_api_fopen` macro, stripping
+    the leading slash off an absolute `/tmp/...` path and turning it
+    into an unfindable relative lookup — `mkstemp`/`open`/`access`
+    (not macro-redirected) all worked fine the whole time, which made
+    this a very confusing failure; (2) stdout is fully buffered off a
+    TTY, so an unflushed `Check()` printf sitting in the buffer
+    immediately before the `dup2` redirect got flushed into the temp
+    file ahead of the real target content. Both documented as a
+    test-authoring caveat in `docs/headers.md`.
+  - `SetWindowTextA` (`src/winuser_window.cpp`): new test verifies the
+    real SDL window title actually changes via `SDL_GetWindowTitle`,
+    not just "doesn't crash". Closed `TASK-24H-0313` (added the
+    missing `DestroyWindow`/`MoveWindow`/`SetWindowTextA`
+    `docs/supported-apis.md` rows) and `TASK-24H-0309` (documented
+    `MoveWindow`'s confirmed-harmless stale-logical-size gap) as
+    natural companions.
 * **Deduplicated `_lopen`/`_lread`/`_lclose` declarations** (`TASK-24H-0103`/
   `0713`) — `include/io.h` redeclared them verbatim even though its own
   `#include <windows.h>` already transitively pulls in `winbase.h`'s
@@ -190,7 +235,7 @@ checklist covering all of them:
 
 ## 4. Current blocker / main problem
 
-**No blocker.** All build configurations work, 23/23 tests pass everywhere
+**No blocker.** All build configurations work, 24/24 tests pass everywhere
 (default and both sanitizer builds). **26 commits are sitting locally on
 `develop`, not yet pushed to `origin/develop`** — push only if/when the
 user explicitly asks.
@@ -296,7 +341,7 @@ No lint/formatter is configured in this repository.
 ## 8. Next smallest tasks
 
 **0 P0, 0 AI-doable P1 tasks remain TODO.** 3 P1 (`TASK-24H-0401`,
-`1221`, `1222` — all human-only) and 49 P2 + 47 P3 tasks remain (1 P2,
+`1221`, `1222` — all human-only) and 44 P2 + 46 P3 tasks remain (1 P2,
 `TASK-24H-0704`, is marked OBSOLETE rather than TODO/DONE — see section 3).
 Concrete starting points:
 
@@ -306,11 +351,15 @@ Concrete starting points:
    covers `MK_SHIFT`/`MK_CONTROL` (`TASK-24H-0401`/`0403`), MIDI audio
    sign-off (`TASK-24H-1221`), and rendering sign-off (`TASK-24H-1222`).
    Needs an actual human with a real display/audio backend.
-2. **P2 refactor/consolidation tasks with explicit "test parity first"
-   gating** — the four-path-normalization-implementation cluster
-   (`TASK-24H-0703`–`0706`) requires characterization tests *before* any
-   consolidation. Similarly `TASK-24H-0103`/`0104`/`0105`/`0905`
-   (duplicate declaration consolidation) and `TASK-24H-0014`.
+2. **One deliberately-deferred consolidation task remains**:
+   `TASK-24H-0706` (migrate `NormalizeMidiPath`'s backslash-conversion step
+   to call `NormalizeFilesystemPath` directly, same pattern `TASK-24H-0705`
+   used for `free_api_fopen`) — left `TODO` on purpose since it touches
+   file-local MIDI-subsystem code with a more involved fallback than
+   `0705`'s case; verify carefully in its own pass. The rest of that
+   cluster (`TASK-24H-0703`/`0704`/`0705`) and the duplicate-declaration
+   cluster (`TASK-24H-0103`/`0104`/`0105`/`0713`/`0905`) plus
+   `TASK-24H-0014` are all `DONE`/`OBSOLETE` now — see §3.
 3. **Remaining P2 test-coverage tasks** — grep `plan.md` for
    `Priority: P2` + `Type: Test` + `Status: TODO`.
 4. **Remaining P2/P3 documentation tasks** — many reference "duplicates
@@ -361,20 +410,31 @@ Unchanged from prior sessions' list, plus:
   `free-direct`-bridge exception.
 * Do not implement any `TASK-24H-*` task beyond what its own "Required
   work"/"Out of scope" sections state.
+* **When writing a new test in a file that `#include`s `<windows.h>`,
+  remember `fopen()` is globally macro-redirected to `free_api_fopen`**
+  (see `docs/headers.md`) — an absolute path like `/tmp/...` will have its
+  leading slash silently stripped, turning it into an unfindable relative
+  lookup. Use relative temp-file paths in tests, not absolute ones.
+* When capturing a function's stdout output via `dup2` in a test, always
+  `fflush(stdout)` *immediately* before the `dup2` call (not just at some
+  earlier point) — any prior unflushed buffered output (e.g. from a
+  `Check()` call) will otherwise land in the captured file ahead of the
+  real target content once the eventual `fflush()` runs.
 
 ## 10. Resume prompt
 
 ```
 Read NEXT.md first, then skim docs/audit-24h-free-api.md's Executive
-Verdict (§1) for full context. plan.md has 177 new TASK-24H-* tasks; 77
-are DONE (grep "Status: DONE" near "TASK-24H" to see which), 0 P0 and 0
-AI-doable P1 remain TODO (3 P1 left, TASK-24H-0401/1221/1222, are all
-human-only -- see docs/target-game-verification.md). Work through P2/P3
+Verdict (§1) for full context. plan.md has 181 new TASK-24H-* tasks; 87
+are DONE, 1 is OBSOLETE (grep "Status: DONE" near "TASK-24H" to see
+which), 0 P0 and 0 AI-doable P1 remain TODO (3 P1 left, TASK-24H-0401/
+1221/1222, are all human-only -- see docs/target-game-verification.md).
+Work through P2/P3
 tasks per section 8's "Next smallest tasks" list -- many explicitly
 duplicate another task ID ("implement once, close both"), check plan.md
 for that note before starting. Make small, verified improvements; batch
 closely-related tasks together. Run the exact verification commands each
-task specifies -- at minimum the standalone build's ctest (23/23), ideally
+task specifies -- at minimum the standalone build's ctest (24/24), ideally
 also both target games' ctest, and for anything touching src/winmm.cpp,
 src/MidiMusic.cpp, or cross-thread code also the sanitizer builds (§6/§7
 -- now just a plain `ctest`, no manual LD_PRELOAD). Do not touch anything
