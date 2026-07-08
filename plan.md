@@ -3054,7 +3054,11 @@ Out of scope:
 ---
 
 ### TASK-24H-0506: Add a sanitizer-verified regression test for the timeKillEvent/callback-in-flight race
-Status: TODO
+Status: DONE — added FREE_API_SANITIZE (thread/address, off by default, PUBLIC on the free-api target so tests/examples inherit matching flags) and TestTimeSetEventKillRaceHasNoUseAfterFree (2000-iteration timeSetEvent/timeKillEvent race, tests/test_timer_regressions.cpp). Running it (and the full 22-test suite) under this new option found TWO real, previously-undetected bugs, both now fixed:
+  (1) FreeApiMmTimerBridge's "verify still alive" re-lookup was itself a use-after-free: it dereferenced `entry->mmId` on a raw pointer straight into g_mmTimers' map node BEFORE confirming (by that very read) whether the node was still alive -- holding g_mmTimerMutex only serializes the two critical sections, it does not stop a prior timeKillEvent's erase() from already having freed that memory. Fixed by packing the timer ID directly into the SDL userdata pointer slot instead of a map-node pointer, so the bridge never dereferences a potentially-freed pointer at all (src/winmm.cpp).
+  (2) ThreadSanitizer caught a real, unrelated cross-thread data race on `FreeApi::Internal::g_debugInput` (plain `bool`, written by EnsureVideoSubsystem() on the main thread on every CreateWindowExA, read by InputLog() from the SDL timer thread). Fixed by making it `std::atomic_bool` (src/internal/FreeApiMessageQueue.hpp/.cpp), matching the existing g_updateMessagePending precedent in the same file.
+  Also found and fixed, via the free-eggbert build tree's assertions-enabled SDL3 (not caught by the standalone build's release SDL3): timeSetEvent's unconditional per-call SDL_InitSubSystem(SDL_INIT_EVENTS) (no matching SDL_QuitSubSystem) overflowed SDL's byte-sized subsystem refcount past 255 during the new 2000-iteration race test, aborting via SDL's own assertion. Fixed with an SDL_WasInit guard, matching EnsureJoystickSubsystem's existing pattern in the same file (src/winmm.cpp).
+  Verified: full 22-test ctest suite clean (0 sanitizer reports) under both ThreadSanitizer and AddressSanitizer (LD_PRELOADing the versioned runtime .so; see docs/cmake-options.md's new "Sanitizer-instrumented test builds" section), and clean in the default non-sanitized build across all three build trees (free-api standalone, free-eggbert Ninja, planetblupi Make -- 22/22 each).
 Priority: P1
 Area: WinMM
 Type: Test

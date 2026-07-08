@@ -12,7 +12,7 @@ std::deque<MSG>  g_messageQueue;
 std::mutex       g_messageQueueMutex;
 std::atomic_bool g_updateMessagePending{false};
 WPARAM           g_mouseButtons = 0;
-bool             g_debugInput   = false;
+std::atomic_bool g_debugInput{false};
 
 void InputLog(const char* fmt, ...)
 {

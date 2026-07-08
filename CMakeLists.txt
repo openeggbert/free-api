@@ -308,6 +308,33 @@ target_link_libraries(free-api
         SDL3_mixer::SDL3_mixer
 )
 
+# --- Optional sanitizer instrumentation (opt-in, off by default) ------------
+# TASK-24H-0506: gives mechanical, sanitizer-verified confidence that
+# FreeApiMmTimerBridge (src/winmm.cpp) doesn't race timeKillEvent, instead of
+# resting on manual code review of a genuinely subtle cross-thread ordering
+# alone. Purely additive: the default value ("") leaves every existing build
+# mode -- including both target games' own default desktop builds -- exactly
+# as before. PUBLIC so tests/examples linking free-api automatically pick up
+# matching compile/link flags (required for sanitizer runtimes to work), but
+# nothing enables this except an explicit -DFREE_API_SANITIZE=... by hand.
+set(FREE_API_SANITIZE "" CACHE STRING
+        "Instrument free-api (and anything that links it, e.g. its test \
+binaries) with a Clang/GCC sanitizer for local verification. '' (default, \
+off) leaves the build unmodified. 'thread' enables ThreadSanitizer. \
+'address' enables AddressSanitizer.")
+set_property(CACHE FREE_API_SANITIZE PROPERTY STRINGS "" thread address)
+
+if(FREE_API_SANITIZE)
+    if(NOT FREE_API_SANITIZE MATCHES "^(thread|address)$")
+        message(FATAL_ERROR "free-api: FREE_API_SANITIZE must be '', 'thread', or 'address' (got '${FREE_API_SANITIZE}')")
+    endif()
+    if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+        message(FATAL_ERROR "free-api: FREE_API_SANITIZE=${FREE_API_SANITIZE} requires Clang or GCC (got '${CMAKE_CXX_COMPILER_ID}')")
+    endif()
+    target_compile_options(free-api PUBLIC -fsanitize=${FREE_API_SANITIZE} -fno-omit-frame-pointer -g)
+    target_link_options(free-api PUBLIC -fsanitize=${FREE_API_SANITIZE})
+endif()
+
 if(EMSCRIPTEN)
     option(FREE_API_BUILD_TESTS "Build free-api tests" OFF)
 else()

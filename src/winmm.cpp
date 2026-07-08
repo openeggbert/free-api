@@ -65,7 +65,19 @@ SDL_Joystick* ResolveJoystick(UINT uJoyID)
  * PostMessage which queues a WM_* message. The message queue is therefore
  * mutex-protected (see g_messageQueueMutex).
  *
- * @param userdata Pointer to MmTimerEntry registered in timeSetEvent.
+ * @param userdata The MmTimerEntry's mmId, packed directly into the pointer
+ * value (see timeSetEvent) -- NOT a pointer into g_mmTimers. A prior version
+ * of this bridge passed a real `MmTimerEntry*` pointing straight into the
+ * map's node and dereferenced it (`entry->mmId`) to re-look-up the entry "to
+ * verify it's still alive" -- but that dereference itself raced
+ * timeKillEvent's `g_mmTimers.erase()`: holding g_mmTimerMutex only
+ * serializes the two critical sections, it does not stop timeKillEvent's
+ * erase (which runs first, in its own critical section) from having already
+ * freed that node's memory before this bridge's critical section even
+ * starts, making the "liveness check" itself a use-after-free (TASK-24H-0506).
+ * Packing the integer ID into the pointer slot instead means this function
+ * never dereferences a pointer that could have been invalidated by a
+ * concurrent erase -- only a real, still-owned map entry is ever touched.
  * @param sdlTimerId SDL timer id (unused, we already store it).
  * @param interval Current interval in ms; returning the same value reschedules.
  * @return Same interval to keep the periodic timer running.
@@ -75,16 +87,14 @@ SDL_Joystick* ResolveJoystick(UINT uJoyID)
 static Uint32 SDLCALL FreeApiMmTimerBridge(void* userdata, SDL_TimerID sdlTimerId, Uint32 interval)
 {
     (void)sdlTimerId;
+    const UINT requestedId = static_cast<UINT>(reinterpret_cast<uintptr_t>(userdata));
     LPTIMECALLBACK cb = nullptr;
     UINT mmId = 0;
     DWORD_PTR user = 0;
     {
         std::lock_guard<std::mutex> lock(g_mmTimerMutex);
-        const auto* entry = static_cast<const MmTimerEntry*>(userdata);
-        if (!entry) return 0;
-        // Verify the entry is still alive in the map (avoid use-after-free if killed).
-        auto it = g_mmTimers.find(entry->mmId);
-        if (it == g_mmTimers.end()) return 0;
+        auto it = g_mmTimers.find(requestedId);
+        if (it == g_mmTimers.end()) return 0; // Killed before this fire -- nothing to touch.
         cb   = it->second.callback;
         mmId = it->second.mmId;
         user = it->second.user;
@@ -120,12 +130,22 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
         return 0;
     }
 
-    if (!SDL_InitSubSystem(SDL_INIT_EVENTS)) {
+    // TASK-24H-0506: SDL_WasInit-guarded, matching EnsureJoystickSubsystem's
+    // pattern above -- an unconditional SDL_InitSubSystem() call here (with
+    // no matching SDL_QuitSubSystem in timeKillEvent) grows SDL's internal
+    // per-subsystem refcount by one on every timeSetEvent call. That
+    // refcount is a single byte; this session's sanitizer race test (2000
+    // timeSetEvent calls in one process) overflowed it past 255 and hit
+    // SDL's own "SDL_SubsystemRefCount[subsystem_index] < 255" assertion in
+    // an assertions-enabled SDL3 build. Neither target game is anywhere
+    // close to calling timeSetEvent this many times in one process
+    // lifetime, but the fix is free and correct regardless: only actually
+    // initialize the subsystem if it isn't already active.
+    if (!SDL_WasInit(SDL_INIT_EVENTS) && !SDL_InitSubSystem(SDL_INIT_EVENTS)) {
         SDL_Log("free-api timeSetEvent: SDL_INIT_EVENTS failed: %s", SDL_GetError());
     }
 
     const UINT timerId = g_nextTimerId.fetch_add(1);
-    MmTimerEntry* entryPtr = nullptr;
     {
         std::lock_guard<std::mutex> lock(g_mmTimerMutex);
         auto& entry     = g_mmTimers[timerId];
@@ -133,10 +153,13 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
         entry.callback  = lpTimeProc;
         entry.user      = dwUser;
         entry.sdlId     = 0;
-        entryPtr        = &entry;
     }
 
-    SDL_TimerID sdlId = SDL_AddTimer(uDelay, FreeApiMmTimerBridge, entryPtr);
+    // Pack timerId directly into the userdata pointer slot -- see
+    // FreeApiMmTimerBridge's doc comment for why this must never be a
+    // pointer into g_mmTimers itself.
+    void* const userdata = reinterpret_cast<void*>(static_cast<uintptr_t>(timerId));
+    SDL_TimerID sdlId = SDL_AddTimer(uDelay, FreeApiMmTimerBridge, userdata);
     if (sdlId == 0) {
         SDL_Log("free-api timeSetEvent: SDL_AddTimer failed: %s", SDL_GetError());
         std::lock_guard<std::mutex> lock(g_mmTimerMutex);

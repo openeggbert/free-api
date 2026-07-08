@@ -495,6 +495,58 @@ static void TestWmDestroyKillsTimeSetEventThenPostsQuit()
     Check(DrainUntilQuit(), "GetMessageA returns FALSE once the WM_DESTROY-posted WM_QUIT is reached (timeSetEvent path)");
 }
 
+// TASK-24H-0506: races timeKillEvent against a genuinely in-flight
+// FreeApiMmTimerBridge callback across many tight iterations. On its own,
+// under a normal (non-sanitized) build, this only proves "no crash observed
+// this run" -- its real job is to be run under -DFREE_API_SANITIZE=address
+// or =thread (see docs/cmake-options.md), where ASan/TSan turn a
+// use-after-free or data race in the bridge's map-entry lookup into a hard,
+// mechanical failure instead of resting on manual code review of a subtle
+// cross-thread ordering alone. See FreeApiMmTimerBridge's doc comment in
+// src/winmm.cpp for the exact bug this locks in the fix for: a prior version
+// re-looked-up the timer entry by ID to "verify it's still alive" but
+// dereferenced a raw pointer into the map's node to read that ID in the
+// first place, which was itself a use-after-free whenever timeKillEvent's
+// erase() had already run first.
+static std::atomic<int> g_raceFireCount{0};
+
+static void CALLBACK RaceTimerCallback(UINT uTimerID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2)
+{
+    (void)uTimerID; (void)uMsg; (void)dwUser; (void)dw1; (void)dw2;
+    g_raceFireCount.fetch_add(1);
+}
+
+static void TestTimeSetEventKillRaceHasNoUseAfterFree()
+{
+    const int iterations = 2000;
+    g_raceFireCount.store(0);
+
+    for (int i = 0; i < iterations; ++i) {
+        // 1ms is SDL_AddTimer's practical floor; deliberately racing the
+        // very first fire against an almost-immediate kill maximizes the
+        // chance the SDL timer thread is inside (or about to enter)
+        // FreeApiMmTimerBridge's critical section exactly when
+        // timeKillEvent erases the map entry.
+        MMRESULT id = timeSetEvent(1, 1, RaceTimerCallback, 0, TIME_PERIODIC);
+        if (id == 0) continue;
+        // Alternate a zero-delay kill with a tiny 1ms delay so both
+        // "kill before it can ever fire" and "kill while it's mid-flight"
+        // race windows get exercised across the loop.
+        if ((i % 2) == 1) {
+            SDL_Delay(1);
+        }
+        timeKillEvent(static_cast<UINT>(id));
+    }
+
+    // Give any last in-flight callback from the final iteration a chance to
+    // finish before the process exits.
+    SDL_Delay(20);
+
+    Check(true, "2000 timeSetEvent/timeKillEvent race iterations completed without crashing");
+    printf("[timer-regressions] INFO: race test observed %d callback fires across %d iterations (informational only)\n",
+           g_raceFireCount.load(), iterations);
+}
+
 int main()
 {
     printf("[timer-regressions] Starting\n");
@@ -513,6 +565,7 @@ int main()
     TestCrossThreadPostMessageAStressTest();
     TestWmDestroyKillsSetTimerThenPostsQuit();
     TestWmDestroyKillsTimeSetEventThenPostsQuit();
+    TestTimeSetEventKillRaceHasNoUseAfterFree();
 
     SDL_Quit();
 

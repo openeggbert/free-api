@@ -18,8 +18,13 @@ extern std::atomic_bool  g_updateMessagePending;
 // Mouse button state tracked for MK_* wParam in WM_MOUSEMOVE
 extern WPARAM g_mouseButtons;
 
-// Optional debug logging for input translation (set FREE_API_DEBUG_INPUT=1 at runtime)
-extern bool g_debugInput;
+// Optional debug logging for input translation (set FREE_API_DEBUG_INPUT=1 at
+// runtime). atomic_bool, not bool: EnsureVideoSubsystem() (re)writes this
+// from the main thread on every CreateWindowExA, while InputLog() reads it
+// from the SDL timer thread via FreeApiMmTimerBridge -> PostMessageA (TASK-
+// 24H-0506's ThreadSanitizer run caught this as a real, previously-
+// undetected cross-thread data race on a plain bool).
+extern std::atomic_bool g_debugInput;
 
 void InputLog(const char* fmt, ...);
 

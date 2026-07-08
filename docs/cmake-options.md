@@ -57,6 +57,48 @@ assertions (`ClientToScreen`/`ScreenToClient`/`GetCursorPos`); this is a
 confirmed environment artifact, not a real bug (see `NEXT.md` §5). Under a
 real X11/Xvfb session or the dummy drivers, all tests pass cleanly.
 
+## Sanitizer-instrumented test builds (TASK-24H-0506)
+
+`FREE_API_SANITIZE` is a Clang/GCC-only, opt-in `STRING` cache option
+(`""` / `thread` / `address`, default `""`) for verifying cross-thread
+correctness in code like `src/winmm.cpp`'s `FreeApiMmTimerBridge` /
+`timeSetEvent` / `timeKillEvent` (the WinMM frame-pump timer free-eggbert
+drives its game loop with) mechanically, instead of resting on manual code
+review of subtle cross-thread orderings alone. It is purely additive: the
+default (`""`) leaves every existing build mode, including both target
+games' own default desktop builds, completely unmodified. When set, it adds
+`-fsanitize=<value> -fno-omit-frame-pointer -g` / `-fsanitize=<value>` as
+`PUBLIC` compile/link options on the `free-api` target, so anything that
+links it (tests, examples) is instrumented consistently too.
+
+```bash
+cmake -B build-tsan -DFREE_API_SANITIZE=thread -DFREE_API_USE_SYSTEM_SDL3=ON
+cmake --build build-tsan --target test_timer_regressions
+
+# This environment's system SDL3/GCC sanitizer runtime isn't linked first by
+# default ("ASan runtime does not come first in initial library list") --
+# LD_PRELOAD it explicitly:
+TSAN_LIB=$(gcc -print-file-name=libtsan.so)  # resolves the versioned .so via ldd/readlink if needed
+LD_PRELOAD="$(readlink -f "$TSAN_LIB")" \
+  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  ./build-tsan/test_timer_regressions
+```
+
+Swap `thread`/`libtsan.so` for `address`/`libasan.so` (and set
+`ASAN_OPTIONS=detect_leaks=0` — SDL3 itself holds long-lived global
+allocations that read as false-positive "leaks" at exit, unrelated to this
+task) to run under AddressSanitizer instead.
+
+`test_timer_regressions.cpp`'s `TestTimeSetEventKillRaceHasNoUseAfterFree`
+deliberately races `timeKillEvent` against an in-flight
+`FreeApiMmTimerBridge` callback 2000 times per run specifically to give
+either sanitizer a real chance to catch a regression here. Running the full
+suite (`ctest`) under both sanitizers, with the LD_PRELOAD above, is clean
+(22/22, zero sanitizer reports) as of this task. This same run is what
+caught and led to fixing two previously-undetected bugs — see `plan.md`
+`TASK-24H-0506` and `src/winmm.cpp`/`src/internal/FreeApiMessageQueue.hpp`'s
+comments for specifics.
+
 ## LoadStringA / STRINGTABLE target-game selection
 
 `FREE_API_TARGET_GAME` controls which game's resources drive `LoadStringA`'s
