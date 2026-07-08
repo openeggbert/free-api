@@ -73,31 +73,35 @@ links it (tests, examples) is instrumented consistently too.
 
 ```bash
 cmake -B build-tsan -DFREE_API_SANITIZE=thread -DFREE_API_USE_SYSTEM_SDL3=ON
-cmake --build build-tsan --target test_timer_regressions
-
-# This environment's system SDL3/GCC sanitizer runtime isn't linked first by
-# default ("ASan runtime does not come first in initial library list") --
-# LD_PRELOAD it explicitly:
-TSAN_LIB=$(gcc -print-file-name=libtsan.so)  # resolves the versioned .so via ldd/readlink if needed
-LD_PRELOAD="$(readlink -f "$TSAN_LIB")" \
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
-  ./build-tsan/test_timer_regressions
+cmake --build build-tsan -j"$(nproc)"
+cd build-tsan && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
 ```
 
-Swap `thread`/`libtsan.so` for `address`/`libasan.so` (and set
-`ASAN_OPTIONS=detect_leaks=0` — SDL3 itself holds long-lived global
-allocations that read as false-positive "leaks" at exit, unrelated to this
-task) to run under AddressSanitizer instead.
+Swap `thread` for `address` to run under AddressSanitizer instead. No manual
+`LD_PRELOAD`/`ASAN_OPTIONS` juggling needed: as of TASK-24H-0506's session-3
+follow-up, configuring with `FREE_API_SANITIZE` set resolves the matching
+sanitizer runtime `.so` via the compiler at configure time and auto-attaches
+it (`LD_PRELOAD`, plus `ASAN_OPTIONS=detect_leaks=0` for `address` --
+SDL3 itself holds long-lived global allocations that read as false-positive
+"leaks" at exit, unrelated to anything free-api does) as each test's
+`ENVIRONMENT` CTest property — a plain `ctest` in a sanitizer-configured
+build tree just works. Look for the `-- free-api: FREE_API_SANITIZE=...
+auto-LD_PRELOADing ...` configure-time message to confirm it resolved
+correctly; if it instead prints a `WARNING`, fall back to the manual
+`LD_PRELOAD="$(readlink -f "$(gcc -print-file-name=libtsan.so)")" ctest ...`
+form (swap `libtsan.so`/`libasan.so` to match).
 
-`test_timer_regressions.cpp`'s `TestTimeSetEventKillRaceHasNoUseAfterFree`
-deliberately races `timeKillEvent` against an in-flight
-`FreeApiMmTimerBridge` callback 2000 times per run specifically to give
-either sanitizer a real chance to catch a regression here. Running the full
-suite (`ctest`) under both sanitizers, with the LD_PRELOAD above, is clean
-(22/22, zero sanitizer reports) as of this task. This same run is what
-caught and led to fixing two previously-undetected bugs — see `plan.md`
-`TASK-24H-0506` and `src/winmm.cpp`/`src/internal/FreeApiMessageQueue.hpp`'s
-comments for specifics.
+`test_timer_regressions.cpp` has two tests written specifically to give a
+sanitizer something real to catch: `TestTimeSetEventKillRaceHasNoUseAfterFree`
+(2000 `timeSetEvent`/`timeKillEvent` iterations racing `timeKillEvent`
+against an in-flight `FreeApiMmTimerBridge` callback) and
+`TestGDebugInputSurvivesRaceUnderSanitizer` (200000 iterations racing
+`g_debugInput` writes against continuous `InputLog()` reads). Running the
+full suite (`ctest`, per the command above) under both sanitizers is clean
+(23/23, zero sanitizer reports) as of this session. This exact workflow is
+what caught and led to fixing three previously-undetected bugs — see
+`plan.md` `TASK-24H-0506` and `src/winmm.cpp`/
+`src/internal/FreeApiMessageQueue.hpp`'s comments for specifics.
 
 ## LoadStringA / STRINGTABLE target-game selection
 

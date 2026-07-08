@@ -604,6 +604,59 @@ if(FREE_API_BUILD_TESTS)
         target_link_libraries(test_timeb PRIVATE freeapi_compat_headers)
         add_test(NAME test_timeb COMMAND test_timeb)
     endif()
+
+    # TASK-24H-0506 follow-up (post-session-3 audit item E): when
+    # FREE_API_SANITIZE is set, resolve the actual sanitizer runtime .so and
+    # auto-LD_PRELOAD it for every real test-binary CTest entry, so a plain
+    # `ctest` inside a sanitizer-configured build tree just works -- no more
+    # manually resolving `gcc -print-file-name=...` and setting LD_PRELOAD by
+    # hand every time (see docs/cmake-options.md's "Sanitizer-instrumented
+    # test builds" section for the previously-manual version of this step).
+    # Entirely gated behind FREE_API_SANITIZE (off by default): a default,
+    # non-sanitized build never touches this block or any test's ENVIRONMENT.
+    # Skips the cmake -P-based extract_string_table_* tests (they don't run
+    # any sanitized code, and LD_PRELOAD-ing a sanitizer runtime into the
+    # `cmake` binary itself has no benefit and only wastes their fast
+    # negative-path runtime).
+    if(FREE_API_SANITIZE)
+        if(FREE_API_SANITIZE STREQUAL "thread")
+            set(_free_api_sanitizer_soname "libtsan.so")
+        else() # "address"
+            set(_free_api_sanitizer_soname "libasan.so")
+        endif()
+        execute_process(
+                COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=${_free_api_sanitizer_soname}
+                OUTPUT_VARIABLE _free_api_sanitizer_lib
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        get_filename_component(_free_api_sanitizer_lib_real "${_free_api_sanitizer_lib}" REALPATH)
+        # AddressSanitizer only: SDL3 itself holds long-lived global
+        # allocations that read as false-positive "leaks" at exit, unrelated
+        # to anything free-api does -- detect_leaks=0 avoids spurious
+        # failures. Irrelevant (and harmless to set) for ThreadSanitizer.
+        set(_free_api_sanitizer_env "LD_PRELOAD=${_free_api_sanitizer_lib_real}")
+        if(FREE_API_SANITIZE STREQUAL "address")
+            list(APPEND _free_api_sanitizer_env "ASAN_OPTIONS=detect_leaks=0")
+        endif()
+        if(EXISTS "${_free_api_sanitizer_lib_real}")
+            get_property(_free_api_all_tests DIRECTORY PROPERTY TESTS)
+            foreach(_free_api_test_name IN LISTS _free_api_all_tests)
+                if(NOT _free_api_test_name MATCHES "^extract_string_table_")
+                    set_tests_properties(${_free_api_test_name} PROPERTIES
+                            ENVIRONMENT "${_free_api_sanitizer_env}")
+                endif()
+            endforeach()
+            message(STATUS "free-api: FREE_API_SANITIZE=${FREE_API_SANITIZE} -- auto-LD_PRELOADing ${_free_api_sanitizer_lib_real} for all test binaries")
+            unset(_free_api_test_name)
+            unset(_free_api_all_tests)
+        else()
+            message(WARNING "free-api: FREE_API_SANITIZE=${FREE_API_SANITIZE} set, but could not resolve ${_free_api_sanitizer_soname} via the compiler -- tests will need LD_PRELOAD set manually (see docs/cmake-options.md)")
+        endif()
+        unset(_free_api_sanitizer_soname)
+        unset(_free_api_sanitizer_lib)
+        unset(_free_api_sanitizer_lib_real)
+        unset(_free_api_sanitizer_env)
+    endif()
 endif()
 
 # --- Examples ----------------------------------------------------------------

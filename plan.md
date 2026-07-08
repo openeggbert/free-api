@@ -734,7 +734,7 @@ Out of scope:
 
 ### TASK-0011: Document the `free-direct`-bridge exception to the "cite free-eggbert/planetblupi" rule
 
-Status: TODO
+Status: DONE — this was effectively already resolved in practice (docs/scope.md's "Boundary with free-direct" section and its "The actual bridge-exception surface" subsection, added by TASK-24H-0102, both name FreeApiRunWinMain and the three free_api_bridge.h functions as the exception), but the status field was never flipped and the exception wasn't cross-referenced from "## The rule"'s own exceptions bullet list (post-session-3 audit finding). Reconciled with a minimal edit: added a 4th bullet to docs/scope.md's "The only exceptions are:" list pointing to the existing "Boundary with free-direct" section, rather than duplicating its content. No behavior change; documentation only.
 Priority: P3
 Area: Scope policy / Documentation
 Type: Documentation

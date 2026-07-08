@@ -25,6 +25,11 @@ The only exceptions are:
 * **A minimal compile-only stub**, if and only if: it is required to compile
   one of the two games, the game never relies on its real behavior, and the
   stub fails safely / returns a documented harmless value.
+* **The `free-direct`-bridge exception** (TASK-0011): a symbol whose only
+  real caller is `free-direct`, acting as the rendering/execution bridge
+  *for* one of the two target games, may cite that `free-direct` call site
+  instead of a `../free-eggbert`/`../planetblupi` one — see "Boundary with
+  `free-direct`" below for the exact, currently-named symbol list.
 
 Symbols proven unused by both target games are legitimate candidates for
 removal, hiding behind an opt-in macro, or being left as a documented stub —
