@@ -23,7 +23,13 @@ HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy
         return NULL;
     }
 
-    std::string normalizedPath = NormalizePath(name);
+    // TASK-24H-0605: NormalizeFilesystemPath, not the weaker NormalizePath --
+    // every other file-opening entry point in the codebase (_lopen,
+    // CreateDirectoryA, _mkdir, _findfirst, ...) already uses the stronger
+    // function, which additionally strips a leading drive letter/leading
+    // slashes so a Windows-style rooted path (e.g. "\User\foo.bmp") is
+    // treated as relative rather than escaping to the real filesystem root.
+    std::string normalizedPath = NormalizeFilesystemPath(name);
     SDL_Surface* loaded = SDL_LoadBMP(normalizedPath.c_str());
     if (!loaded) {
         SDL_Log("free-api LoadImageA: SDL_LoadBMP failed for '%s': %s", normalizedPath.c_str(), SDL_GetError());

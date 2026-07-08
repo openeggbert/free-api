@@ -3059,6 +3059,7 @@ Status: DONE — added FREE_API_SANITIZE (thread/address, off by default, PUBLIC
   (2) ThreadSanitizer caught a real, unrelated cross-thread data race on `FreeApi::Internal::g_debugInput` (plain `bool`, written by EnsureVideoSubsystem() on the main thread on every CreateWindowExA, read by InputLog() from the SDL timer thread). Fixed by making it `std::atomic_bool` (src/internal/FreeApiMessageQueue.hpp/.cpp), matching the existing g_updateMessagePending precedent in the same file.
   Also found and fixed, via the free-eggbert build tree's assertions-enabled SDL3 (not caught by the standalone build's release SDL3): timeSetEvent's unconditional per-call SDL_InitSubSystem(SDL_INIT_EVENTS) (no matching SDL_QuitSubSystem) overflowed SDL's byte-sized subsystem refcount past 255 during the new 2000-iteration race test, aborting via SDL's own assertion. Fixed with an SDL_WasInit guard, matching EnsureJoystickSubsystem's existing pattern in the same file (src/winmm.cpp).
   Verified: full 22-test ctest suite clean (0 sanitizer reports) under both ThreadSanitizer and AddressSanitizer (LD_PRELOADing the versioned runtime .so; see docs/cmake-options.md's new "Sanitizer-instrumented test builds" section), and clean in the default non-sanitized build across all three build trees (free-api standalone, free-eggbert Ninja, planetblupi Make -- 22/22 each).
+  FOLLOW-UP (post-session-3 audit finding): fix (2) above was only ever INCIDENTALLY exercised by an unrelated test's timing, not by a dedicated test -- added TestGDebugInputSurvivesRaceUnderSanitizer (tests/test_timer_regressions.cpp), which races g_debugInput directly and deterministically (200000 main-thread writes vs. a continuous background-thread InputLog() reader). Verified with a genuine negative control: temporarily reverted g_debugInput to plain `bool` (in both the real source and the test's matching forward-declaration), ran this ONE test in isolation under ThreadSanitizer, and confirmed it independently reports the exact race (stack trace points directly at this test's own write/read, not at any other test) -- then reverted the negative-control change back cleanly. Re-verified clean (0 warnings) with the real atomic_bool fix restored.
 Priority: P1
 Area: WinMM
 Type: Test
@@ -3272,7 +3273,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0605: Align LoadImageA's path normalization with NormalizeFilesystemPath
-Status: TODO
+Status: DONE — changed src/wingdi_bitmap.cpp's LoadImageA to call NormalizeFilesystemPath instead of NormalizePath. Added TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd (tests/test_gdi_regressions.cpp): writes a fixture at a relative path, loads it via a leading-backslash-rooted path, asserts it's found relative to CWD (not treated as absolute). Verified passing alongside the existing TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions (23/23 suite). Note (post-session-3 audit): this task was previously mislabeled "TASK-24H-1105" in a user instruction that paraphrased an audit finding -- TASK-24H-1105 is an unrelated diagnostics-alias-naming task; this entry is the correct one for the LoadImageA path-normalization fix.
 Priority: P2
 Area: GDI
 Type: Bugfix
@@ -4781,7 +4782,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1109: Prevent MidiMusic.cpp's audio-backend-init failure logs from repeating on every subsequent MCI_OPEN
-Status: TODO
+Status: DONE — added MidiState::backendInitFailed latch (src/MidiMusic.cpp), checked at the top of EnsureMidiBackend() and set on both failure branches; failure still logs once (not silenced), just deduplicated on repeat. New dedicated test binary tests/test_midi_backend_failure.cpp (isolated process -- the latch is permanent for the process lifetime, so it can't safely share a binary with other passing MCI tests): forces a real SDL_InitSubSystem(AUDIO) failure via SDL_AUDIODRIVER=<bogus>, calls MCI_OPEN("sequencer") 5x, asserts all 5 fail AND the failure log (captured via SDL_SetLogOutputFunction) fires exactly once. Verified passing (23/23 suite, standalone build).
 Priority: P2
 Area: Diagnostics
 Type: Bugfix

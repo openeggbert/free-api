@@ -653,6 +653,50 @@ static void TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimen
     remove(fixturePath);
 }
 
+// TASK-24H-0605: LoadImageA now normalizes its path with
+// NormalizeFilesystemPath (src/wingdi_bitmap.cpp), not the weaker
+// NormalizePath every other file-opening entry point (_lopen,
+// CreateDirectoryA, _mkdir, _findfirst, ...) already avoided. This proves
+// the specific difference between the two: NormalizePath only converts
+// backslashes to forward slashes, so a leading-backslash-rooted path like
+// "\test_gdi_fixture_rooted.blp" would become the ABSOLUTE path
+// "/test_gdi_fixture_rooted.blp" (real filesystem root) and fail to load;
+// NormalizeFilesystemPath additionally strips the leading slash, treating
+// it as relative to the current working directory instead, where the test
+// fixture actually lives.
+static void TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd()
+{
+    const int width = 3, height = 2;
+    const std::vector<uint8_t> bmpBytes = MakeMinimalBmp(width, height);
+
+    const char* realPath = "test_gdi_fixture_rooted.blp";
+    FILE* f = fopen(realPath, "wb");
+    Check(f != nullptr, "rooted-path test fixture file opens for writing");
+    if (f) {
+        fwrite(bmpBytes.data(), 1, bmpBytes.size(), f);
+        fclose(f);
+    }
+
+    // Deliberately a leading-backslash-rooted relative path, matching the
+    // exact shape both games' own path literals use elsewhere in the
+    // codebase (see tests/test_file_regressions.cpp's bare "\User" case).
+    HANDLE h = LoadImageA(nullptr, "\\test_gdi_fixture_rooted.blp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    Check(h != nullptr,
+          "LoadImageA finds a leading-backslash-rooted path relative to CWD (NormalizeFilesystemPath), "
+          "not as an absolute path escaping to the real filesystem root (NormalizePath)");
+
+    if (h) {
+        HBITMAP hbm = reinterpret_cast<HBITMAP>(h);
+        BITMAP bm{};
+        GetObjectA(hbm, sizeof(bm), &bm);
+        Check(bm.bmWidth == width && bm.bmHeight == height,
+              "the bitmap found via the rooted path is the real fixture, not a coincidental match");
+        DeleteObject(hbm);
+    }
+
+    remove(realPath);
+}
+
 // TASK-0064 (plan.md): both games select a loaded bitmap into a memory DC,
 // blit, then delete it -- free-eggbert's DDCopyBitmap (ddutil.cpp:122-168)
 // does exactly: CreateCompatibleDC -> SelectObject(dc, hbm) -> GetObject ->
@@ -822,6 +866,7 @@ int main()
     TestGetDeviceCapsSizePaletteReportsTrueColorHost();
     TestGetSystemPaletteEntriesFills256WellFormedEntries();
     TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
+    TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd();
     TestSelectObjectDeleteObjectBitmapIntoDcLifecycle();
     TestFullLoadSelectBlitColorMatchDeleteSequence();
     TestBridgeGdiHelpersRejectionAndEdgeCases();

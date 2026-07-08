@@ -155,6 +155,14 @@ struct MidiState {
     std::thread       thread;
     std::atomic<bool> running{false};
 
+    /* TASK-24H-1109: latches true on the first EnsureMidiBackend() failure
+     * so its failure log fires at most once per process instead of once per
+     * MCI_OPEN call (one per song/track load -- many times per real
+     * playthrough on a machine with no usable audio device). The failure is
+     * still surfaced (not silenced) on that first occurrence; only the
+     * repeat-logging is deduplicated. */
+    bool backendInitFailed = false;
+
     /* Active sessions indexed by MCIDEVICEID. */
     std::vector<MidiSession> sessions;
     MCIDEVICEID nextId = 1;
@@ -412,15 +420,22 @@ static void MixerThread()
 
 /**
  * @brief Ensures the SDL audio device and mixer thread are running.
+ *
+ * On failure, the underlying SDL error is logged only on the FIRST call
+ * that fails (TASK-24H-1109) -- every subsequent MCI_OPEN on a machine with
+ * a persistently unusable audio device would otherwise re-invoke this
+ * function and re-log the identical failure once per song/track load.
  * @return true on success.
  * @note Status: IMPLEMENTED
  */
 static bool EnsureMidiBackend()
 {
     if (g_midi.device != 0) return true; /* already open */
+    if (g_midi.backendInitFailed) return false; /* already failed once; don't re-log */
 
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         SDL_Log("[midi] SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError());
+        g_midi.backendInitFailed = true;
         return false;
     }
 
@@ -430,6 +445,7 @@ static bool EnsureMidiBackend()
 
     if (!g_midi.stream) {
         SDL_Log("[midi] SDL_OpenAudioDeviceStream failed: %s", SDL_GetError());
+        g_midi.backendInitFailed = true;
         return false;
     }
 

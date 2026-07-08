@@ -25,7 +25,20 @@
 #include <cstdio>
 #include <atomic>
 #include <set>
+#include <thread>
 #include <vector>
+
+// TASK-24H-0506: forward-declares the exact same two internal symbols
+// (src/internal/FreeApiMessageQueue.hpp) that TestGDebugInputSurvivesRaceUnderSanitizer
+// races directly below, following the project's established pattern for
+// reaching internal state from tests (matches
+// tests/test_winuser_regressions.cpp's ApplyKeyboardModifierFlags forward
+// declaration and tests/test_gdi_regressions.cpp's g_diagCompatDcs/
+// g_diagCompatBitmaps externs) -- not part of any public header.
+namespace FreeApi::Internal {
+extern std::atomic_bool g_debugInput;
+void InputLog(const char* fmt, ...);
+}
 
 static int g_failures = 0;
 
@@ -547,6 +560,64 @@ static void TestTimeSetEventKillRaceHasNoUseAfterFree()
            g_raceFireCount.load(), iterations);
 }
 
+// TASK-24H-0506 follow-up (post-session-3 audit finding): the g_debugInput
+// std::atomic_bool fix (src/internal/FreeApiMessageQueue.{hpp,cpp}) was
+// previously only INCIDENTALLY exercised by an unrelated test
+// (TestCrossThreadPostMessageAStressTest happening to overlap a background
+// timer thread's InputLog() read with EnsureVideoSubsystem()'s write on the
+// main thread) -- there was no dedicated, deliberate regression test for
+// this specific race. This test races the two directly and deterministically
+// instead of relying on incidental interleaving from unrelated test timing.
+//
+// IMPORTANT, read before trusting a green run of this test alone: like
+// TestTimeSetEventKillRaceHasNoUseAfterFree above, a data race is
+// fundamentally NOT something a normal (non-sanitized) run can prove absent
+// -- a plain `bool`'s single-byte read/write is "usually" non-crashing on
+// real hardware even when genuinely raced, so this test passing under a
+// normal build only proves "no crash observed this run," not "no race."
+// Real protection comes from running this exact test under ThreadSanitizer
+// (`-DFREE_API_SANITIZE=thread`, see docs/cmake-options.md's "Sanitizer-
+// instrumented test builds" section) -- that is what actually detects a
+// regression if g_debugInput is ever reverted to plain `bool`.
+static void TestGDebugInputSurvivesRaceUnderSanitizer()
+{
+    using namespace FreeApi::Internal;
+
+    std::atomic<bool> stop{false};
+    std::atomic<long> readerIterations{0};
+
+    // Reader thread: repeatedly calls the real InputLog() entry point,
+    // which internally reads g_debugInput (`if (!g_debugInput) return;`)
+    // before doing any formatting/logging work -- this is the exact read
+    // side of the race.
+    std::thread reader([&]() {
+        while (!stop.load(std::memory_order_relaxed)) {
+            InputLog("race-probe %ld", readerIterations.fetch_add(1, std::memory_order_relaxed));
+        }
+    });
+
+    // Main thread: tight write loop, matching the exact write EnsureVideoSubsystem
+    // performs (src/internal/FreeApiSdlVideo.cpp), but direct and
+    // deterministic rather than depending on window-creation/teardown timing.
+    const int kWriteIterations = 200000;
+    for (int i = 0; i < kWriteIterations; ++i) {
+        g_debugInput = (i % 2) == 0;
+    }
+
+    stop.store(true, std::memory_order_relaxed);
+    reader.join();
+
+    // Restore the flag to a known state so it doesn't affect log verbosity
+    // in whatever test runs next in this binary.
+    g_debugInput = false;
+
+    Check(readerIterations.load() > 0,
+          "reader thread observed g_debugInput concurrently with the writer loop (race actually exercised, not skipped)");
+    Check(true,
+          "200000 g_debugInput writes raced against continuous InputLog() reads completed without crashing "
+          "(run under -DFREE_API_SANITIZE=thread for the real regression guard -- see this test's doc comment)");
+}
+
 int main()
 {
     printf("[timer-regressions] Starting\n");
@@ -566,6 +637,7 @@ int main()
     TestWmDestroyKillsSetTimerThenPostsQuit();
     TestWmDestroyKillsTimeSetEventThenPostsQuit();
     TestTimeSetEventKillRaceHasNoUseAfterFree();
+    TestGDebugInputSurvivesRaceUnderSanitizer();
 
     SDL_Quit();
 

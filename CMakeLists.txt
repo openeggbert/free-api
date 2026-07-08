@@ -581,6 +581,19 @@ if(FREE_API_BUILD_TESTS)
     target_link_libraries(test_mci_sequences PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_mci_sequences COMMAND test_mci_sequences)
 
+    # TASK-24H-1109: deliberately a separate binary from test_mci_sequences --
+    # see tests/test_midi_backend_failure.cpp's doc comment for why (it trips
+    # a permanent-for-the-process failure latch that would break every other
+    # MCI test sharing the same binary).
+    add_executable(test_midi_backend_failure tests/test_midi_backend_failure.cpp)
+    set_target_properties(test_midi_backend_failure PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO
+    )
+    target_link_libraries(test_midi_backend_failure PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_midi_backend_failure COMMAND test_midi_backend_failure)
+
     if(NOT WIN32)
         add_executable(test_timeb tests/test_timeb.cpp)
         set_target_properties(test_timeb PROPERTIES
