@@ -3189,7 +3189,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0602: Investigate whether planetblupi's fullscreen minimap actually exercises CreateBitmap's 8-bit greyscale-only path with non-greyscale data
-Status: TODO
+Status: DONE — traced precisely: CPixmap::m_bPalette stays TRUE unconditionally in fullscreen mode (InitSysPalette()'s GetDeviceCaps(SIZEPALETTE) override at pixmap.cpp:285-290 only runs `if (!m_bFullScreen)`), so the 8-bit path IS always taken in fullscreen. SearchColor()'s fullscreen branch (pixmap.cpp:487-511) searches the real m_pal[] table unconditionally, returning genuine non-greyscale palette-slot indices (decmap.cpp's m_colors[MAP_*], e.g. red/black/yellow/blue/grey), so the resulting minimap WOULD be visibly wrong (dark greyscale scramble) if reached. However, planetblupi's shipped data/config.def default is "FullScreen=0" (windowed) — confirmed via grep — which takes m_bPalette=FALSE (GetDeviceCaps now correctly returns 0) and the working 16-bit RGB565 path instead. Conclusion: reached only in a non-default (explicitly fullscreen-configured) run; NOT reached in the shipped default. See TASK-24H-0603 for the resulting decision.
 Priority: P1
 Area: GDI
 Type: Audit
@@ -3216,7 +3216,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0603: Apply the fix-or-document decision for CreateBitmap's 8-bit indexed path
-Status: TODO
+Status: DONE — decision: document, do not fix. free-api's CreateBitmap has no palette parameter (matching real Win32's own CreateBitmap); the two ways to add real palette support -- a general HPALETTE/SetDIBColorTable-style API, or hard-coding planetblupi's specific m_colors table into free-api -- both violate this project's scope rules (no general Win32 palette API; no game-specific special-casing in a shared function). Given the bug is confirmed reached only in a non-default (explicit fullscreen) configuration, documenting is the correct, scope-respecting choice. Updated: src/wingdi_bitmap.cpp's comment (replaces the bare TODO with the full investigated conclusion), include/wingdi.h's CreateBitmap doc comment, docs/supported-apis.md's CreateBitmap row (also fixes TASK-24H-0610's stale "1bpp" claim in the same edit).
 Priority: P1
 Area: GDI
 Type: Bugfix
@@ -3320,7 +3320,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0607: Add regression test coverage for the free-direct bridge GDI helpers' rejection and edge-case behavior
-Status: TODO
+Status: DONE — TestBridgeGdiHelpersRejectionAndEdgeCases (tests/test_gdi_regressions.cpp) covers FreeApiCreateSurfaceDC's five argument-validation rejections, FreeApiDestroySurfaceDC's NULL-handle and wrong-kind-handle rejections, and FreeApiSetWindowFullscreen(NULL,...)'s early-return guard. NEW FINDING while writing this test: FreeApiDestroySurfaceDC/AsCompatDC segfaults (does not return FALSE safely) when given a genuinely garbage, never-allocated pointer (e.g. reinterpret_cast<HDC>(0xDEADBEEF)) -- AsCompatDC/AsCompatBitmap (src/internal/FreeApiGdi.cpp) unconditionally dereference their argument to read a magic-number field with no handle-table validation first, unlike real Win32 handles. No evidenced free-direct call site ever passes such a pointer (it always forwards handles it received from FreeApiCreateSurfaceDC itself), so this is a real but out-of-scope-to-fix robustness gap (fixing it would need a general handle-validation/table framework, against this project's scope discipline) -- documented in the test's own comment rather than fixed. The final test instead uses a real, validly-allocated wrong-KIND handle (a CreateBitmap result cast to HDC), which is the realistic misuse the magic-number check is actually designed to catch, and which is confirmed handled safely.
 Priority: P1
 Area: GDI
 Type: Test
@@ -3396,7 +3396,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0610: Correct docs/supported-apis.md's stale "1bpp" CreateBitmap claim
-Status: TODO
+Status: DONE — fixed as part of TASK-24H-0603's docs/supported-apis.md CreateBitmap row update (removed the incorrect "1bpp", which no branch implements and no call site uses).
 Priority: P3
 Area: GDI
 Type: Documentation

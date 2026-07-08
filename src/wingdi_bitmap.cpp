@@ -117,8 +117,28 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
 
     if (lpBits) {
         if (nBitCount == 8) {
-            // 8-bit indexed: store index as grey (palette expansion not yet supported)
-            // TODO: apply palette if one is set
+            // 8-bit indexed: store index as grey -- confirmed intentional,
+            // not a TODO (TASK-24H-0602/0603 investigation). planetblupi's
+            // minimap (decmap.cpp:578, the only 8-bit CreateBitmap call site
+            // in either target game) only reaches this path when running
+            // fullscreen (CPixmap::m_bPalette stays TRUE unconditionally in
+            // fullscreen mode -- InitSysPalette()'s GetDeviceCaps(SIZEPALETTE)
+            // override only runs when !m_bFullScreen). The shipped
+            // data/config.def default is "FullScreen=0" (windowed), which
+            // takes the working 16-bit RGB565 path instead -- confirmed
+            // unaffected by this limitation in the default configuration.
+            // If fullscreen IS enabled, SearchColor()'s fullscreen branch
+            // returns real, non-greyscale m_pal[] palette-slot indices
+            // (decmap.cpp's m_colors[MAP_*] table), so the minimap would
+            // render as a dark greyscale scramble instead of real colors --
+            // a real, but low-priority (non-default-config-only), visual
+            // defect. Not fixed: free-api's CreateBitmap has no palette
+            // parameter (matching real Win32's own CreateBitmap, which
+            // doesn't take one either), and the two ways to add one --
+            // a general HPALETTE/SetDIBColorTable-style API, or hard-coding
+            // planetblupi's specific m_colors table into free-api -- both
+            // violate this project's "no general Win32 palette API" and
+            // "no unrelated/game-specific special-casing" scope rules.
             const uint8_t* src = static_cast<const uint8_t*>(lpBits);
             uint8_t* dst = bitmap->pixels.data();
             for (int y = 0; y < nHeight; ++y) {

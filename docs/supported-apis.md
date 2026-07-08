@@ -43,7 +43,7 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `LoadImageA` (`LR_LOADFROMFILE`, extension-agnostic) | GDI | Yes | Yes | IMPLEMENTED | `test_gdi_regressions.cpp`, `test_file_paths.cpp` |
 | `StretchBlt` (`SRCCOPY`) | GDI | Yes | Yes | IMPLEMENTED | `test_gdi_regressions.cpp` |
 | `GetPixel`/`SetPixel` | GDI | Yes | Yes | IMPLEMENTED (consistent with free-direct's `Lock()`-exposed backing memory) | `test_gdi_regressions.cpp` |
-| `CreateBitmap` | GDI | No | Yes | IMPLEMENTED (1bpp/8bpp/16bpp/32bpp raw-buffer bitmap creation for the minimap) | `test_gdi_regressions.cpp` |
+| `CreateBitmap` | GDI | No | Yes | IMPLEMENTED (8bpp/16bpp/32bpp raw-buffer bitmap creation for the minimap; no 1bpp path exists, no call site uses it). 8bpp is greyscale-only (no palette lookup) -- confirmed (`TASK-24H-0602`/`0603`) this only affects planetblupi's minimap in fullscreen mode, which the shipped `data/config.def` (`FullScreen=0`) does not use by default; not fixed, since a real fix would need either a general Win32 palette API or game-specific hard-coding, both out of scope. | `test_gdi_regressions.cpp` |
 | `_lopen`/`_lread`/`_lclose` | File | Yes | Yes | IMPLEMENTED | `test_file_regressions.cpp` |
 | `CreateDirectoryA` | File | dead | Yes (live) | IMPLEMENTED | `test_file_regressions.cpp` |
 | `_mkdir` | File | Yes | No | IMPLEMENTED | `test_file_regressions.cpp` |

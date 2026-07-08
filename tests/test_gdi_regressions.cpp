@@ -651,6 +651,62 @@ static void TestFullLoadSelectBlitColorMatchDeleteSequence()
     remove(fixturePath);
 }
 
+// TASK-24H-0607: the three free-direct-bridge GDI helpers
+// (include/free_api_bridge.h) have real behavioral edge cases with no
+// prior test coverage -- every existing test in this file constructs
+// FreeApiCreateSurfaceDC with valid 32bpp arguments only, and
+// FreeApiSetWindowFullscreen has zero references anywhere in tests/ or
+// examples/ before this.
+static void TestBridgeGdiHelpersRejectionAndEdgeCases()
+{
+    std::vector<uint8_t> validPixels(4 * 4 * 4, 0);
+
+    HDC nullPixelsDc = FreeApiCreateSurfaceDC(nullptr, 4, 4, 16, 32);
+    Check(nullPixelsDc == nullptr, "FreeApiCreateSurfaceDC returns NULL for a null pixels pointer");
+
+    HDC badWidthDc = FreeApiCreateSurfaceDC(validPixels.data(), 0, 4, 16, 32);
+    Check(badWidthDc == nullptr, "FreeApiCreateSurfaceDC returns NULL for width<=0");
+
+    HDC badHeightDc = FreeApiCreateSurfaceDC(validPixels.data(), 4, -1, 16, 32);
+    Check(badHeightDc == nullptr, "FreeApiCreateSurfaceDC returns NULL for height<=0");
+
+    HDC badPitchDc = FreeApiCreateSurfaceDC(validPixels.data(), 4, 4, 0, 32);
+    Check(badPitchDc == nullptr, "FreeApiCreateSurfaceDC returns NULL for pitch<=0");
+
+    HDC badBppDc = FreeApiCreateSurfaceDC(validPixels.data(), 4, 4, 16, 16);
+    Check(badBppDc == nullptr, "FreeApiCreateSurfaceDC returns NULL for bitsPerPixel != 32 (only 32bpp is supported)");
+
+    BOOL destroyedNull = FreeApiDestroySurfaceDC(nullptr);
+    Check(destroyedNull == FALSE, "FreeApiDestroySurfaceDC returns FALSE (not a crash) for a NULL handle");
+
+    // A real, validly-allocated handle of the WRONG kind (a bitmap, not a
+    // surface DC) must be rejected safely -- this is the realistic misuse
+    // AsCompatDC's magic-number check (src/internal/FreeApiGdi.cpp) is
+    // actually designed to guard against: handle-kind confusion between two
+    // real free-api objects, not arbitrary unmapped memory. (A genuinely
+    // garbage, never-allocated pointer -- e.g. reinterpret_cast<HDC>(0xDEADBEEF)
+    // -- was tried here first and found to segfault: AsCompatDC/AsCompatBitmap
+    // unconditionally dereference their argument to read a magic-number
+    // field with no handle-table validation first. No evidenced free-direct
+    // call site ever passes such a pointer -- it always forwards handles it
+    // received from FreeApiCreateSurfaceDC itself -- so this is a real but
+    // out-of-scope-to-fix robustness gap, not exercised by this test suite.)
+    HBITMAP wrongKindHandle = CreateBitmap(2, 2, 1, 32, nullptr);
+    Check(wrongKindHandle != nullptr, "a real bitmap handle was created for the wrong-kind-handle test");
+    if (wrongKindHandle) {
+        BOOL destroyedWrongKind = FreeApiDestroySurfaceDC(reinterpret_cast<HDC>(wrongKindHandle));
+        Check(destroyedWrongKind == FALSE,
+              "FreeApiDestroySurfaceDC returns FALSE (not a crash) for a real handle of the wrong kind (a bitmap, not a surface DC)");
+        DeleteObject(wrongKindHandle);
+    }
+
+    // FreeApiSetWindowFullscreen(NULL, ...) exercises its early-return guard
+    // without needing a real SDL-backed window -- must not crash.
+    FreeApiSetWindowFullscreen(nullptr, true);
+    FreeApiSetWindowFullscreen(nullptr, false);
+    Check(true, "FreeApiSetWindowFullscreen(NULL, ...) does not crash for either fullscreen value (early-return guard)");
+}
+
 int main()
 {
     printf("[gdi-regressions] Starting\n");
@@ -669,6 +725,7 @@ int main()
     TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
     TestSelectObjectDeleteObjectBitmapIntoDcLifecycle();
     TestFullLoadSelectBlitColorMatchDeleteSequence();
+    TestBridgeGdiHelpersRejectionAndEdgeCases();
 
     if (g_failures > 0) {
         printf("[gdi-regressions] %d FAILURE(S)\n", g_failures);

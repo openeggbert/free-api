@@ -91,7 +91,13 @@ typedef struct tagPALETTEENTRY {
 
 extern "C"{
 //#2622
-/** @brief Creates a GDI bitmap from raw pixel data. @note Status: PARTIAL */
+/**
+ * @brief Creates a GDI bitmap from raw pixel data. Supports 8bpp (indexed,
+ * expanded as greyscale -- no palette lookup, confirmed intentional per
+ * TASK-24H-0602/0603: only reached by planetblupi's minimap in fullscreen
+ * mode, which is not the shipped default), 16bpp (RGB565), and 32bpp.
+ * @note Status: PARTIAL
+ */
 HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount, const void* lpBits);
 
 //#2627
