@@ -171,6 +171,12 @@ static inline FILE* free_api_fopen(const char* path, const char* mode)
     }
     return f;
 }
+// Deliberately a blanket macro override, not an opt-in wrapper -- both
+// target games call plain fopen() pervasively with zero awareness free-api
+// exists, so this is the only way to get path normalization without
+// editing either game's source. See docs/headers.md's "Why windows.h
+// globally redefines fopen" section (TASK-24H-0113/1206) for the full
+// rationale.
 #undef fopen
 #define fopen free_api_fopen
 #endif // FREE_API_FOPEN_WRAPPER_DEFINED

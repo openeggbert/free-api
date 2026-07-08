@@ -116,8 +116,15 @@ real-text table (see `cmake/ExtractStringTable.cmake` and
   `../free-eggbert` or `../planetblupi`'s resources by sibling path instead
   — useful for exercising the full verification pipeline (including the
   used-ID manifest checks) without a complete game build tree.
-* `standalone` — force the ungated placeholder-fallback path even if
-  `CMAKE_PROJECT_NAME` would otherwise select a game.
+* `standalone` — disables the fail-loud `REQUIRE_STRINGS`/`VERIFY_ID`/
+  `USED_IDS_FILE` verification gating even if `CMAKE_PROJECT_NAME` would
+  otherwise select a game. This does **not** guarantee an empty/placeholder
+  string table — the same developer-convenience sibling `.rc` lookup `auto`
+  uses (above) still opportunistically runs and extracts real text if a
+  sibling game's `.rc` happens to be present on disk, just unverified.
+  Confirmed this session: `-DFREE_API_TARGET_GAME=standalone` with
+  `../free-eggbert` present as a sibling still compiles all 364 of its real
+  `STRINGTABLE` strings (`TASK-24H-0008`).
 
 ```bash
 cmake -B build -DFREE_API_TARGET_GAME=planetblupi

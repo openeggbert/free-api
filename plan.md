@@ -556,7 +556,7 @@ Out of scope:
 
 ### TASK-0006: Decide the fate of `_chdir`/`_getcwd` (zero call sites anywhere)
 
-Status: TODO
+Status: DONE — decided (b): kept, documented as intentionally-unused-but-kept per project policy (docs/headers.md's direct.h row). See TASK-24H-0110/1216.
 Priority: P3
 Area: File / CRT
 Type: Cleanup decision
@@ -588,7 +588,7 @@ Out of scope:
 
 ### TASK-0007: Decide the fate of `OutputDebugStringW` (zero call sites, non-trivial implementation)
 
-Status: TODO
+Status: DONE — decided (b): kept as-is, documented in docs/out-of-scope.md's "Unicode / W-suffixed API variants" section. See TASK-24H-0109/1215.
 Priority: P3
 Area: WinBase
 Type: Cleanup decision
@@ -920,7 +920,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0002: Document the still-required SDL_VIDEODRIVER=dummy/SDL_AUDIODRIVER=dummy test env vars
-Status: TODO
+Status: DONE — already satisfied by existing content: docs/cmake-options.md's "Tests" section already prefixes the example ctest invocation with SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy and explains why (verified this session, no edit needed).
 Priority: P2
 Area: Build
 Type: Documentation
@@ -1064,7 +1064,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0008: Correct the FREE_API_TARGET_GAME=standalone docstring's placeholder-only claim
-Status: TODO
+Status: DONE — reworded CMakeLists.txt's FREE_API_TARGET_GAME CACHE STRING docstring and docs/cmake-options.md's standalone bullet to state accurately that standalone only disables fail-loud verification gating, not that it forces placeholder-only text.
 Priority: P2
 Area: Build
 Type: Documentation
@@ -1514,7 +1514,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0109: Finalize OutputDebugStringW as a documented, intentionally-kept real implementation
-Status: TODO
+Status: DONE — added keep-with-rationale entry to docs/out-of-scope.md's "Unicode / W-suffixed API variants" section; cross-referenced from plan.md TASK-0007 (now also DONE). Closes TASK-24H-1215 (duplicate).
 Priority: P2
 Area: Scope
 Type: Documentation
@@ -1540,7 +1540,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0110: Finalize _chdir/_getcwd as documented, intentionally-kept unused symbols
-Status: TODO
+Status: DONE — extended docs/headers.md's direct.h row with explicit keep-and-document decision language; cross-referenced from plan.md TASK-0006 (now also DONE). Closes TASK-24H-1216 (duplicate).
 Priority: P2
 Area: Scope
 Type: Documentation
@@ -1566,7 +1566,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0111: Document HFONT/HPALETTE as permanently vestigial-but-harmless
-Status: TODO
+Status: DONE — added @note Status: VESTIGIAL doc comments to both typedefs in include/minwindef.h; added a row to docs/out-of-scope.md's "Compile-only stubs" table.
 Priority: P2
 Area: Scope
 Type: Documentation
@@ -1592,7 +1592,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0112: Document winnt.h's COM-family typedefs as permanently vestigial-but-harmless
-Status: TODO
+Status: DONE — added @note Status: VESTIGIAL doc comments to IUnknown and the GUID/IID/CLSID family in include/winnt.h; added a row to docs/out-of-scope.md's "Compile-only stubs" table alongside the existing wtypes.h row.
 Priority: P2
 Area: Scope
 Type: Documentation
@@ -1618,7 +1618,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0113: Document the rationale for windows.h's global #define fopen free_api_fopen override
-Status: TODO
+Status: DONE — added a new "Why windows.h globally redefines fopen" section to docs/headers.md; added a short cross-reference comment above the macro in include/windows.h. Closes TASK-24H-1206 (duplicate).
 Priority: P2
 Area: Headers
 Type: Documentation
@@ -1770,7 +1770,7 @@ Out of scope:
 ## WinUser / Message Loop
 
 ### TASK-24H-0201: Document PeekMessageA's filter-ignoring as an intentional, evidence-backed decision
-Status: TODO
+Status: DONE — added comment above the (void)-casts in src/winuser_message.cpp; updated include/winuser.h's PeekMessageA doc comment; updated docs/supported-apis.md's row; added a row to docs/out-of-scope.md's "Unsupported APIs" table. Closes TASK-24H-1210 (duplicate).
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -1850,7 +1850,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0204: Document WaitMessage's real polling-based contract instead of implying true blocking semantics
-Status: TODO
+Status: DONE — added comment above WaitMessage's implementation in src/winuser_message.cpp; updated include/winuser.h's doc comment; updated docs/supported-apis.md's row; added a row to docs/out-of-scope.md's "Unsupported APIs" table. Closes TASK-24H-1211 (duplicate).
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -1900,7 +1900,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0206: Document WM_ACTIVATEAPP(0) focus-loss suppression in docs/out-of-scope.md
-Status: TODO
+Status: DONE — added a new "WM_ACTIVATEAPP(0) focus-loss suppression" section to docs/out-of-scope.md, cross-referencing the still-delivered WM_ACTIVATEAPP(1) focus-gained case. Closes TASK-24H-1205 (duplicate).
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -5011,7 +5011,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1205: Document `WM_ACTIVATEAPP(0)` focus-loss suppression in docs/out-of-scope.md
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0206; implemented once there (see that entry).
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -5037,7 +5037,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1206: Document the rationale for `include/windows.h`'s global `#define fopen free_api_fopen` override
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0113; implemented once there (see that entry).
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -5138,7 +5138,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1210: Document `PeekMessageA`'s filter-ignoring behavior as intentional
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0201; implemented once there (see that entry).
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -5163,7 +5163,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1211: Document `WaitMessage`'s polling-based (not true blocking) contract explicitly
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0204; implemented once there (see that entry).
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -5261,7 +5261,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1215: Add an explicit keep-rationale note for `OutputDebugStringW` in docs/out-of-scope.md
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0109; implemented once there (see that entry).
 Priority: P2
 Area: Docs
 Type: Verification
@@ -5286,7 +5286,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1216: Add an explicit "intentionally-unused-but-kept" decision note for `_chdir`/`_getcwd`
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0110; implemented once there (see that entry).
 Priority: P2
 Area: Docs
 Type: Documentation

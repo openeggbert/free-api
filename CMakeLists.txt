@@ -66,8 +66,12 @@ and fail-loud verification. 'auto' (default) detects via CMAKE_PROJECT_NAME. \
 'free-eggbert'/'planetblupi' force that game (and its REQUIRE_STRINGS/known-ID/ \
 used-ID gating) even when CMAKE_PROJECT_NAME doesn't currently say so -- falls \
 back to the ../<game> sibling layout if we are not actually that game's own \
-subdirectory. 'standalone' forces the ungated placeholder-fallback path even \
-if CMAKE_PROJECT_NAME would otherwise select a game.")
+subdirectory. 'standalone' disables the fail-loud REQUIRE_STRINGS/VERIFY_ID/ \
+USED_IDS_FILE verification gating even if CMAKE_PROJECT_NAME would \
+otherwise select a game -- it does NOT guarantee an empty/placeholder \
+string table: the same developer-convenience sibling .rc lookup 'auto' \
+uses still opportunistically runs and extracts real text if a sibling \
+game's .rc happens to be present on disk, just unverified (TASK-24H-0008).")
 set_property(CACHE FREE_API_TARGET_GAME PROPERTY STRINGS auto free-eggbert planetblupi standalone)
 
 if(NOT FREE_API_TARGET_GAME MATCHES "^(auto|free-eggbert|planetblupi|standalone)$")

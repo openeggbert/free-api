@@ -261,7 +261,15 @@ BOOL WINAPI TranslateMessage(const MSG* lpMsg);
 LRESULT WINAPI DispatchMessageA(const MSG* lpMsg);
 
 //#2388
-/** @brief Polls message queue. @note Status: IMPLEMENTED */
+/**
+ * @brief Polls message queue.
+ *
+ * `hWnd`/`wMsgFilterMin`/`wMsgFilterMax` are currently ignored -- every
+ * call is an unfiltered peek across the whole queue, regardless of what's
+ * passed. Harmless: no evidenced caller in either target game passes a
+ * non-zero filter (see docs/out-of-scope.md).
+ * @note Status: IMPLEMENTED
+ */
 BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
 
 //#2412
@@ -274,7 +282,17 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
 BOOL WINAPI PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 
 //#2761
-/** @brief Waits until the message queue receives work. @note Status: PARTIAL */
+/**
+ * @brief Waits until the message queue receives work.
+ *
+ * A polling-based approximation, not a true OS-level blocking wait: checks
+ * the queue, pumps SDL events once, sleeps ~1ms if still empty, pumps
+ * again, then returns TRUE **unconditionally** -- even if the queue is
+ * still empty afterward. Adequate for both games' idle-loop usage, but a
+ * caller expecting real Win32 blocking semantics would be surprised (see
+ * docs/out-of-scope.md).
+ * @note Status: PARTIAL
+ */
 BOOL WINAPI WaitMessage(void);
 
 //#2799

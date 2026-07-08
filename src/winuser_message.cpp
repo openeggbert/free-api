@@ -24,6 +24,13 @@ BOOL WINAPI PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 
 BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
 {
+    // hWnd/wMsgFilterMin/wMsgFilterMax are intentionally ignored -- every
+    // call behaves as an unfiltered peek across the whole queue, regardless
+    // of what's passed. Two independent full-source usage sweeps confirm
+    // neither ../free-eggbert nor ../planetblupi ever passes a non-zero
+    // filter or a specific hWnd, so this is harmless today. Do not
+    // implement real filtering without new evidence of a caller that needs
+    // it (TASK-24H-0201/1210; see docs/out-of-scope.md).
     (void)hWnd;
     (void)wMsgFilterMin;
     (void)wMsgFilterMax;
@@ -232,6 +239,17 @@ void WINAPI PostQuitMessage(int nExitCode)
     PushMessage(NULL, WM_QUIT, static_cast<WPARAM>(nExitCode), 0);
 }
 
+// Polling-based approximation, not a true OS-level blocking wait (no
+// condition variable woken by PushMessage). Checks the queue, pumps SDL
+// events once, checks again, and if still empty sleeps ~1ms (or yields via
+// SDL_WaitEventTimeout on Android) before one final pump -- then returns
+// TRUE **unconditionally**, even if the queue is still empty after that
+// final check. This is adequate for both games' current idle-loop usage
+// (they only need a non-busy-spin wait, not a guarantee that a message is
+// actually ready), but a caller expecting true Win32 blocking semantics
+// would be surprised. Do not implement a real blocking wait without new
+// evidence either game's behavior depends on it (TASK-24H-0204/1211; see
+// docs/out-of-scope.md).
 BOOL WINAPI WaitMessage(void)
 {
     {

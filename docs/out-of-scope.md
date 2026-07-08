@@ -6,6 +6,28 @@ This document records WinAPI/WinMM behavior that Free API deliberately does
 [`plan.md`](../plan.md) section 5 for the full point-in-time audit table this
 document complements (not duplicates).
 
+## `WM_ACTIVATEAPP(0)` focus-loss suppression (TASK-24H-0206/1205)
+
+**Problem:** real Win32 delivers `WM_ACTIVATEAPP(0)` when a window loses
+focus. Free API deliberately never does — `SDL_EVENT_WINDOW_FOCUS_LOST` is
+translated to nothing but a diagnostic log line, not a message
+(`src/internal/FreeApiMessageQueue.cpp:283-291`). `WM_ACTIVATEAPP(1)`
+(focus-**gained**) is still delivered normally
+(`FreeApiMessageQueue.cpp:272-280`) — the suppression is one-sided.
+
+**Why:** sending a real `WM_ACTIVATEAPP(0)` causes both games to set their
+internal "inactive" flag (`g_bActive=FALSE`), which stops rendering and
+input processing. SDL's focus-lost event fires spuriously on startup and in
+certain desktop/window-manager environments; a spurious `WM_ACTIVATEAPP(0)`
+would freeze an otherwise-visible, otherwise-fine game window. This is a
+genuine, permanent Win32 semantic deviation, not an oversight or an
+unfinished implementation.
+
+**Decision:** keep the suppression. If a real need for deactivation
+behavior emerges (e.g. alt-tab should visibly pause the game), add a
+configurable delay or explicit flag then — do not restore unconditional
+`WM_ACTIVATEAPP(0)` delivery without new evidence it's safe.
+
 ## MCI digital-video / AVI movie playback ("avivideo")
 
 **Decision: permanently declined. This was the single highest-risk unresolved
@@ -87,6 +109,8 @@ neither is mistaken for the other:
 | Everything in `commdlg.h` | `commdlg.h` | Proven zero real calls in either game (see header's own doc comment). |
 | Everything in `windowsx.h` except `GetStockBrush` | `windowsx.h` | Proven zero real calls beyond that one macro (see header's own doc comment). |
 | `VARTYPE`/`SCODE`/`DATE`/`CLIPFORMAT` and friends | `wtypes.h` | Proven zero real runtime use in either game (see header's own doc comment). |
+| `HFONT`, `HPALETTE` | `minwindef.h` | No font- or palette-creation/manipulation API exists anywhere in Free API -- no function takes or returns either type. Vestigial opaque-handle placeholders kept for type-compatibility; downgradeable to removal only if a stronger signal emerges (TASK-24H-0111). |
+| `IUnknown`, `GUID`/`LPGUID`/`LPCGUID`, `IID`/`LPIID`/`REFIID`, `CLSID`/`LPCLSID`/`REFCLSID` | `winnt.h` | Same COM-family vestige as the `wtypes.h` row above, in the header that actually defines the `GUID` struct layout and its IID/CLSID aliases. No COM/OLE behavior implemented; zero runtime use anywhere in `include/` (TASK-24H-0112). |
 | `LoadCursorA`/`LoadIconA` | `winuser.h` | Non-null handle only; neither game inspects the real cursor/icon shape (TASK-0056 confirms coverage for the names both games actually request). |
 | `GetStockBrush` | `windowsx.h` | Returns a valid non-null `HBRUSH`; the window is always fully covered by the game's own blit before becoming visible, so the real brush color is never seen. |
 | `MessageBoxA` | `winuser.h` | Only reached on fatal init failure in either game; a real message box isn't required for that path to behave correctly (the process still reports failure). |
@@ -134,6 +158,17 @@ Win32 headers. **Do not implement real wide-character runtime behavior**
 for any `W`-suffixed function unless a target game is proven to build with
 `UNICODE` defined — there is no evidence either ever will.
 
+**`OutputDebugStringW` (`include/debugapi.h`, `src/winbase.cpp:70-76`) is the
+one exception worth calling out explicitly** (TASK-24H-0109/1215, closing
+`plan.md` `TASK-0007`'s open decision): unlike the alias-only `W` variants
+above, it's a real, non-trivial UTF-16-to-narrow conversion, despite zero
+evidenced call sites in either target game (re-confirmed this session via
+`grep -rn "OutputDebugStringW" ../free-eggbert/src ../planetblupi/src` —
+no matches). **Decision: keep the real implementation, do not downgrade to
+a stub.** It costs nothing at runtime since it's never invoked, and keeping
+it trivially in sync with `OutputDebugStringA` is cheaper than maintaining
+a special-cased stub exception to the pattern above.
+
 ## Unsupported APIs
 
 Confirmed-absent, confirmed-unused-by-both-games symbols and behaviors.
@@ -151,6 +186,8 @@ Nothing below should be implemented absent new evidence of a real call site.
 | `WM_MBUTTONDOWN`/`WM_MBUTTONUP`, `MK_MBUTTON` | Implemented, but **unproven** — do not expand | Same rationale as `WM_CHAR`: confirmed unused by both games' core source (§3.5). |
 | `GlobalMemoryStatus`'s fields beyond `dwTotalPhys` | Out of scope — keep limited to `dwTotalPhys` | free-eggbert (the only caller, twice at startup) only reads `dwTotalPhys` for its TrueColor gate. Do not implement accurate `dwMemoryLoad`/`dwAvailPhys`/etc. without new evidence. |
 | `GetTickCount`, `Sleep` | Implemented — kept for **test infrastructure**, not proven game-required | Neither function is proven directly called by either game's core source; they're retained because `tests/basic_test.cpp` uses them directly. Trivial and harmless either way — this note exists so a future "is this used by the games?" audit isn't confused by their presence. |
+| `PeekMessageA`'s `hWnd`/`wMsgFilterMin`/`wMsgFilterMax` | Implemented, but **intentionally ignored** — do not implement real filtering | Every call is an unfiltered peek regardless of what's passed. Two independent full-source usage sweeps confirm neither game ever passes a non-zero filter or specific `hWnd` (TASK-24H-0201/1210). |
+| `WaitMessage`'s blocking contract | Implemented as a **polling approximation**, not true OS-level blocking | Checks the queue twice around one SDL event pump, sleeps ~1ms if still empty, then returns `TRUE` unconditionally even if the queue is still empty. Adequate for both games' idle-loop usage; do not implement a real condition-variable-based blocking wait without new evidence it's needed (TASK-24H-0204/1211). |
 
 ## Resources policy (summary)
 

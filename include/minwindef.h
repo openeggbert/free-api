@@ -97,8 +97,26 @@ typedef HANDLE HDC;
 typedef HANDLE HGDIOBJ;
 typedef HANDLE HBRUSH;
 typedef HANDLE HBITMAP;
+/**
+ * @brief Opaque palette handle type.
+ *
+ * No palette-creation/manipulation API exists anywhere in Free API (no
+ * function takes or returns HPALETTE) -- kept only as an opaque
+ * type-compatibility placeholder for real Win32 headers. See
+ * docs/out-of-scope.md's "Compile-only stubs" table (TASK-24H-0111).
+ * @note Status: VESTIGIAL (kept, unused)
+ */
 typedef HANDLE HPALETTE;
 typedef HANDLE HICON;
 typedef HANDLE HCURSOR;
 typedef HANDLE HMENU;
+/**
+ * @brief Opaque font handle type.
+ *
+ * No font-creation/manipulation API exists anywhere in Free API (no
+ * function takes or returns HFONT) -- kept only as an opaque
+ * type-compatibility placeholder for real Win32 headers. See
+ * docs/out-of-scope.md's "Compile-only stubs" table (TASK-24H-0111).
+ * @note Status: VESTIGIAL (kept, unused)
+ */
 typedef HANDLE HFONT;

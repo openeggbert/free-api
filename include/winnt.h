@@ -64,6 +64,14 @@ typedef char *PSZ;
 
 typedef void *PVOID;
 
+/**
+ * @brief COM interface forward declaration -- no COM behavior implemented.
+ *
+ * Never defined, never used as a real interface anywhere in Free API; kept
+ * purely for source-compatibility with real Win32/COM headers. See
+ * docs/out-of-scope.md's "Compile-only stubs" table (TASK-24H-0112).
+ * @note Status: VESTIGIAL (kept, unused)
+ */
 typedef struct IUnknown IUnknown;
 
 #ifdef UNICODE
@@ -76,6 +84,16 @@ typedef LPSTR LPTSTR, PTSTR;
 typedef LPCSTR LPCTSTR;
 #endif
 
+/**
+ * @brief GUID and the IID/CLSID COM-family aliases built on it.
+ *
+ * The struct layout itself is real (matches Win32's GUID exactly), but
+ * nothing in Free API constructs, compares, or otherwise uses a GUID/IID/
+ * CLSID value at runtime -- no COM/OLE behavior is implemented anywhere.
+ * Kept for source-compatibility with real Win32/COM headers only. See
+ * docs/out-of-scope.md's "Compile-only stubs" table (TASK-24H-0112).
+ * @note Status: VESTIGIAL (kept, unused)
+ */
 typedef struct _GUID {
     unsigned long  Data1;
     unsigned short Data2;

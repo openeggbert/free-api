@@ -25,8 +25,8 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `AdjustWindowRect` | WinUser | Yes (live) | Yes (live) | IMPLEMENTED (deliberate identity transform — see doc comment in `include/winuser.h`) | `test_winuser_regressions.cpp` |
 | `ShowWindow`/`UpdateWindow`/`SetFocus` | WinUser | Yes | Yes | IMPLEMENTED | `test_winuser_regressions.cpp` |
 | `GetSystemMetrics` (`SM_CXSCREEN/CYSCREEN/CYCAPTION`) | WinUser | Yes | Yes | IMPLEMENTED | `test_winuser_regressions.cpp` |
-| `PeekMessageA`/`GetMessageA`/`TranslateMessage`/`DispatchMessageA` | WinUser | Yes | Yes | IMPLEMENTED | `test_input_pipeline.cpp`, `test_planetblupi_loop.cpp`, `test_eggbert_loop.cpp` |
-| `WaitMessage` | WinUser | Yes | Yes | IMPLEMENTED (non-busy idle wait) | `test_winuser_regressions.cpp` |
+| `PeekMessageA`/`GetMessageA`/`TranslateMessage`/`DispatchMessageA` | WinUser | Yes | Yes | IMPLEMENTED (`PeekMessageA`'s `hWnd`/filter args are intentionally ignored — unfiltered peek always, see `docs/out-of-scope.md`) | `test_input_pipeline.cpp`, `test_planetblupi_loop.cpp`, `test_eggbert_loop.cpp` |
+| `WaitMessage` | WinUser | Yes | Yes | IMPLEMENTED (polling-based: checks queue, sleeps ~1ms once if empty, then returns `TRUE` unconditionally — not a true blocking wait, see `docs/out-of-scope.md`) | `test_winuser_regressions.cpp` |
 | `PostQuitMessage`/`PostMessageA` | WinUser | Yes | Yes | IMPLEMENTED (cross-thread-safe) | `test_timer_regressions.cpp` (stress test) |
 | `DefWindowProcA` (`WM_CLOSE`→destroy, `WM_DESTROY`→quit) | WinUser | Yes | Yes | IMPLEMENTED | `test_winuser_regressions.cpp` |
 | `GetClientRect` | WinUser | Yes | Yes (hot path) | IMPLEMENTED | `test_winuser_regressions.cpp` |
