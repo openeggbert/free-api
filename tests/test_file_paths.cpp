@@ -289,6 +289,77 @@ static void TestFindFirstFindNextEnumerateRealMatchingFiles()
     rmdir(root.c_str());
 }
 
+// TASK-0009/TASK-24H-0701/0702: free-eggbert's design-mission file picker
+// (event.cpp:4741-4747) drains via _findnext in a do-while loop exactly like
+// TestFindFirstFindNextEnumerateRealMatchingFiles above, but unlike that
+// test, the real game never calls _findclose afterward -- previously this
+// leaked one FindSession entry (in g_findSessions, src/crt_io.cpp) per
+// screen visit, permanently, since only _findclose ever erased an entry.
+// _findnext's exhaustion branch now auto-erases the session itself, so a
+// caller that never calls _findclose no longer leaks anything. The session
+// table is file-local (anonymous namespace in crt_io.cpp), so this is
+// verified indirectly through the public handle contract: once a session is
+// auto-erased on exhaustion, a subsequent _findclose on that same handle
+// must report "nothing to close" (-1) rather than successfully erasing an
+// entry that was already gone -- exactly matching real Win32's contract for
+// an already-closed/unknown handle. Repeated across several drain cycles to
+// confirm this isn't a one-off coincidence.
+static void TestFindFirstFindNextRepeatedDrainWithoutCloseDoesNotLeakSession()
+{
+    std::string root = MakeTempRoot("findfirst_leak");
+    Check(!root.empty(), "temp root created for the _findfirst leak-regression test");
+    if (root.empty()) return;
+
+    const std::string subdir = root + "/User";
+    Check(::mkdir(subdir.c_str(), 0755) == 0, "User/ subdirectory created for leak-regression test");
+
+    const char* names[] = {"save1.xch", "save2.xch"};
+    for (const char* name : names) {
+        FILE* f = fopen((subdir + "/" + name).c_str(), "wb");
+        Check(f != nullptr, "leak-regression fixture file created");
+        if (f) { fputs("x", f); fclose(f); }
+    }
+
+#if !defined(_WIN32)
+    char oldCwd[4096];
+    getcwd(oldCwd, sizeof(oldCwd));
+    Check(chdir(root.c_str()) == 0, "chdir into temp root succeeded for leak-regression test");
+#endif
+
+    bool allAutoErased = true;
+    const int kDrainCycles = 5;
+    for (int cycle = 0; cycle < kDrainCycles; ++cycle) {
+        struct _finddata_t fileinfo{};
+        intptr_t handle = _findfirst("\\User\\*.xch", &fileinfo);
+        if (handle == -1) { allAutoErased = false; continue; }
+
+        // Drain fully via _findnext without ever calling _findclose --
+        // matching free-eggbert's real, leak-inducing call shape exactly.
+        while (_findnext(handle, &fileinfo) == 0) { /* keep draining */ }
+
+        // The session should already be auto-erased at this point (the last
+        // _findnext call hit exhaustion). A caller-side _findclose on this
+        // now-stale handle must find nothing left to close.
+        if (_findclose(handle) != -1) {
+            allAutoErased = false;
+        }
+    }
+
+    Check(allAutoErased,
+          "repeated _findfirst/_findnext drain-without-_findclose cycles auto-erase their session on exhaustion "
+          "(a post-drain _findclose finds nothing left to close) instead of leaking one entry per cycle");
+
+#if !defined(_WIN32)
+    chdir(oldCwd);
+#endif
+
+    for (const char* name : names) {
+        remove((subdir + "/" + name).c_str());
+    }
+    rmdir(subdir.c_str());
+    rmdir(root.c_str());
+}
+
 int main()
 {
     printf("[file-paths] Starting\n");
@@ -298,6 +369,7 @@ int main()
     TestFopenWithSprintfFormattedSoundPathShape();
     TestFindFirstWithUserXchPathShapeReturnsMinusOneForMissingDirectory();
     TestFindFirstFindNextEnumerateRealMatchingFiles();
+    TestFindFirstFindNextRepeatedDrainWithoutCloseDoesNotLeakSession();
 
     if (g_failures > 0) {
         printf("[file-paths] %d FAILURE(S)\n", g_failures);

@@ -109,6 +109,15 @@ int _findnext(intptr_t handle, struct _finddata_t* fileinfo)
     }
     FindSession& session = it->second;
     if (session.index >= session.matches.size()) {
+        // TASK-0009/TASK-24H-0701: a real caller has no further use for a
+        // handle that can never return another match. free-eggbert's design-
+        // mission file picker (event.cpp:4741-4747) drains via this loop and
+        // never calls _findclose, which used to leak one session entry per
+        // screen visit. Auto-erase on exhaustion instead: a subsequent
+        // _findnext/_findclose on this now-erased handle behaves exactly like
+        // an unknown handle (returns -1), matching real Win32's contract for
+        // an invalid/already-closed handle -- harmless, not a crash.
+        g_findSessions.erase(it);
         return -1;
     }
     if (fileinfo) {

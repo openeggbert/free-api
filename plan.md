@@ -654,7 +654,7 @@ Out of scope:
 
 ### TASK-0009: Investigate and fix (or document) `_findfirst`'s unbounded session-table growth
 
-Status: TODO
+Status: DONE — fixed during the 24-hour autonomous session as `TASK-24H-0701`: `_findnext`'s exhaustion branch now auto-erases its own session entry (`src/crt_io.cpp`), so a caller that drains without calling `_findclose` (free-eggbert's design-mission picker) no longer leaks. New regression test `TestFindFirstFindNextRepeatedDrainWithoutCloseDoesNotLeakSession` added to `tests/test_file_paths.cpp`. Verified 17/17 in all three build modes.
 Priority: P2
 Area: File / CRT
 Type: Bug investigation / hardening
@@ -1720,7 +1720,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0117: Flag the _findfirst session-leak caveat in docs/supported-apis.md's status row
-Status: TODO
+Status: DONE — leak is now fixed (TASK-24H-0701), not merely documented; docs/supported-apis.md's `_findfirst` row updated to describe the auto-erase-on-exhaustion fix. Duplicate of TASK-24H-0712/0804, closed together.
 Priority: P3
 Area: Scope
 Type: Documentation
@@ -3570,7 +3570,7 @@ Out of scope:
 ## Files and Paths
 
 ### TASK-24H-0701: Resolve `_findfirst` session-table leak with exact confirmed mechanics (sharper than TASK-0009)
-Status: TODO
+Status: DONE — chose approach (a): `_findnext` auto-erases the session on exhaustion (src/crt_io.cpp). A subsequent `_findnext`/`_findclose` on the now-erased handle safely returns -1, matching real Win32's unknown-handle contract; no crash. 17/17 in all three build modes.
 Priority: P1
 Area: Files
 Type: Bugfix
@@ -3599,7 +3599,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0702: Add regression test proving repeated drain-without-`_findclose` cycles grow `g_findSessions`
-Status: TODO
+Status: DONE — since TASK-24H-0701 landed the auto-erase fix rather than leaving the leak in place, this test proves the fix instead of characterizing the pre-fix leak: `TestFindFirstFindNextRepeatedDrainWithoutCloseDoesNotLeakSession` (tests/test_file_paths.cpp) runs 5 drain-without-close cycles and asserts each session is already auto-erased by the time a post-drain `_findclose` is attempted (returns -1, "nothing to close"), proven indirectly since `g_findSessions` is file-local.
 Priority: P1
 Area: Files
 Type: Test
@@ -3834,7 +3834,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0711: Document that planetblupi has zero find-session API usage and free-eggbert is the sole consumer
-Status: TODO
+Status: DONE — folded into the docs/supported-apis.md `_findfirst` row update alongside TASK-24H-0117/0712/0804.
 Priority: P3
 Area: Files
 Type: Documentation
@@ -3859,7 +3859,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0712: Add the `_findfirst` leak caveat to `docs/supported-apis.md`'s status table
-Status: TODO
+Status: DONE — leak is now fixed (TASK-24H-0701), not merely documented; docs/supported-apis.md's `_findfirst` row updated. Duplicate of TASK-24H-0117/0804, closed together.
 Priority: P3
 Area: Files
 Type: Documentation
@@ -4016,7 +4016,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0804: Surface the `_findfirst` session-table-leak caveat in `docs/supported-apis.md`'s status row
-Status: TODO
+Status: DONE — leak is now fixed (TASK-24H-0701), not merely documented; docs/supported-apis.md's `_findfirst` row updated. Duplicate of TASK-24H-0117/0712, closed together.
 Priority: P2
 Area: Resources
 Type: Documentation

@@ -47,7 +47,7 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `_lopen`/`_lread`/`_lclose` | File | Yes | Yes | IMPLEMENTED | `test_file_regressions.cpp` |
 | `CreateDirectoryA` | File | dead | Yes (live) | IMPLEMENTED | `test_file_regressions.cpp` |
 | `_mkdir` | File | Yes | No | IMPLEMENTED | `test_file_regressions.cpp` |
-| `_findfirst`/`_findnext`/`_findclose` | File | Yes | No | IMPLEMENTED (real `std::filesystem`-backed directory listing, scoped to a directory + simple `*.ext` wildcard) | `test_file_paths.cpp` |
+| `_findfirst`/`_findnext`/`_findclose` | File | Yes | No (planetblupi has zero find-session API usage; all its data-file access uses deterministic constructed filenames like `world%.3d.blp`) | IMPLEMENTED (real `std::filesystem`-backed directory listing, scoped to a directory + simple `*.ext` wildcard). free-eggbert's design-mission picker (`event.cpp:4741-4747`) is the sole consumer across both games and never calls `_findclose`; `_findnext` auto-erases its session on exhaustion (`plan.md` `TASK-0009`/`TASK-24H-0701`) so this no longer leaks. | `test_file_paths.cpp` |
 | Backslash/forward-slash path normalization | File | Yes | Yes (mixed within same game) | IMPLEMENTED | `test_file_regressions.cpp` |
 | `FindResourceA`(`RT_BITMAP`) miss→fallback | Resources | Yes | Yes | IMPLEMENTED (as a permanent, correct miss — see `docs/out-of-scope.md`) | `test_file_regressions.cpp`, `test_resources.cpp` |
 | `LoadStringA` | Resources | Yes (~90+ sites) | Yes (~50+ sites) | IMPLEMENTED (real per-build string table extracted from whichever game's `.rc` is driving the build) | `test_loadstring_regressions.cpp`, `test_resources.cpp` |
