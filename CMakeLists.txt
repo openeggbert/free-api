@@ -231,13 +231,24 @@ unset(_free_api_verify_text)
 unset(_free_api_used_ids_file)
 unset(_free_api_extract_extra_args)
 
+# TASK-24H-0014: directory-scoped, not per-target -- every target below
+# (free-api itself, plus all test/example targets) previously repeated an
+# identical 5-line set_target_properties(... CXX_STANDARD 20
+# CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO) block (19 copies, ~90 lines
+# of pure repetition). Placed here (after the SDL3-acquisition block above,
+# before the first add_library()) so it does not retroactively change the
+# C++ standard used to build any add_subdirectory()'d SDL3/SDL3_image/
+# SDL3_mixer vendored subprojects, which are configured earlier during SDL3
+# acquisition and must keep their own build settings unchanged. Matches
+# ../free-direct/CMakeLists.txt's existing directory-scoped form.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+set(CMAKE_CXX_EXTENSIONS NO)
+
 add_library(free-api STATIC)
 add_library(free-api::free-api ALIAS free-api)
 
 set_target_properties(free-api PROPERTIES
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED YES
-        CXX_EXTENSIONS NO
         VERSION ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR}
 )
@@ -349,11 +360,6 @@ if(FREE_API_BUILD_TESTS)
     enable_testing()
 
     add_executable(basic_test tests/basic_test.cpp)
-    set_target_properties(basic_test PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(basic_test PRIVATE free-api SDL3::SDL3)
     add_test(NAME basic_test COMMAND basic_test)
 
@@ -447,56 +453,26 @@ if(FREE_API_BUILD_TESTS)
     set_tests_properties(extract_string_table_used_ids_fails_on_duplicate_id PROPERTIES WILL_FAIL TRUE)
 
     add_executable(test_input_pipeline tests/test_input_pipeline.cpp)
-    set_target_properties(test_input_pipeline PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_input_pipeline PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_input_pipeline COMMAND test_input_pipeline)
 
     add_executable(test_header_compile tests/test_header_compile.cpp)
-    set_target_properties(test_header_compile PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_header_compile PRIVATE freeapi_compat_headers)
     add_test(NAME test_header_compile COMMAND test_header_compile)
 
     add_executable(test_winuser_regressions tests/test_winuser_regressions.cpp)
-    set_target_properties(test_winuser_regressions PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_winuser_regressions PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_winuser_regressions COMMAND test_winuser_regressions)
 
     add_executable(test_file_regressions tests/test_file_regressions.cpp)
-    set_target_properties(test_file_regressions PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_file_regressions PRIVATE free-api)
     add_test(NAME test_file_regressions COMMAND test_file_regressions)
 
     add_executable(test_file_paths tests/test_file_paths.cpp)
-    set_target_properties(test_file_paths PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_file_paths PRIVATE free-api)
     add_test(NAME test_file_paths COMMAND test_file_paths)
 
     add_executable(test_loadstring_regressions tests/test_loadstring_regressions.cpp)
-    set_target_properties(test_loadstring_regressions PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_loadstring_regressions PRIVATE free-api)
     # Tells the test which build mode it's running in, so it can assert the
     # right contract: standalone builds may legitimately return the
@@ -510,74 +486,34 @@ if(FREE_API_BUILD_TESTS)
     add_test(NAME test_loadstring_regressions COMMAND test_loadstring_regressions)
 
     add_executable(test_resources tests/test_resources.cpp)
-    set_target_properties(test_resources PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_resources PRIVATE free-api)
     add_test(NAME test_resources COMMAND test_resources)
 
     add_executable(test_joystick_regressions tests/test_joystick_regressions.cpp)
-    set_target_properties(test_joystick_regressions PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_joystick_regressions PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_joystick_regressions COMMAND test_joystick_regressions)
 
     add_executable(test_mci_avivideo_regressions tests/test_mci_avivideo_regressions.cpp)
-    set_target_properties(test_mci_avivideo_regressions PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_mci_avivideo_regressions PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_mci_avivideo_regressions COMMAND test_mci_avivideo_regressions)
 
     add_executable(test_gdi_regressions tests/test_gdi_regressions.cpp)
-    set_target_properties(test_gdi_regressions PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_gdi_regressions PRIVATE free-api)
     add_test(NAME test_gdi_regressions COMMAND test_gdi_regressions)
 
     add_executable(test_timer_regressions tests/test_timer_regressions.cpp)
-    set_target_properties(test_timer_regressions PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_timer_regressions PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_timer_regressions COMMAND test_timer_regressions)
 
     add_executable(test_planetblupi_loop tests/test_planetblupi_loop.cpp)
-    set_target_properties(test_planetblupi_loop PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_planetblupi_loop PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_planetblupi_loop COMMAND test_planetblupi_loop)
 
     add_executable(test_eggbert_loop tests/test_eggbert_loop.cpp)
-    set_target_properties(test_eggbert_loop PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_eggbert_loop PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_eggbert_loop COMMAND test_eggbert_loop)
 
     add_executable(test_mci_sequences tests/test_mci_sequences.cpp)
-    set_target_properties(test_mci_sequences PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_mci_sequences PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_mci_sequences COMMAND test_mci_sequences)
 
@@ -586,21 +522,11 @@ if(FREE_API_BUILD_TESTS)
     # a permanent-for-the-process failure latch that would break every other
     # MCI test sharing the same binary).
     add_executable(test_midi_backend_failure tests/test_midi_backend_failure.cpp)
-    set_target_properties(test_midi_backend_failure PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED YES
-            CXX_EXTENSIONS NO
-    )
     target_link_libraries(test_midi_backend_failure PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_midi_backend_failure COMMAND test_midi_backend_failure)
 
     if(NOT WIN32)
         add_executable(test_timeb tests/test_timeb.cpp)
-        set_target_properties(test_timeb PROPERTIES
-                CXX_STANDARD 20
-                CXX_STANDARD_REQUIRED YES
-                CXX_EXTENSIONS NO
-        )
         target_link_libraries(test_timeb PRIVATE freeapi_compat_headers)
         add_test(NAME test_timeb COMMAND test_timeb)
     endif()
@@ -679,11 +605,6 @@ if(FREE_API_BUILD_EXAMPLES)
             04_gdi_minimap
             05_midi_playback)
         add_executable(${_free_api_example} examples/${_free_api_example}.cpp)
-        set_target_properties(${_free_api_example} PROPERTIES
-                CXX_STANDARD 20
-                CXX_STANDARD_REQUIRED YES
-                CXX_EXTENSIONS NO
-        )
         target_link_libraries(${_free_api_example} PRIVATE free-api SDL3::SDL3)
     endforeach()
     unset(_free_api_example)

@@ -1211,7 +1211,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0014: Consolidate the 18 repeated per-target CXX_STANDARD blocks into directory-scoped variables
-Status: TODO
+Status: DONE — replaced all 19 (grew from 18 since the task was written; test_midi_backend_failure added its own copy) identical set_target_properties(... CXX_STANDARD 20 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO) blocks with 3 directory-scoped set(CMAKE_CXX_STANDARD/CMAKE_CXX_STANDARD_REQUIRED/CMAKE_CXX_EXTENSIONS) calls placed right before add_library(free-api STATIC), after the SDL3-acquisition block. free-api's own set_target_properties call kept (now just VERSION/SOVERSION). Confirmed -std=c++20 still applied (flags.make) and placement doesn't affect vendored SDL3/SDL3_image/SDL3_mixer's own build settings (their configure output appears before free-api's add_subdirectory() call in both games' own CMakeLists.txt). Verified: full fresh-configure rebuild + 23-test suite passes in all three build trees; both games' own executables rebuild cleanly from scratch.
 Priority: P2
 Area: Build
 Type: Refactor
