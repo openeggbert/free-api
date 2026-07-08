@@ -60,7 +60,7 @@ void FreeApiSetWindowFullscreen(HWND hwnd, bool fullscreen)
             it->second.isFullscreen = fullscreen;
         }
     } else {
-        SDL_Log("free-api: SDL_SetWindowFullscreen(%s) failed: %s", fullscreen ? "true" : "false", SDL_GetError());
+        if (diag) SDL_Log("free-api: SDL_SetWindowFullscreen(%s) failed: %s", fullscreen ? "true" : "false", SDL_GetError());
     }
 }
 

@@ -44,7 +44,9 @@ HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy
         ScaleCompatBitmap(*bitmap, cx, cy);
     }
 
-    SDL_Log("free-api LoadImageA: loaded bitmap '%s' -> %dx%d", normalizedPath.c_str(), bitmap->width, bitmap->height);
+    if (FreeApiGdiDebugEnabled()) {
+        SDL_Log("free-api LoadImageA: loaded bitmap '%s' -> %dx%d", normalizedPath.c_str(), bitmap->width, bitmap->height);
+    }
     return reinterpret_cast<HANDLE>(bitmap);
 }
 

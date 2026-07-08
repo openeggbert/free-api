@@ -39,24 +39,30 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
     (void)hInstance;
     (void)lpParam;
 
-    SDL_Log("free-api CreateWindowExA: class=%s title=%s style=0x%08lx exStyle=0x%08lx pos=(%d,%d) size=%dx%d", 
-            lpClassName ? lpClassName : "<null>",
-            lpWindowName ? lpWindowName : "<null>",
-            static_cast<unsigned long>(dwStyle),
-            static_cast<unsigned long>(dwExStyle),
-            X,
-            Y,
-            nWidth,
-            nHeight);
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api CreateWindowExA: class=%s title=%s style=0x%08lx exStyle=0x%08lx pos=(%d,%d) size=%dx%d",
+                lpClassName ? lpClassName : "<null>",
+                lpWindowName ? lpWindowName : "<null>",
+                static_cast<unsigned long>(dwStyle),
+                static_cast<unsigned long>(dwExStyle),
+                X,
+                Y,
+                nWidth,
+                nHeight);
+    }
 
     if (!lpClassName) {
-        SDL_Log("free-api CreateWindowExA: missing class name");
+        if (FreeApiDiagnosticsEnabled()) {
+            SDL_Log("free-api CreateWindowExA: missing class name");
+        }
         return NULL;
     }
 
     const auto classIt = g_registeredClasses.find(lpClassName);
     if (classIt == g_registeredClasses.end()) {
-        SDL_Log("free-api CreateWindowExA: class not registered: %s", lpClassName);
+        if (FreeApiDiagnosticsEnabled()) {
+            SDL_Log("free-api CreateWindowExA: class not registered: %s", lpClassName);
+        }
         return NULL;
     }
 
@@ -79,23 +85,31 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
         flags |= SDL_WINDOW_BORDERLESS;
     }
 
-    SDL_Log("free-api SDL_CreateWindow: title=%s width=%d height=%d flags=0x%08x", 
-            lpWindowName ? lpWindowName : lpClassName,
-            width,
-            height,
-            static_cast<unsigned>(flags));
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api SDL_CreateWindow: title=%s width=%d height=%d flags=0x%08x",
+                lpWindowName ? lpWindowName : lpClassName,
+                width,
+                height,
+                static_cast<unsigned>(flags));
+    }
     auto* sdlWindow = SDL_CreateWindow(lpWindowName ? lpWindowName : lpClassName, width, height, flags);
     if (!sdlWindow) {
-        SDL_Log("free-api SDL_CreateWindow failed: %s", SDL_GetError());
+        if (FreeApiDiagnosticsEnabled()) {
+            SDL_Log("free-api SDL_CreateWindow failed: %s", SDL_GetError());
+        }
         return NULL;
     }
 
-    SDL_Log("free-api SDL_CreateWindow result: window=%p id=%u", static_cast<void*>(sdlWindow), static_cast<unsigned>(SDL_GetWindowID(sdlWindow)));
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api SDL_CreateWindow result: window=%p id=%u", static_cast<void*>(sdlWindow), static_cast<unsigned>(SDL_GetWindowID(sdlWindow)));
+    }
 
     const int posX = (X < 0) ? SDL_WINDOWPOS_CENTERED : X;
     const int posY = (Y < 0) ? SDL_WINDOWPOS_CENTERED : Y;
     SDL_SetWindowPosition(sdlWindow, posX, posY);
-    SDL_Log("free-api SDL_SetWindowPosition: window=%p x=%d y=%d", static_cast<void*>(sdlWindow), posX, posY);
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api SDL_SetWindowPosition: window=%p x=%d y=%d", static_cast<void*>(sdlWindow), posX, posY);
+    }
 
     HWND hwnd = reinterpret_cast<HWND>(sdlWindow);
     g_windowProcedures[hwnd] = classIt->second;
@@ -123,11 +137,13 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
     createStruct.dwExStyle = dwExStyle;
     classIt->second(hwnd, WM_CREATE, 0, reinterpret_cast<LPARAM>(&createStruct));
 
-    SDL_Log("free-api CreateWindowExA result: hwnd=%p visible=%s popup=%s caption=%s", 
-            hwnd,
-            ((dwStyle & WS_VISIBLE) != 0) ? "yes" : "no",
-            ((dwStyle & WS_POPUP) != 0) ? "yes" : "no",
-            ((dwStyle & WS_CAPTION) != 0) ? "yes" : "no");
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api CreateWindowExA result: hwnd=%p visible=%s popup=%s caption=%s",
+                hwnd,
+                ((dwStyle & WS_VISIBLE) != 0) ? "yes" : "no",
+                ((dwStyle & WS_POPUP) != 0) ? "yes" : "no",
+                ((dwStyle & WS_CAPTION) != 0) ? "yes" : "no");
+    }
 
     return hwnd;
 }
@@ -197,7 +213,9 @@ BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
     }
 
     auto* sdlWindow = reinterpret_cast<SDL_Window*>(hWnd);
-    SDL_Log("free-api ShowWindow: hwnd=%p cmd=%d window=%p", hWnd, nCmdShow, static_cast<void*>(sdlWindow));
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api ShowWindow: hwnd=%p cmd=%d window=%p", hWnd, nCmdShow, static_cast<void*>(sdlWindow));
+    }
     switch (nCmdShow) {
         case SW_HIDE:
             SDL_HideWindow(sdlWindow);
@@ -225,7 +243,9 @@ BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
     int windowWidth = 0;
     int windowHeight = 0;
     SDL_GetWindowSize(sdlWindow, &windowWidth, &windowHeight);
-    SDL_Log("free-api ShowWindow applied: window=%p size=%dx%d", static_cast<void*>(sdlWindow), windowWidth, windowHeight);
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api ShowWindow applied: window=%p size=%dx%d", static_cast<void*>(sdlWindow), windowWidth, windowHeight);
+    }
 
     return TRUE;
 }
@@ -259,7 +279,9 @@ BOOL WINAPI UpdateWindow(HWND hWnd)
 
     auto* sdlWindow = reinterpret_cast<SDL_Window*>(hWnd);
     SDL_RaiseWindow(sdlWindow);
-    SDL_Log("free-api UpdateWindow: hwnd=%p raised window=%p", hWnd, static_cast<void*>(sdlWindow));
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api UpdateWindow: hwnd=%p raised window=%p", hWnd, static_cast<void*>(sdlWindow));
+    }
     return TRUE;
 }
 
@@ -310,9 +332,13 @@ HWND WINAPI SetFocus(HWND hWnd)
     if (hWnd) {
         auto* sdlWindow = reinterpret_cast<SDL_Window*>(hWnd);
         SDL_RaiseWindow(sdlWindow);
-        SDL_Log("free-api SetFocus: old=%p new=%p window=%p", oldFocus, hWnd, static_cast<void*>(sdlWindow));
+        if (FreeApiDiagnosticsEnabled()) {
+            SDL_Log("free-api SetFocus: old=%p new=%p window=%p", oldFocus, hWnd, static_cast<void*>(sdlWindow));
+        }
     } else {
-        SDL_Log("free-api SetFocus: old=%p new=<null>", oldFocus);
+        if (FreeApiDiagnosticsEnabled()) {
+            SDL_Log("free-api SetFocus: old=%p new=<null>", oldFocus);
+        }
     }
     return oldFocus;
 }

@@ -2246,7 +2246,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0303: Gate winuser_window.cpp's unconditional SDL_Log calls behind FreeApiDiagnosticsEnabled()
-Status: TODO
+Status: DONE — all 13 sites gated; verified quiet-by-default and restored under FREE_API_DIAGNOSTICS=1; 17/17 in all three build modes. Duplicate of TASK-24H-1101, closed together.
 Priority: P1
 Area: WinUser
 Type: Bugfix
@@ -3294,7 +3294,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0606: Gate LoadImageA's success-path log behind FreeApiGdiDebugEnabled
-Status: TODO
+Status: DONE — gated behind FreeApiGdiDebugEnabled(); failure-path logs left unconditional per policy. Duplicate of TASK-24H-1102, closed together.
 Priority: P1
 Area: GDI
 Type: Bugfix
@@ -4558,7 +4558,7 @@ Out of scope:
 ## Diagnostics / Logging
 
 ### TASK-24H-1101: Gate winuser_window.cpp's unconditional per-launch logging behind FreeApiDiagnosticsEnabled()
-Status: TODO
+Status: DONE — all 13 SDL_Log sites in CreateWindowExA/ShowWindow/UpdateWindow/SetFocus wrapped in FreeApiDiagnosticsEnabled(). Confirmed quiet by default (grep for the 4 message prefixes returns 0 hits under test_winuser_regressions) and fully restored under FREE_API_DIAGNOSTICS=1 (1026 hits). 17/17 in all three build modes.
 Priority: P1
 Area: Diagnostics
 Type: Bugfix
@@ -4587,7 +4587,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1102: Gate LoadImageA's unconditional success-path log behind FreeApiGdiDebugEnabled()
-Status: TODO
+Status: DONE — success-path log wrapped in FreeApiGdiDebugEnabled(); the two failure-path logs (missing-resource, SDL_LoadBMP failure) left unconditional. 17/17 in all three build modes.
 Priority: P1
 Area: Diagnostics
 Type: Bugfix
@@ -4617,7 +4617,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1103: Gate FreeApiSetWindowFullscreen's failure-path log for consistency with its own diag-gated logs
-Status: TODO
+Status: DONE — the failure-path SDL_Log at src/wingdi_dc.cpp now reuses the already-computed `diag` local, matching the entry/success logs' gating in the same function.
 Priority: P2
 Area: Diagnostics
 Type: Cleanup
