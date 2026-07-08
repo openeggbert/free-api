@@ -5504,3 +5504,30 @@ Acceptance criteria:
 Out of scope:
 - Do not change `FreeApiRunWinMain`'s actual behavior — test-only task; no bug was found in the real function itself (only in this test's own first draft, fixed before landing).
 - Do not add Android-specific (`__ANDROID__`) test coverage — out of scope for this session's Linux-only test environment.
+
+---
+
+### TASK-24H-1224: Add direct test coverage and documentation for wsprintfA
+Status: DONE — added TestWsprintfAFormatsAndHandlesEdgeCases (tests/test_winuser_regressions.cpp): exercises the exact real-usage shape both games call (`wsprintfA(buf, "Data1 : %d, dwdata: %d, pFile: %d", ...)`, verified via grep against both games' sound.cpp/soundbass.cpp), NULL lpOut/lpFmt safety, and the internal 1024-byte buffer-edge truncation behavior (return value reports the untruncated would-be length per vsnprintf's own contract, but the actual written buffer content is safely bounded). Also added a docs/supported-apis.md row -- this function wasn't documented anywhere (neither supported-apis.md nor out-of-scope.md) despite being real, live logic on both games' sound-diagnostic paths.
+Priority: P1
+Area: WinUser
+Type: Test
+Evidence: src/winuser_message.cpp:277-288 (wsprintfA); ../free-eggbert/src/soundbass.cpp:142, sound.cpp:117; ../planetblupi/src/sound.cpp:99 (identical 3x-%d call shape in both games); found by a session-4 strict test-coverage audit fork -- real, live, used-by-both-games logic with zero test coverage and zero documentation trail
+Depends on: None
+
+Problem:
+`wsprintfA` is a real variadic `vsnprintf` wrapper (format-string/buffer-edge risk class), live on both games' sound-diagnostic paths, but had zero test coverage and wasn't listed in `docs/supported-apis.md` or `docs/out-of-scope.md` at all.
+
+Required work:
+- Add a direct test matching both games' real call shape, plus NULL-argument safety and buffer-edge truncation coverage.
+- Add a `docs/supported-apis.md` row.
+
+Acceptance criteria:
+- New test directly exercises `wsprintfA`, matching real game usage.
+- `docs/supported-apis.md` documents the symbol.
+- Existing tests still pass.
+- No unrelated API is added.
+
+Out of scope:
+- Do not change `wsprintfA`'s implementation — test/documentation-only task; no bug was found in the real function.
+- Do not add support for format specifiers beyond what `vsnprintf` already provides (no custom Win32-specific format extensions) — none is evidenced by either game's real usage.

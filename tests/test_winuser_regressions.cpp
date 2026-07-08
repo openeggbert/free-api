@@ -49,6 +49,7 @@
 #include <windowsx.h>
 #include <SDL3/SDL.h>
 #include <cstdio>
+#include <cstring>
 #include <atomic>
 #include <thread>
 
@@ -1206,6 +1207,36 @@ static void TestLoadCursorAAndLoadIconAReturnNonNullForAllRealNames()
     Check(icon != nullptr, "LoadIconA(\"IDR_MAINFRAME\") returns a non-null handle (both games' WNDCLASSA.hIcon)");
 }
 
+// TASK-24H-1224: wsprintfA (src/winuser_message.cpp) is a real variadic
+// vsnprintf wrapper into a fixed 1024-byte buffer -- real, live logic (not
+// a stub) on both games' sound-diagnostic paths (free-eggbert
+// soundbass.cpp:142/sound.cpp:117, planetblupi sound.cpp:99, all the exact
+// same shape: three %d integer specifiers), but had zero test coverage and
+// wasn't even listed in docs/supported-apis.md or docs/out-of-scope.md
+// (found by a session-4 strict test-coverage audit fork).
+static void TestWsprintfAFormatsAndHandlesEdgeCases()
+{
+    char buf[1024];
+
+    // Exact real-usage shape from both games (three %d integers).
+    int written = wsprintfA(buf, "Data1 : %d, dwdata: %d, pFile: %d", 7, 1024, 42);
+    Check(written == (int)strlen(buf), "wsprintfA's return value matches the actual formatted length");
+    Check(strcmp(buf, "Data1 : 7, dwdata: 1024, pFile: 42") == 0,
+          "wsprintfA formats multiple %d specifiers exactly like both games' real call shape");
+
+    Check(wsprintfA(nullptr, "x") == 0, "wsprintfA(NULL output buffer, ...) returns 0 instead of crashing");
+    Check(wsprintfA(buf, nullptr) == 0, "wsprintfA(..., NULL format) returns 0 instead of crashing");
+
+    // Buffer-edge case: a format string producing output longer than the
+    // internal 1024-byte limit must truncate safely (vsnprintf's own
+    // bounded-write contract), not overflow.
+    char longBuf[2048];
+    int longWritten = wsprintfA(longBuf, "%02000d", 1);
+    Check(longWritten > 1024,
+          "wsprintfA's return value reports the untruncated would-be length (vsnprintf contract), even though the write itself was bounded");
+    Check(strlen(longBuf) < 1024, "wsprintfA's actual written buffer content is bounded to the internal 1024-byte limit, not overflowed");
+}
+
 int main()
 {
     printf("[winuser-regressions] Starting\n");
@@ -1240,6 +1271,7 @@ int main()
     TestShowCursorCounterAccumulatesWithoutClamping();
     TestSetCursorReturnsPreviousHandle();
     TestLoadCursorAAndLoadIconAReturnNonNullForAllRealNames();
+    TestWsprintfAFormatsAndHandlesEdgeCases();
 
     SDL_Quit();
 
