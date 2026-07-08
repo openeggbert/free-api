@@ -4,8 +4,6 @@
 
 namespace FreeApi::Internal {
 
-std::string NormalizePath(const char* path);
-
 /**
  * @brief Normalizes a Windows-style path for use with a POSIX filesystem call.
  *

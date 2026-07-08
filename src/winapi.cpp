@@ -10,7 +10,7 @@
  *   - FreeApiWindowRegistry.hpp/.cpp — window/class registries
  *   - FreeApiMessageQueue.hpp/.cpp — message queue, PushMessage, PumpSdlEvents
  *   - FreeApiTimers.hpp/.cpp       — WinAPI and multimedia timer state
- *   - FreeApiPath.hpp/.cpp         — path helpers (NormalizePath, BuildCommandLine)
+ *   - FreeApiPath.hpp/.cpp         — path helpers (NormalizeFilesystemPath, BuildCommandLine)
  *   - FreeApiSdlVideo.hpp/.cpp     — SDL video subsystem management
  *
  * Public source files (src/):

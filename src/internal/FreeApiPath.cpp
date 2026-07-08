@@ -4,17 +4,6 @@
 
 namespace FreeApi::Internal {
 
-std::string NormalizePath(const char* path)
-{
-    std::string normalized = path ? path : "";
-    for (char& ch : normalized) {
-        if (ch == '\\') {
-            ch = '/';
-        }
-    }
-    return normalized;
-}
-
 std::string NormalizeFilesystemPath(const char* path)
 {
     if (!path) {

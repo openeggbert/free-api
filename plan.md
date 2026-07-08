@@ -3523,7 +3523,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0615: Remove the now-dead NormalizePath function after LoadImageA migrates to NormalizeFilesystemPath
-Status: TODO
+Status: DONE — TASK-24H-0605 landed this session; re-grepped src/ to confirm NormalizePath had zero remaining call sites, then removed its declaration (src/internal/FreeApiPath.hpp) and definition (src/internal/FreeApiPath.cpp). Fixed a stale reference to it in src/winapi.cpp's module-index comment. Verified: standalone build 23/23, free-eggbert and planetblupi trees + free-direct build cleanly with no dangling references.
 Priority: P3
 Area: GDI
 Type: Cleanup
@@ -5386,7 +5386,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1220: Document `HFONT`/`HPALETTE` as intentionally-vestigial-but-harmless in include/minwindef.h
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0111; implemented once there (see that entry).
 Priority: P3
 Area: Docs
 Type: Documentation
