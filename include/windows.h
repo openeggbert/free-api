@@ -137,25 +137,23 @@ int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** 
 #include <cstdio>
 #include <cctype>
 #include <string>
+
+// TASK-24H-0705: forward-declaration only, not a public API -- the real
+// definition (src/internal/FreeApiPath.cpp) is always available at link
+// time because every translation unit that could possibly reach this
+// inline function already links free-api's own static library (it's the
+// library providing this very header). Lets free_api_fopen reuse the exact
+// same drive-letter-strip + backslash-convert + leading-slash-strip logic
+// every other file-opening entry point in the codebase already uses,
+// instead of maintaining a third independent reimplementation of it.
+namespace FreeApi { namespace Internal {
+std::string NormalizeFilesystemPath(const char* path);
+} }
+
 static inline FILE* free_api_fopen(const char* path, const char* mode)
 {
     if (!path) return nullptr;
-    std::string p(path);
-    // Remove Windows drive letter if present (e.g., "C:\path" -> "\path")
-    if (p.size() >= 2 && isalpha(static_cast<unsigned char>(p[0])) && p[1] == ':') {
-        p.erase(0, 2);
-    }
-    for (char& c : p) {
-        if (c == '\\') c = '/';
-    }
-    // Remove leading slashes if we want it relative to current dir,
-    // but Planet Blupi often uses relative paths like "data\config.def".
-    // If it was "c:\Planète Blupi\data\info.blp", after removing "c:" it's "\Planète Blupi\data\info.blp".
-    // We should probably make it relative if it starts with a slash after drive removal,
-    // because we don't want to look in the root of the Linux filesystem.
-    while (!p.empty() && (p[0] == '/' || p[0] == '\\')) {
-        p.erase(0, 1);
-    }
+    std::string p = FreeApi::Internal::NormalizeFilesystemPath(path);
 
     if (p.empty()) return nullptr;
 

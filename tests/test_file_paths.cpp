@@ -37,6 +37,18 @@
 #include <unistd.h>
 #endif
 
+// TASK-24H-0703: forward-declares the exact same internal symbol
+// (src/internal/FreeApiPath.hpp) already used the same way by
+// tests/test_gdi_regressions.cpp's g_diagCompatDcs/g_diagCompatBitmaps
+// pattern -- not part of any public header, referenced here only to
+// characterize NormalizeFilesystemPath's exact current behavior directly
+// (see TestNormalizeFilesystemPathCharacterization below), independent of
+// whichever public entry point (LoadImageA, _mkdir, DeleteFileA, ...)
+// happens to call it.
+namespace FreeApi::Internal {
+std::string NormalizeFilesystemPath(const char* path);
+}
+
 static int g_failures = 0;
 
 static void Check(bool condition, const char* what)
@@ -360,10 +372,113 @@ static void TestFindFirstFindNextRepeatedDrainWithoutCloseDoesNotLeakSession()
     rmdir(root.c_str());
 }
 
+// TASK-24H-0703: parity/characterization test pinning down
+// NormalizeFilesystemPath's exact current input/output behavior directly,
+// as a before/after equivalence check for any future consolidation
+// refactor (TASK-24H-0704/0705/0706). Covers every shape its three
+// transformation steps (drive-letter strip, backslash-to-forward-slash,
+// leading-slash strip) can independently produce.
+//
+// Of the three path-normalization implementations this task originally
+// named, only two are independently direct-testable: NormalizeFilesystemPath
+// (this test) and free_api_fopen (the next test below, since it's a public,
+// callable-by-name header function). The fourth original implementation,
+// NormalizePath, was removed entirely as dead code (TASK-24H-0615) once
+// LoadImageA (its only caller) migrated to NormalizeFilesystemPath -- so
+// only three implementations remain in total, not four. The third,
+// NormalizeMidiPath (src/MidiMusic.cpp), has file-local `static` linkage
+// and cannot be forward-declared/called directly without exposing a new
+// internal symbol beyond its own translation unit (which this task's own
+// "no unrelated API added" rule and this project's scope discipline both
+// argue against for a test-only need) -- its progressive-suffix-uppercase
+// fallback behavior already has real, if indirect, characterization
+// coverage via tests/test_mci_sequences.cpp's
+// TestMidiOpenFindsUppercaseFixtureViaLowercaseName.
+static void TestNormalizeFilesystemPathCharacterization()
+{
+    using namespace FreeApi::Internal;
+
+    struct Case {
+        const char* input;
+        const char* expected;
+        const char* what;
+    };
+    const Case cases[] = {
+        {"data/config.def", "data/config.def", "plain relative path passes through unchanged"},
+        {"data\\config.def", "data/config.def", "backslashes convert to forward slashes"},
+        {"\\User\\save1.xch", "User/save1.xch", "a leading backslash is stripped, staying relative to CWD"},
+        {"/User/save1.xch", "User/save1.xch", "a leading forward slash is stripped, staying relative to CWD"},
+        {"C:\\Planete Blupi\\data\\info.blp", "Planete Blupi/data/info.blp",
+         "a drive letter is stripped, then the remaining backslashes convert and the leading slash strips"},
+        {"c:data\\config.def", "data/config.def", "a lowercase drive letter is also stripped"},
+        {"", "", "an empty string passes through unchanged"},
+    };
+
+    for (const auto& c : cases) {
+        const std::string actual = NormalizeFilesystemPath(c.input);
+        char msg[256];
+        snprintf(msg, sizeof(msg), "NormalizeFilesystemPath(\"%s\") == \"%s\": %s", c.input, c.expected, c.what);
+        Check(actual == c.expected, msg);
+    }
+
+    Check(NormalizeFilesystemPath(nullptr).empty(), "NormalizeFilesystemPath(nullptr) returns an empty string, not a crash");
+}
+
+// TASK-24H-0703: companion characterization test for free_api_fopen
+// (include/windows.h) -- proves its prefix-normalization step currently
+// produces the exact same relative path NormalizeFilesystemPath does for
+// the same input shapes (both strip a drive letter, convert backslashes,
+// and strip leading slashes identically), which is exactly the invariant
+// a future TASK-24H-0705 consolidation would need to preserve. Also
+// exercises free_api_fopen's own unique case-insensitive-basename
+// fallback, which NormalizeFilesystemPath does not have and must not gain.
+static void TestFreeApiFopenPrefixNormalizationCharacterization()
+{
+    std::string root = MakeTempRoot("fopen-prefix");
+    Check(!root.empty(), "temp root created for the free_api_fopen prefix-normalization characterization test");
+    if (root.empty()) return;
+
+    const std::string subdir = root + "/data";
+    Check(::mkdir(subdir.c_str(), 0755) == 0, "data/ subdirectory created");
+
+    const std::string fixturePath = subdir + "/info.blp";
+    FILE* w = fopen(fixturePath.c_str(), "wb");
+    Check(w != nullptr, "info.blp fixture file created");
+    if (w) {
+        fputs("free-api", w);
+        fclose(w);
+    }
+
+#if !defined(_WIN32)
+    char oldCwd[4096];
+    Check(getcwd(oldCwd, sizeof(oldCwd)) != nullptr, "captured current working directory");
+    Check(chdir(root.c_str()) == 0, "chdir into temp root succeeded for the fopen prefix test");
+#endif
+
+    // Same drive-letter-prefixed, backslash-mixed shape as
+    // TestNormalizeFilesystemPathCharacterization's matching case above --
+    // free_api_fopen must resolve it to the identical relative path.
+    FILE* f = free_api_fopen("C:\\data\\info.blp", "rb");
+    Check(f != nullptr,
+          "free_api_fopen resolves a drive-letter-prefixed, backslash path the same way "
+          "NormalizeFilesystemPath's equivalent case does");
+    if (f) fclose(f);
+
+#if !defined(_WIN32)
+    Check(chdir(oldCwd) == 0, "chdir restored after the fopen prefix test");
+#endif
+
+    remove(fixturePath.c_str());
+    rmdir(subdir.c_str());
+    rmdir(root.c_str());
+}
+
 int main()
 {
     printf("[file-paths] Starting\n");
 
+    TestNormalizeFilesystemPathCharacterization();
+    TestFreeApiFopenPrefixNormalizationCharacterization();
     TestFopenCaseInsensitiveFallbackForPlainAssetFile();
     TestLoadImageAWithBackslashInitBlpPathShape();
     TestFopenWithSprintfFormattedSoundPathShape();

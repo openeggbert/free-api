@@ -3633,7 +3633,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0703: Add parity/characterization tests across all four path-normalization implementations before any consolidation
-Status: TODO
+Status: DONE — NOTE: only 3 implementations remain, not 4 (NormalizePath was removed as dead code this cycle, TASK-24H-0615, after LoadImageA migrated to NormalizeFilesystemPath, TASK-24H-0605). Added TestNormalizeFilesystemPathCharacterization (tests/test_file_paths.cpp): direct, table-driven test of NormalizeFilesystemPath covering drive-letter-strip, backslash-convert, leading-slash-strip, plain-passthrough, and null-input. Added TestFreeApiFopenPrefixNormalizationCharacterization: proves free_api_fopen's prefix-normalization currently produces the identical relative path NormalizeFilesystemPath does for the same drive-letter+backslash shape. NormalizeMidiPath (src/MidiMusic.cpp) has file-local `static` linkage and can't be forward-declared without exposing a new internal symbol purely for test access -- its progressive-suffix-uppercase fallback already has real indirect characterization via test_mci_sequences.cpp's TestMidiOpenFindsUppercaseFixtureViaLowercaseName, which is left as its existing coverage. Verified passing (23/23 suite).
 Priority: P2
 Area: Files
 Type: Test
@@ -3660,7 +3660,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0704: Extract a shared core from `NormalizePath` and `NormalizeFilesystemPath`
-Status: TODO
+Status: OBSOLETE — superseded by TASK-24H-0615 (this cycle): `NormalizePath` was removed entirely as dead code once `LoadImageA` (its only caller) migrated to `NormalizeFilesystemPath` (`TASK-24H-0605`). This task's premise ("extract a shared core from NormalizePath and NormalizeFilesystemPath") is no longer possible or meaningful — `src/internal/FreeApiPath.cpp` now has exactly one normalization function, not two, so there is nothing left to unify at that specific site. The remaining, still-real duplication is between `NormalizeFilesystemPath` and the other two implementations (`free_api_fopen`, `NormalizeMidiPath`) — see the re-scoped `TASK-24H-0705`/`0706` below, which now describe migrating those two callers to reuse `NormalizeFilesystemPath` directly (via a forward declaration) instead of via a separate new "shared core" symbol this task would have introduced.
 Priority: P2
 Area: Files
 Type: Refactor
@@ -3687,7 +3687,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0705: Migrate `free_api_fopen`'s prefix-normalization to the shared core
-Status: TODO
+Status: DONE — NOTE re-scoped: since TASK-24H-0704 became obsolete (NormalizePath removed, see that entry), this migrates free_api_fopen directly to NormalizeFilesystemPath itself (via a forward declaration in include/windows.h) rather than a separate new "shared core" symbol. Replaced free_api_fopen's hand-rolled drive-letter-strip/backslash-convert/leading-slash-strip block (include/windows.h) with a single NormalizeFilesystemPath(path) call; the case-insensitive-basename fallback logic is untouched. Confirmed no new link dependency: both target games' own executables (SPEEDY_BLUPI_WINDOWS, PLANET_BLUPI_WINDOWS) already always link free-api and both built/linked cleanly. Verified: TASK-24H-0703's new characterization tests pass unmodified; full 23-test suite passes in all three build trees (standalone, free-eggbert, planetblupi).
 Priority: P2
 Area: Files
 Type: Refactor
