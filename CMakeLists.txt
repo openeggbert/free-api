@@ -525,6 +525,14 @@ if(FREE_API_BUILD_TESTS)
     target_link_libraries(test_midi_backend_failure PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_midi_backend_failure COMMAND test_midi_backend_failure)
 
+    # TASK-24H-1223: FreeApiRunWinMain (src/winmain_bridge.cpp) is the real
+    # process-bootstrap bridge both target games launch through, but had
+    # zero automated coverage -- test_eggbert_loop/test_planetblupi_loop
+    # both bypass it with a hand-written main().
+    add_executable(test_winmain_bridge tests/test_winmain_bridge.cpp)
+    target_link_libraries(test_winmain_bridge PRIVATE free-api)
+    add_test(NAME test_winmain_bridge COMMAND test_winmain_bridge)
+
     if(NOT WIN32)
         add_executable(test_timeb tests/test_timeb.cpp)
         target_link_libraries(test_timeb PRIVATE freeapi_compat_headers)

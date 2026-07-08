@@ -5479,3 +5479,28 @@ Out of scope:
 - Do not fix `FreeApiDestroySurfaceDC`'s garbage-pointer segfault as part of this task — already documented, accepted, out of scope.
 - Do not add any new GDI/rendering API, debug flag, or resource-loading behavior as part of this playtest — this task verifies existing, already-implemented behavior only.
 - Do not attempt this task headlessly/via SDL's dummy video driver — that cannot produce or verify actually-correct visual output; a real display backend and real looking are required.
+
+---
+
+### TASK-24H-1223: Add direct test coverage for FreeApiRunWinMain (real process-bootstrap bridge)
+Status: DONE — added tests/test_winmain_bridge.cpp (new binary): asserts a NULL entryPoint is rejected with -1 and never invoked; asserts the full real contract (hInstance/hPrevInstance always NULL, nCmdShow always SW_SHOW, argv[1..] joined into lpCmdLine excluding argv[0], entryPoint's return value passes through unchanged); asserts lpCmdLine is NULL (not an empty string) when there are no extra arguments. Needed a dummy WinMain definition to satisfy the linker (src/winmain_bridge.cpp's weak `main()` references it; pulling in FreeApiRunWinMain's object file from the static library also drags in that reference, regardless of the weak main() losing to this test's own strong main() -- confirmed dead code, documented in the test file). Found and fixed a REAL bug in the test itself during verification: the first version compared lpCmdLine's content AFTER FreeApiRunWinMain had already returned, a genuine use-after-free (lpCmdLine points into a local std::string inside FreeApiRunWinMain, small-string-optimized onto that function's own stack frame, valid only for the duration of the entryPoint(...) call -- exactly matching real Win32 WinMain's lpCmdLine lifetime contract) that happened to "work" in the standalone and free-eggbert build trees but failed in planetblupi's, depending on whether anything clobbered the stale stack memory first. Fixed by capturing the content into a fixed buffer inside FakeWinMain itself, while the pointer is still valid.
+Priority: P1
+Area: Build
+Type: Test
+Evidence: src/winmain_bridge.cpp:50-89 (FreeApiRunWinMain); include/windows.h:89,99 (FREE_API_WINMAIN_PROC/declaration); ../free-direct/... FREE_API_IMPLEMENT_WINMAIN() macro usage (real bootstrap path for both games); found by a session-4 strict test-coverage audit fork -- zero prior coverage, flagged as "the single highest-risk untested function" since a regression here means a real game fails to launch entirely, not a wrong pixel
+Depends on: None
+
+Problem:
+`FreeApiRunWinMain` is the real process-bootstrap bridge both target games launch through (via `include/windows.h`'s `FREE_API_IMPLEMENT_WINMAIN()` macro, used by the `../free-direct` bridge), but had zero automated test coverage: `tests/test_eggbert_loop.cpp` and `tests/test_planetblupi_loop.cpp` both bypass it entirely with a hand-written `int main()`.
+
+Required work:
+- Add direct tests asserting: NULL entryPoint rejection; the full argv/argc -> hInstance/hPrevInstance/lpCmdLine/nCmdShow contract; exit-code passthrough; the NULL-vs-empty-string lpCmdLine distinction when there are no extra arguments.
+
+Acceptance criteria:
+- New tests directly exercise `FreeApiRunWinMain`, not just indirectly via a game loop test.
+- Existing tests still pass.
+- No unrelated API is added.
+
+Out of scope:
+- Do not change `FreeApiRunWinMain`'s actual behavior — test-only task; no bug was found in the real function itself (only in this test's own first draft, fixed before landing).
+- Do not add Android-specific (`__ANDROID__`) test coverage — out of scope for this session's Linux-only test environment.
