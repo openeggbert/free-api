@@ -92,13 +92,13 @@ and `test_winuser_regressions.cpp`
 
 **What does NOT work / known gaps:** unchanged except for items closed in
 section 3 below. MCI digital-video remains intentionally unimplemented.
-Human playtests (MIDI audio, rendering, `MK_SHIFT`/`MK_CONTROL` drag-
-select/flood-fill) still needed — see section 8. **Known tracking gap
-(found by session 4's audit, not yet fixed):** MIDI-audio and rendering
-human sign-off are mentioned in this file's prose across multiple sessions
-but have never had a formal `TASK-24H-*` entry created for them —
-`TASK-24H-1209`'s citation to "NEXT.md §8 items 5-6" doesn't resolve to
-anything concrete. Worth creating real tracked tasks for both.
+Human playtests still needed — MIDI audio sign-off (`TASK-24H-1221`),
+rendering sign-off (`TASK-24H-1222`), and `MK_SHIFT`/`MK_CONTROL` drag-
+select/flood-fill (`TASK-24H-0401`/`0403`) each now have a real, tracked
+task with concrete acceptance criteria, and one consolidated, runnable
+checklist covering all of them:
+[`docs/target-game-verification.md`](docs/target-game-verification.md)
+(`TASK-24H-1209`). See section 8.
 
 ## 3. Recent changes (session 4, this pass, most recent first)
 
@@ -182,14 +182,14 @@ user explicitly asks.
   past the documented bridge exception into the internal
   `FreeApi::Platform::ReadRssKB()` symbol directly. Fix-or-accept decision
   intentionally left open — see `docs/scope.md`.
-* **Tracking gap, not yet fixed (found session 4):** MIDI-audio and
-  rendering human sign-off have no formal tracked task — see section 2.
 * **By design, not a bug (reconfirmed every session):** MCI digital-video/
   AVI is permanently declined.
-* **Still needs human verification, fully actionable for both features:**
-  `MK_SHIFT` drives planetblupi's drag-select (`Enter × 4` from cold boot);
-  `MK_CONTROL` drives level-editor decor flood-fill (`Enter × 2`, click
-  "Privé", click "Build" — see `docs/target-games.md`). `TASK-24H-0401`/`0403`.
+* **Still needs human verification, fully actionable, all four now
+  formally tracked with acceptance criteria:** `MK_SHIFT` drag-select
+  (`TASK-24H-0401`), `MK_CONTROL` level-editor flood-fill
+  (`TASK-24H-0403`), MIDI audio sign-off (`TASK-24H-1221`), rendering
+  sign-off (`TASK-24H-1222`) — run all four via the single checklist at
+  [`docs/target-game-verification.md`](docs/target-game-verification.md).
 
 ## 6. Architecture notes
 
@@ -248,23 +248,24 @@ No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-**0 P0, 0 AI-doable P1 tasks remain TODO.** 1 P1 (`TASK-24H-0401`, human
-playtest) and 55 P2 + 48 P3 tasks remain. Concrete starting points:
+**0 P0, 0 AI-doable P1 tasks remain TODO.** 3 P1 (`TASK-24H-0401`,
+`1221`, `1222` — all human-only) and 55 P2 + 48 P3 tasks remain. Concrete
+starting points:
 
-1. **Human playtests** (`TASK-24H-0401`/`0403`) — both have fully
-   documented key/menu sequences (`docs/target-games.md`); need an actual
-   human with a real display/input backend.
-2. **Create tracked tasks for MIDI-audio/rendering human sign-off** — a
-   real gap found by session 4's audit (see section 2/5); currently only
-   exists as un-actioned prose.
-3. **P2 refactor/consolidation tasks with explicit "test parity first"
+1. **Human playtests** — all four now formally tracked with acceptance
+   criteria and one consolidated checklist:
+   [`docs/target-game-verification.md`](docs/target-game-verification.md)
+   covers `MK_SHIFT`/`MK_CONTROL` (`TASK-24H-0401`/`0403`), MIDI audio
+   sign-off (`TASK-24H-1221`), and rendering sign-off (`TASK-24H-1222`).
+   Needs an actual human with a real display/audio backend.
+2. **P2 refactor/consolidation tasks with explicit "test parity first"
    gating** — the four-path-normalization-implementation cluster
    (`TASK-24H-0703`–`0706`) requires characterization tests *before* any
    consolidation. Similarly `TASK-24H-0103`/`0104`/`0105`/`0905`
    (duplicate declaration consolidation) and `TASK-24H-0014`.
-4. **Remaining P2 test-coverage tasks** — grep `plan.md` for
+3. **Remaining P2 test-coverage tasks** — grep `plan.md` for
    `Priority: P2` + `Type: Test` + `Status: TODO`.
-5. **Remaining P2/P3 documentation tasks** — many reference "duplicates
+4. **Remaining P2/P3 documentation tasks** — many reference "duplicates
    TASK-24H-XXXX — implement once, close both"; check for a paired ID
    before starting one.
 

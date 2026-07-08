@@ -5115,7 +5115,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1209: Create a target-game verification / playtest doc, incorporating the newly-found planetblupi gameplay-access sequence
-Status: TODO
+Status: DONE — created docs/target-game-verification.md: launch instructions for both games, MIDI-audio sign-off checklist (cross-references TASK-24H-1221), rendering/blitting/image-loading sign-off checklist (cross-references TASK-24H-1222), the LoadStringA/"RES_<id>" check, the save/load check, both planetblupi gameplay-access sequences (Enter x4 for MK_SHIFT, Enter x2 + click "Privé"/"Build" for MK_CONTROL, both linking to docs/target-games.md's full derivation), and the MK_SHIFT/MK_CONTROL playtest steps themselves (cross-references TASK-24H-0401/0403). NEXT.md updated to link here instead of duplicating steps. Documentation only, no behavior change.
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -5417,6 +5417,7 @@ Status: TODO
 Priority: P1
 Area: WinMM
 Type: Verification
+See also: docs/target-game-verification.md §2 (the same checklist below, formalized as a runnable checklist, TASK-24H-1209)
 Evidence: NEXT.md (multiple sessions' prose mentions "MIDI audio... still needed" under human playtests, with no formal task ever filed for it); TASK-24H-1109 (MCI_OPEN log-spam fix, session 4); src/MidiMusic.cpp; docs/README's "SoundFont requirement" section
 Depends on: None
 
@@ -5450,6 +5451,7 @@ Status: TODO
 Priority: P1
 Area: GDI
 Type: Verification
+See also: docs/target-game-verification.md §§3-5 (the same checklist below, formalized as a runnable checklist, TASK-24H-1209)
 Evidence: NEXT.md (multiple sessions' prose mentions "rendering" as still needed under human playtests, with no formal task ever filed for it); TASK-24H-1109/0605/0601 (this cycle's real GDI/rendering-path fixes); docs/out-of-scope.md's "RES_<id>" placeholder note; docs/scope.md
 Depends on: None
 
