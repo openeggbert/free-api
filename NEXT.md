@@ -2,7 +2,7 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `8875a42` (2026-07-08, `develop` branch, 19 commits
+state as of commit `b5e611c` (2026-07-08, `develop` branch, 26 commits
 ahead of `origin/develop`, **not yet pushed**; working tree clean). See
 [`plan.md`](plan.md) for the full task backlog (12 original tasks +
 175-task `TASK-24H-0001`–`1220` backlog) and
@@ -28,18 +28,15 @@ usage site (`file:line`) in one of the two games' own source
 (`docs/scope.md`), with one documented exception (the `free-direct`-bridge
 functions, declared in `include/free_api_bridge.h`).
 
-**Current development phase:** three consecutive sessions this cycle.
-Session 1 produced a from-scratch deep audit (`docs/audit-24h-free-api.md`)
-and extended `plan.md` with a 175-task backlog (`TASK-24H-0001`–`1220`),
-then implemented the 2 P0 tasks plus a handful of quick P1s. Session 2
-(implementation-only) worked through most of the backlog's P1 tasks by
-theme. Session 3 (this pass, also implementation-only, triggered by an
-explicit "don't stop while safe work remains" correction — see §4) closed
-the remaining 3 AI-doable P1 tasks and made a first pass through P2
-cleanup/documentation tasks. **56 of 175 new tasks are now DONE** — all
-verified, tested, and committed; **0 P0, 0 AI-doable P1 tasks remain**
-(1 P1 left, `TASK-24H-0401`, is a human-only playtest). 68 P2 and 50 P3
-tasks remain — see section 8.
+**Current development phase:** four sessions this cycle. Sessions 1-3
+produced the audit, the 175-task backlog, and closed all P0/P1 work.
+**Session 4 (this pass)** began with an independent, skeptical audit fork
+(user-requested, "verify whether 'all P0/P1 closed' is actually true") that
+re-confirmed the P0/P1 claim but found 5 concrete follow-up gaps; this
+session implemented all 5, then continued through 8 more P2/P3 tasks.
+**71 of 175 new tasks are now DONE** — all verified, tested, and committed;
+**0 P0, 0 AI-doable P1 tasks remain** (1 P1 left, `TASK-24H-0401`, is a
+human-only playtest). 55 P2 and 48 P3 tasks remain — see section 8.
 
 **Important architectural decisions (unchanged across all sessions):**
 
@@ -57,187 +54,177 @@ tasks remain — see section 8.
 * The free-direct-bridge exception has a real, single-source-of-truth
   header (`include/free_api_bridge.h`) — do not re-declare
   `FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC`/
-  `FreeApiSetWindowFullscreen` anywhere else. `docs/scope.md` also now
-  documents one further, real, currently-*unfixed* coupling beyond that
-  list: `../free-direct`'s `Diagnostics.cpp` reaches directly into the
-  internal `FreeApi::Platform::ReadRssKB()` symbol (not part of the bridge
-  exception) — see `docs/scope.md`'s "actual bridge-exception surface"
-  subsection; the fix-or-accept decision is intentionally left open.
-* **New this session: `FREE_API_SANITIZE` CMake option** (`thread`/
-  `address`, off by default, additive) for running the test suite under
-  ThreadSanitizer/AddressSanitizer — see `docs/cmake-options.md`'s
-  "Sanitizer-instrumented test builds" section and §5/§6 below.
+  `FreeApiSetWindowFullscreen` anywhere else. `docs/scope.md`'s "The only
+  exceptions are" list now explicitly cross-references this (`TASK-0011`,
+  closed session 4).
+* **`FREE_API_SANITIZE` CMake option** (`thread`/`address`, off by default)
+  for running the test suite under ThreadSanitizer/AddressSanitizer — as of
+  session 4, a plain `ctest` inside a sanitizer-configured build tree just
+  works (no manual `LD_PRELOAD`) — see `docs/cmake-options.md`.
+* **`docs/testing.md`** (new, session 4) is now the canonical "how to run
+  the tests" reference; `docs/cmake-options.md` remains canonical for build
+  *options*.
 
 ## 2. Current status
 
 **Build status — all confirmed working after every change this session:**
 * Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): configures, builds,
-  **22/22** tests pass.
+  **23/23** tests pass.
 * As a subdirectory of `../free-eggbert` (Ninja), including the
   `free-api`+`free-direct` diamond dependency (`FREEDIRECT` backend):
-  22/22.
-* As a subdirectory of `../planetblupi` (Make): 22/22.
+  23/23.
+* As a subdirectory of `../planetblupi` (Make): 23/23.
 * `../free-direct` standalone: configures, builds, links `FREE_DIRECT`
   cleanly against `include/free_api_bridge.h`.
-* **New this session:** the same 22-test suite also passes cleanly
-  (0 sanitizer reports) under both `-DFREE_API_SANITIZE=thread` and
-  `=address` (see §6's exact `LD_PRELOAD` invocation).
+* The same 23-test suite also passes cleanly (0 sanitizer reports) under
+  both `-DFREE_API_SANITIZE=thread` and `=address`, via plain `ctest`
+  (no manual env vars beyond `SDL_VIDEODRIVER`/`SDL_AUDIODRIVER`).
 
-**Test status:** 22 test binaries/CTest entries, **22/22 passing** in all
-three build modes, under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`, and
-under both sanitizer builds. This session added
-`TestTimeSetEventKillRaceHasNoUseAfterFree` (`test_timer_regressions.cpp`)
-— a 2000-iteration `timeSetEvent`/`timeKillEvent` race stress test,
-specifically written to be run under a sanitizer (see §5).
+**Test status:** 23 test binaries/CTest entries (up from 22), 23/23 passing
+in all three build modes and both sanitizer builds. Session 4 added:
+`test_midi_backend_failure` (new binary), plus new tests in
+`test_timer_regressions.cpp` (`TestGDebugInputSurvivesRaceUnderSanitizer`),
+`test_gdi_regressions.cpp` (`TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd`),
+and `test_winuser_regressions.cpp`
+(`TestDispatchMessageARoutesNullHwndToSoleRegisteredWindow`,
+`TestWmMouseMoveCoalescingKeepsOnlyLatestPosition`,
+`TestWmTimerCoalescingKeepsOnlyOneQueuedMessagePerHwndAndId`).
 
 **What does NOT work / known gaps:** unchanged except for items closed in
 section 3 below. MCI digital-video remains intentionally unimplemented.
 Human playtests (MIDI audio, rendering, `MK_SHIFT`/`MK_CONTROL` drag-
-select/flood-fill) still needed — see section 8. The `MK_CONTROL` playtest
-now has a fully-traced, documented key/menu path (`docs/target-games.md`),
-closing the "not concretely actionable" blocker that previously existed.
+select/flood-fill) still needed — see section 8. **Known tracking gap
+(found by session 4's audit, not yet fixed):** MIDI-audio and rendering
+human sign-off are mentioned in this file's prose across multiple sessions
+but have never had a formal `TASK-24H-*` entry created for them —
+`TASK-24H-1209`'s citation to "NEXT.md §8 items 5-6" doesn't resolve to
+anything concrete. Worth creating real tracked tasks for both.
 
-## 3. Recent changes (session 3, this pass, most recent first)
+## 3. Recent changes (session 4, this pass, most recent first)
 
-* **Batch-closed 16 P2 documentation/decision tasks**
-  (`TASK-24H-0002`/`0008`/`0109`/`0110`/`0111`/`0112`/`0113`/`0201`/`0204`/
-  `0206`/`1205`/`1206`/`1210`/`1211`/`1215`/`1216`) — six of these were
-  exact-duplicate task IDs the backlog itself flagged ("implement once,
-  close both"). Covers: correcting the `FREE_API_TARGET_GAME=standalone`
-  docstring's inaccurate claim; keep-rationale decisions for
-  `OutputDebugStringW` and `_chdir`/`_getcwd` (closing the original,
-  previously-open `TASK-0007`/`TASK-0006`); vestigial-typedef documentation
-  for `HFONT`/`HPALETTE` and `winnt.h`'s COM-family typedefs; the `fopen`
-  macro-override rationale; `PeekMessageA`'s filter-ignoring, `WaitMessage`'s
-  polling-not-blocking contract, and `WM_ACTIVATEAPP(0)` focus-loss
-  suppression, each now documented in `docs/out-of-scope.md` plus the
-  relevant header doc comments.
-* **Traced and documented the key/menu path to planetblupi's level-editor
-  decor-tool-active state** (`TASK-24H-0402`) — source-traced (not run
-  against a live build) via `ChangePhase`/`CreateButtons`/`VK_RETURN`
-  handling in `../planetblupi/src/event.cpp`. Finding: the existing
-  keyboard-only `Enter × 4` sequence (documented for `MK_SHIFT`) never
-  reaches the editor, since `Enter` at the title screen skips straight past
-  the private-mode toggle. The real path needs two mouse clicks ("Privé"
-  then "Build") — written up in `docs/target-games.md`'s new "Manual
-  playtest key/menu sequences" section, unblocking `TASK-24H-0403`'s human
-  playtest.
-* **Added a sanitizer-verified timer race test; fixed 3 real bugs it found**
-  (`TASK-24H-0506`) — added the opt-in `FREE_API_SANITIZE` CMake option and
-  a 2000-iteration `timeSetEvent`/`timeKillEvent` race test. Running it
-  surfaced and led to fixing: (1) a genuine use-after-free in
-  `FreeApiMmTimerBridge`'s "verify still alive" re-lookup (it dereferenced a
-  raw pointer into `g_mmTimers`' map node *to find the ID to re-look-up*,
-  before the lookup itself could confirm the node was still alive — fixed
-  by packing the timer ID directly into the SDL userdata slot instead of a
-  map-node pointer); (2) a real ThreadSanitizer-caught data race on
-  `FreeApi::Internal::g_debugInput` (now `std::atomic_bool`); (3) an SDL
-  subsystem refcount overflow in `timeSetEvent` (unconditional
-  `SDL_InitSubSystem(SDL_INIT_EVENTS)` on every call, no matching
-  `SDL_QuitSubSystem` — fixed with an `SDL_WasInit` guard, only surfaced by
-  the new race test's 2000 iterations against an assertions-enabled SDL3
-  build).
-* **Documented `MCI_OPEN_PARMS`/`MCI_PLAY_PARMS`'s include-order-determined
-  shape resolution** (`TASK-24H-0107`) — verified via grep against both
-  games' `movie.cpp` that the `MCI_DGV_*`-aliased shape in `digitalv.h`
-  never actually wins (the real, sequencer-call shape in `mmsystem.h`
-  always does, due to include order); added explanatory comments at both
-  guard sites.
-* **Documented `free-direct`'s reach into internal
-  `FreeApi::Platform::ReadRssKB`** (`TASK-24H-0102`/`1219`) — added a new
-  `docs/scope.md` subsection naming this real, currently-unfixed coupling
-  explicitly; left the fix-or-accept decision open for a future task.
+* **Removed now-dead `NormalizePath`** (`TASK-24H-0615`, closes duplicate
+  `TASK-24H-1220`) — its only call site migrated to
+  `NormalizeFilesystemPath` earlier this session; re-grepped to confirm
+  zero remaining callers before removing.
+* **Created `docs/testing.md`; linked from README/Documentation.md**
+  (`TASK-24H-1208`/`0009`) — consolidates the "how to run tests"
+  instructions. Fixed a stale `ctest` command in `Documentation.md` missing
+  the `SDL_VIDEODRIVER`/`SDL_AUDIODRIVER` vars.
+* **Added 4 P2 tasks**: `TASK-24H-1105` (documented
+  `FreeApiDiagnosticsFastEnabled()` as an intentional alias, not a
+  behavior change); `TASK-24H-0209` (`DispatchMessageA` null-hwnd fallback
+  test); `TASK-24H-0213`/`0214` (dedicated `WM_TIMER`/`WM_MOUSEMOVE`
+  coalescing tests — each had only incidental coverage before).
+* **Implemented the 5 concrete gaps found by session 4's own audit fork**
+  (user explicitly requested a skeptical, independent re-verification of
+  the "0 AI-doable P0/P1 remain" claim before continuing):
+  1. `TASK-24H-1109`: `EnsureMidiBackend()` now latches on its first
+     failure so a persistent audio-backend-init failure logs once per
+     process, not once per `MCI_OPEN` call. New isolated-process test
+     binary `test_midi_backend_failure` (the latch is permanent for the
+     process lifetime, so it can't share a binary with passing MCI tests).
+  2. `TASK-24H-0506` follow-up: the `g_debugInput` atomic fix was
+     previously only *incidentally* covered by an unrelated test's timing.
+     Added `TestGDebugInputSurvivesRaceUnderSanitizer`, a dedicated,
+     deterministic race test — verified with a genuine negative control
+     (temporarily reverted the fix, confirmed this exact test independently
+     catches it under TSan in isolation, then reverted the revert).
+  3. `TASK-24H-0605`: `LoadImageA` now uses `NormalizeFilesystemPath`
+     instead of the weaker `NormalizePath`, matching every other
+     file-opening entry point.
+  4. `TASK-0011`: reconciled — the free-direct-bridge exception was
+     already documented in practice but the task status was never flipped
+     and it wasn't cross-referenced from the rule's own exceptions list;
+     fixed both.
+  5. **Sanitizer CMake/CTest support**: `FREE_API_SANITIZE`-configured
+     build trees now auto-resolve and `LD_PRELOAD` the matching sanitizer
+     runtime (plus `ASAN_OPTIONS=detect_leaks=0` for `address`) as each
+     test's `ENVIRONMENT` property — a plain `ctest` just works now.
 
 ## 4. Current blocker / main problem
 
-**No blocker.** All build configurations work, 22/22 tests pass everywhere
-(default and both sanitizer builds). **19 commits are sitting locally on
+**No blocker.** All build configurations work, 23/23 tests pass everywhere
+(default and both sanitizer builds). **26 commits are sitting locally on
 `develop`, not yet pushed to `origin/develop`** — push only if/when the
 user explicitly asks.
 
-**Process note carried forward from session 2→3:** mid-session-2, stopping
-to write a final report while 6 P1 tasks were still open was an explicit
-mistake, corrected by the user ("pracuj autonomně, proč ses zasekl?" —
-"work autonomously, why did you get stuck?"). The governing rule for any
-continuation of this work: **do not stop/summarize/report while safe,
-AI-doable P0/P1 work remains** — only the human-only playtests
-(`TASK-24H-0401`/`0403`) are legitimate exceptions. That condition is now
-met (0 AI-doable P0/P1 remain), so P2 cleanup is now the correct next tier
-per the original session's priority rules — continuing to work through it
-is expected, not optional busywork.
+**Process notes carried forward (still governing):**
+* Do not stop/summarize/report while safe, AI-doable P0/P1/P2 work remains
+  — only human-only playtests (`TASK-24H-0401`/`0403`) are legitimate
+  exceptions (session 2→3 correction).
+* Before trusting a "done" claim from a prior session, an independent,
+  skeptical re-verification is valuable and was explicitly requested once
+  already (session 4) — it found real, fixable gaps even though the
+  headline claim held up. Consider the same posture before extending this
+  file's claims further without re-checking them.
 
 ## 5. Known bugs and limitations
 
-* **Fixed across all three sessions:** scaled `StretchBlt`'s X/Y clamp
+* **Fixed across all four sessions:** scaled `StretchBlt`'s X/Y clamp
   asymmetry, the `_findfirst` session-table leak, the
   `FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC`/
   `FreeApiSetWindowFullscreen` header-declaration gap, the dead
   sibling-vendored SDL3 CMake fallback, unconditional startup/asset-load
-  logging, **and (session 3) a real use-after-free in
-  `FreeApiMmTimerBridge`, a real data race on `g_debugInput`, and an SDL
-  subsystem-refcount overflow in `timeSetEvent`** (see §3).
+  logging, a real use-after-free in `FreeApiMmTimerBridge`, a real data
+  race on `g_debugInput`, an SDL subsystem-refcount overflow in
+  `timeSetEvent`, **and (session 4) MIDI backend-failure log spam and
+  `LoadImageA`'s weak path normalization**.
 * **Confirmed environment artifact, not a code bug (unchanged):**
   `test_winuser_regressions` fails 6 checks under this sandbox's default
   Wayland display; passes under `SDL_VIDEODRIVER=dummy` or real X11/Xvfb.
 * **Documented, not fixed (real but out-of-scope):**
   `FreeApiDestroySurfaceDC`/`AsCompatDC` segfaults on a genuinely garbage,
   never-allocated pointer instead of returning `FALSE` safely — no
-  evidenced `free-direct` call site ever passes such a pointer. Fixing this
-  would need a general handle-validation/table framework, against this
-  project's scope discipline.
+  evidenced `free-direct` call site ever passes such a pointer.
 * **Documented, not fixed:** `CreateBitmap`'s 8-bit indexed path is
-  greyscale-only; only reached by planetblupi's minimap in fullscreen mode
-  (not the shipped `FullScreen=0` default).
-* **Documented, not fixed (session 3, new):** `../free-direct`'s
-  `Diagnostics.cpp` reaches past the documented bridge exception into the
-  internal `FreeApi::Platform::ReadRssKB()` symbol directly, bypassing the
-  existing (unused by `free-direct`) `FreeApiReadRssKB()` wrapper. Whether
-  to formalize this as a fourth bridge-header declaration or accept the
-  informal coupling (diagnostics-only, no gameplay stakes) is an open
-  decision for a future task — see `docs/scope.md`.
+  greyscale-only; only reached by planetblupi's minimap in fullscreen mode.
+* **Documented, not fixed:** `../free-direct`'s `Diagnostics.cpp` reaches
+  past the documented bridge exception into the internal
+  `FreeApi::Platform::ReadRssKB()` symbol directly. Fix-or-accept decision
+  intentionally left open — see `docs/scope.md`.
+* **Tracking gap, not yet fixed (found session 4):** MIDI-audio and
+  rendering human sign-off have no formal tracked task — see section 2.
 * **By design, not a bug (reconfirmed every session):** MCI digital-video/
   AVI is permanently declined.
-* **Still needs human verification — now fully actionable for both
-  features (session 3 traced the previously-missing `MK_CONTROL` path):**
-  `MK_SHIFT` drives planetblupi's drag-select multi-unit highlight
-  (`Enter × 4` from cold boot); `MK_CONTROL` drives a *separate*
-  level-editor decor flood-fill (`Enter × 2`, then click "Privé", then
-  click "Build" — see `docs/target-games.md`). See `plan.md`
-  `TASK-24H-0401`/`0403`.
-* **1 P1 task remains, human-only** (`TASK-24H-0401`) — see section 8.
-  `TASK-24H-0403` (the `MK_CONTROL` playtest) is P2 and also human-only.
+* **Still needs human verification, fully actionable for both features:**
+  `MK_SHIFT` drives planetblupi's drag-select (`Enter × 4` from cold boot);
+  `MK_CONTROL` drives level-editor decor flood-fill (`Enter × 2`, click
+  "Privé", click "Build" — see `docs/target-games.md`). `TASK-24H-0401`/`0403`.
 
 ## 6. Architecture notes
 
 Unchanged from prior sessions' notes except:
 
-* `src/winmm.cpp`'s `FreeApiMmTimerBridge` now receives the timer ID packed
-  directly into the SDL userdata pointer slot (`reinterpret_cast<void*>`),
-  **not** a pointer into `g_mmTimers`. Do not revert to passing a map-node
-  pointer — see the function's doc comment for the exact use-after-free
-  this avoids.
-* `FreeApi::Internal::g_debugInput` (`src/internal/FreeApiMessageQueue.{hpp,cpp}`)
-  is now `std::atomic_bool`, not `bool` — do not revert; it is written from
-  the main thread and read from the SDL timer thread.
-* `FREE_API_SANITIZE` (CMake cache option, `""`/`thread`/`address`) adds
-  `PUBLIC` compile/link sanitizer flags to the `free-api` target. To run it:
+* `src/internal/FreeApiPath.hpp`/`.cpp` no longer has `NormalizePath` —
+  only `NormalizeFilesystemPath` and `BuildCommandLine` remain. Every
+  path-normalizing call site in the codebase now uses the stronger
+  function.
+* `FREE_API_SANITIZE` sanitizer runs no longer need manual `LD_PRELOAD`:
   ```bash
   cmake -B build-tsan -DFREE_API_SANITIZE=thread -DFREE_API_USE_SYSTEM_SDL3=ON
-  cmake --build build-tsan --target test_timer_regressions
-  LD_PRELOAD="$(readlink -f "$(gcc -print-file-name=libtsan.so)")" \
-    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build-tsan/test_timer_regressions
+  cmake --build build-tsan -j"$(nproc)"
+  cd build-tsan && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
   ```
-  Swap `thread`/`libtsan.so` for `address`/`libasan.so` (add
-  `ASAN_OPTIONS=detect_leaks=0`) for AddressSanitizer. See
-  `docs/cmake-options.md` for the full writeup.
-* `docs/target-games.md` now has a "Manual playtest key/menu sequences"
-  section with both the `MK_SHIFT` and `MK_CONTROL` paths — check there
-  before re-deriving either from source.
+  Swap `thread` for `address` for AddressSanitizer. See
+  `docs/cmake-options.md` for the mechanism and the manual-fallback form.
+* `MidiState` (`src/MidiMusic.cpp`) has a new `backendInitFailed` latch —
+  do not remove it; without it, a persistent audio-init failure re-logs on
+  every `MCI_OPEN` (one per song/track load).
+* `tests/test_midi_backend_failure.cpp` is a deliberately separate binary
+  from `test_mci_sequences.cpp` — see its doc comment for why (the failure
+  latch above is permanent for the process, so it can't share a binary
+  with tests that need MCI_OPEN to keep succeeding).
 * Everything from prior sessions (`ApplyKeyboardModifierFlags`,
   `_findfirst` self-cleaning, `StretchBlt`'s symmetric clamp,
-  `include/free_api_bridge.h`, `cmake/test-fixtures/`) is unchanged.
+  `include/free_api_bridge.h`, `cmake/test-fixtures/`,
+  `FreeApiMmTimerBridge`'s packed-ID userdata, `g_debugInput` as
+  `std::atomic_bool`) is unchanged.
 
 ## 7. Useful commands
+
+See [`docs/testing.md`](docs/testing.md) for the full, canonical
+test-running reference (this section is a quick-reference convenience, not
+a duplicate source of truth):
 
 ```bash
 # Build via a real target game
@@ -249,20 +236,10 @@ cmake -S . -B build -DFREE_API_USE_SYSTEM_SDL3=ON -DFREE_API_BUILD_TESTS=ON
 cmake --build build -j"$(nproc)"
 cd build && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
 
-# ../free-direct standalone (depends on include/free_api_bridge.h)
-cd ../free-direct && cmake -S . -B build -DFREE_API_USE_SYSTEM_SDL3=ON
-cmake --build build -j"$(nproc)"
-
-# Run the full test suite -- SDL_VIDEODRIVER=dummy is NOT optional under
-# this sandbox's default (Wayland) display
-cd ../free-eggbert/cmake-build-debug/FREE_API && \
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
-cd ../planetblupi/build/FREE_API && \
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
-
-# Sanitizer build (new this session) -- see §6 above for the full LD_PRELOAD dance
+# Sanitizer build -- plain ctest works now, no manual LD_PRELOAD
 cmake -B build-tsan -DFREE_API_SANITIZE=thread -DFREE_API_USE_SYSTEM_SDL3=ON
 cmake --build build-tsan -j"$(nproc)"
+cd build-tsan && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
 ```
 
 See `docs/cmake-options.md` for the full, canonical build-mode reference.
@@ -272,72 +249,61 @@ No lint/formatter is configured in this repository.
 ## 8. Next smallest tasks
 
 **0 P0, 0 AI-doable P1 tasks remain TODO.** 1 P1 (`TASK-24H-0401`, human
-playtest) and 68 P2 + 50 P3 tasks remain. Per the original session's
-priority rules, P2 cleanup is now correctly in scope. Concrete starting
-points, roughly in order of value:
+playtest) and 55 P2 + 48 P3 tasks remain. Concrete starting points:
 
-1. **Human playtests** (`TASK-24H-0401`/`0403`) — both now have fully
-   documented, concrete key/menu sequences (`docs/target-games.md`); need
-   an actual human with a real display/input backend.
-2. **P2 test-coverage tasks** — several remaining P2s ask for a specific
-   new regression test with clear acceptance criteria (e.g.
-   `TASK-24H-0202` PeekMessageA filter-ignoring positive test,
-   `TASK-24H-0209`/`0213`/`0214` DispatchMessageA/coalescing tests,
-   `TASK-24H-0301` RegisterClassA field-discarding test,
-   `TASK-24H-0308`/`0311` GetSystemMetrics/ShowCursor edge-case tests,
-   `TASK-24H-0609`/`0613` GDI leak/rejection tests). Grep `plan.md` for
-   `Priority: P2` + `Type: Test` + `Status: TODO` together.
+1. **Human playtests** (`TASK-24H-0401`/`0403`) — both have fully
+   documented key/menu sequences (`docs/target-games.md`); need an actual
+   human with a real display/input backend.
+2. **Create tracked tasks for MIDI-audio/rendering human sign-off** — a
+   real gap found by session 4's audit (see section 2/5); currently only
+   exists as un-actioned prose.
 3. **P2 refactor/consolidation tasks with explicit "test parity first"
    gating** — the four-path-normalization-implementation cluster
-   (`TASK-24H-0703`–`0706`) explicitly requires characterization tests
-   *before* any consolidation; do not skip that ordering. Similarly
-   `TASK-24H-0103`/`0104`/`0105`/`0905` (duplicate declaration
-   consolidation) and `TASK-24H-0014` (CXX_STANDARD block consolidation).
-4. **Remaining P2 documentation tasks** — many follow the same pattern as
-   this session's batch (grep `Priority: P2` + `Type: Documentation` +
-   `Status: TODO`); several explicitly reference "duplicates TASK-24H-XXXX
-   — implement once, close both," so check for a paired ID before starting
-   one to avoid redundant work.
-5. **After P2: 50 P3 tasks remain** — lowest priority per the original
-   session's rules; mostly further documentation/hygiene polish.
+   (`TASK-24H-0703`–`0706`) requires characterization tests *before* any
+   consolidation. Similarly `TASK-24H-0103`/`0104`/`0105`/`0905`
+   (duplicate declaration consolidation) and `TASK-24H-0014`.
+4. **Remaining P2 test-coverage tasks** — grep `plan.md` for
+   `Priority: P2` + `Type: Test` + `Status: TODO`.
+5. **Remaining P2/P3 documentation tasks** — many reference "duplicates
+   TASK-24H-XXXX — implement once, close both"; check for a paired ID
+   before starting one.
 
 ## 9. Do not do yet
 
 Unchanged from prior sessions' list, plus:
 
+* Do not reintroduce `NormalizePath` (`src/internal/FreeApiPath.{hpp,cpp}`)
+  — it was removed as genuinely dead code; if a new caller ever needs
+  backslash-only normalization, that's new evidence requiring a fresh task,
+  not a revert.
+* Do not remove `MidiState::backendInitFailed` (`src/MidiMusic.cpp`) — a
+  persistent audio-init failure would re-log on every `MCI_OPEN` without it.
 * Do not revert `FreeApiMmTimerBridge` to passing a map-node pointer as SDL
-  userdata (`src/winmm.cpp`) — this reintroduces a real use-after-free; see
-  its doc comment.
+  userdata (`src/winmm.cpp`) — real use-after-free; see its doc comment.
 * Do not revert `g_debugInput` to plain `bool`
-  (`src/internal/FreeApiMessageQueue.{hpp,cpp}`) — this reintroduces a real
-  ThreadSanitizer-caught data race.
+  (`src/internal/FreeApiMessageQueue.{hpp,cpp}`) — real ThreadSanitizer-
+  caught data race; now has dedicated test coverage
+  (`TestGDebugInputSurvivesRaceUnderSanitizer`), not just incidental.
 * Do not remove `timeSetEvent`'s `SDL_WasInit(SDL_INIT_EVENTS)` guard
-  (`src/winmm.cpp`) — without it, enough `timeSetEvent` calls in one
-  process overflow SDL's byte-sized subsystem refcount and abort under an
-  assertions-enabled SDL3 build.
+  (`src/winmm.cpp`) — SDL subsystem refcount overflow otherwise.
 * Do not "fix" `free-direct`'s `ReadRssKB` reach without a deliberate
-  decision (formalize as a 4th bridge function, or accept as informal
-  coupling) — this session intentionally left it open, see `docs/scope.md`.
+  decision — intentionally left open, see `docs/scope.md`.
 * Do not implement real `WM_ACTIVATEAPP(0)` delivery, real `PeekMessageA`
-  filtering, or a true blocking `WaitMessage` — all three are now
-  explicitly documented, evidence-backed permanent decisions
-  (`docs/out-of-scope.md`).
+  filtering, or a true blocking `WaitMessage` — documented, evidence-backed
+  permanent decisions (`docs/out-of-scope.md`).
 * Do not remove `OutputDebugStringW`, `_chdir`/`_getcwd`, `HFONT`/
-  `HPALETTE`, or `winnt.h`'s COM-family typedefs — all now have explicit
-  keep-and-document decisions (`docs/out-of-scope.md`).
+  `HPALETTE`, or `winnt.h`'s COM-family typedefs — explicit keep-and-
+  document decisions (`docs/out-of-scope.md`).
 * Do not revert `_findnext`'s auto-erase-on-exhaustion fix
-  (`src/crt_io.cpp`) without understanding the leak it fixes.
-* Do not revert `StretchBlt`'s Y-axis clamp (`src/wingdi_blit.cpp`) to
-  the old skip-the-row behavior.
+  (`src/crt_io.cpp`).
+* Do not revert `StretchBlt`'s Y-axis clamp (`src/wingdi_blit.cpp`) to the
+  old skip-the-row behavior.
 * Do not re-declare `FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC`/
   `FreeApiSetWindowFullscreen` anywhere other than
   `include/free_api_bridge.h`.
 * Do not "fix" `FreeApiDestroySurfaceDC`'s garbage-pointer segfault with a
-  general handle-validation/table framework — documented as
-  out-of-scope-to-fix; only revisit with new evidence a real caller needs
-  it.
-* Do not implement a real palette lookup for `CreateBitmap`'s 8-bit path
-  — documented as out-of-scope per investigation (`TASK-24H-0602`/`0603`).
+  general handle-validation/table framework.
+* Do not implement a real palette lookup for `CreateBitmap`'s 8-bit path.
 * Do not touch `joystick`, MCI digital-video, DirectDraw, DirectSound,
   DirectPlay, or `free-direct` without a specific, separately-scoped
   request — except `include/free_api_bridge.h`'s three declarations.
@@ -351,18 +317,20 @@ Unchanged from prior sessions' list, plus:
 
 ```
 Read NEXT.md first, then skim docs/audit-24h-free-api.md's Executive
-Verdict (§1) for full context. plan.md has 175 new TASK-24H-* tasks; 56
+Verdict (§1) for full context. plan.md has 175 new TASK-24H-* tasks; 71
 are DONE (grep "Status: DONE" near "TASK-24H" to see which), 0 P0 and 0
-AI-doable P1 remain TODO (1 P1 left is human-only). Work through P2 tasks
-per section 8's "Next smallest tasks" list -- many explicitly duplicate
-another task ID ("implement once, close both"), check plan.md for that
-note before starting. Make small, verified improvements; batch closely-
-related documentation tasks together like this session did (16 closed in
-one commit). Run the exact verification commands each task specifies --
-at minimum the standalone build's ctest (22/22), ideally also both target
-games' ctest, and for anything touching src/winmm.cpp or cross-thread code
-also the sanitizer builds (§6). Do not touch anything listed in section 9.
-Do NOT stop/summarize while safe P0/P1/P2 work remains -- continue
-autonomously (see §4's process note). After finishing, update this file
+AI-doable P1 remain TODO (1 P1 left is human-only). Work through P2/P3
+tasks per section 8's "Next smallest tasks" list -- many explicitly
+duplicate another task ID ("implement once, close both"), check plan.md
+for that note before starting. Make small, verified improvements; batch
+closely-related tasks together. Run the exact verification commands each
+task specifies -- at minimum the standalone build's ctest (23/23), ideally
+also both target games' ctest, and for anything touching src/winmm.cpp,
+src/MidiMusic.cpp, or cross-thread code also the sanitizer builds (§6/§7
+-- now just a plain `ctest`, no manual LD_PRELOAD). Do not touch anything
+listed in section 9. Do NOT stop/summarize while safe P0/P1/P2/P3 work
+remains -- continue autonomously (see §4's process notes). Consider an
+independent skeptical re-check of prior "done" claims before extending
+them further, the way session 4 did. After finishing, update this file
 and plan.md's task statuses.
 ```
