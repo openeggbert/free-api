@@ -65,6 +65,9 @@ bool FreeApiDiagnosticsEnabled()
     return cached != 0;
 }
 
+// See the doc comment on this function's declaration
+// (src/internal/FreeApiDiagnostics.hpp) -- deliberately just a forwarding
+// call, not a separate/cheaper implementation.
 bool FreeApiDiagnosticsFastEnabled()
 {
     return FreeApiDiagnosticsEnabled();

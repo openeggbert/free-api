@@ -364,6 +364,57 @@ static void TestRegisterClassADiscardsNonWndprocFields()
     }
 }
 
+// TASK-24H-0209: DispatchMessageA's null-hwnd single-window fallback
+// (src/winuser_message.cpp:191-197) is real, reachable code -- WM_CLOSE is
+// pushed with whatever FindWindowById returns, which can be NULL -- but had
+// no direct test constructing a NULL-hwnd message and verifying it's
+// delivered to the sole registered window's own WndProc rather than falling
+// through to the generic DefWindowProcA(NULL, ...) path.
+static bool g_nullHwndFallbackReceived = false;
+static HWND g_nullHwndFallbackReceivedHwnd = nullptr;
+
+static LRESULT WINAPI NullHwndFallbackTrackingWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_USER + 77) {
+        g_nullHwndFallbackReceived = true;
+        g_nullHwndFallbackReceivedHwnd = hwnd;
+    }
+    return DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+static void TestDispatchMessageARoutesNullHwndToSoleRegisteredWindow()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = NullHwndFallbackTrackingWndProc;
+    wc.lpszClassName = "RegTest_NullHwndFallback";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_NullHwndFallback", "Test",
+                                 WS_POPUPWINDOW | WS_VISIBLE, 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the null-hwnd fallback test window");
+    if (!hwnd) return;
+
+    DrainMessages();
+    g_nullHwndFallbackReceived = false;
+    g_nullHwndFallbackReceivedHwnd = nullptr;
+
+    Check(PostMessageA(nullptr, WM_USER + 77, 0xABCD, 0) == TRUE,
+          "PostMessageA(NULL hwnd, ...) succeeds (matches real WM_CLOSE-with-unresolved-hwnd shape)");
+
+    DrainMessages();
+
+    Check(g_nullHwndFallbackReceived,
+          "DispatchMessageA's null-hwnd fallback delivers to the sole registered window's own WndProc "
+          "(not silently dropped or misrouted to DefWindowProcA(NULL, ...))");
+    Check(g_nullHwndFallbackReceivedHwnd == hwnd,
+          "the fallback passes the real window's HWND to the WndProc, not NULL");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
 static void TestPeekMessageNoRemoveAndRemove()
 {
     WNDCLASSA wc{};
@@ -674,6 +725,113 @@ static void TestMouseMoveLParamPackingAndModifierFlags()
 
     InjectMouseButton(sdlWin, /*down=*/false, SDL_BUTTON_RIGHT, 99.0f, 55.0f);
     DrainMessages();
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
+// TASK-24H-0214: WM_MOUSEMOVE coalescing (src/internal/FreeApiMessageQueue.cpp:73-86)
+// updates an already-queued WM_MOUSEMOVE for the same hwnd in place instead
+// of appending a second one -- mouse motion fires far faster than the game
+// can consume it, so without this every real click/keypress would queue up
+// behind stale motion. Existing tests exercise lParam packing/modifier
+// flags via a single injected motion; this directly and minimally proves
+// the coalescing invariant itself: two motions injected back-to-back
+// (before either is drained) must leave exactly one WM_MOUSEMOVE queued,
+// carrying the SECOND (latest) position, not the first.
+static void TestWmMouseMoveCoalescingKeepsOnlyLatestPosition()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_MouseMoveCoalesce";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_MouseMoveCoalesce", "Test",
+                                 WS_POPUPWINDOW | WS_VISIBLE,
+                                 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the mouse-move coalescing test window");
+    if (!hwnd) return;
+
+    DrainMessages();
+
+    auto* sdlWin = reinterpret_cast<SDL_Window*>(hwnd);
+
+    // Both injected before any drain -- PumpSdlEvents (triggered by the
+    // first PeekMessageA call below) processes both raw SDL motion events
+    // in the same pass, so the second PushMessage(WM_MOUSEMOVE, ...) call
+    // finds the first one already queued and coalesces into it.
+    InjectMouseMotion(sdlWin, 10.0f, 20.0f);
+    InjectMouseMotion(sdlWin, 30.0f, 40.0f);
+
+    int mouseMoveCount = 0;
+    LPARAM lastLParam = 0;
+    MSG msg{};
+    int limit = 200;
+    while (limit-- > 0) {
+        if (!PeekMessageA(&msg, hwnd, 0, 0, PM_REMOVE)) break;
+        if (msg.message == WM_MOUSEMOVE) {
+            ++mouseMoveCount;
+            lastLParam = msg.lParam;
+        }
+    }
+
+    Check(mouseMoveCount == 1,
+          "two WM_MOUSEMOVE events queued back-to-back for the same hwnd coalesce into exactly one queued message");
+    if (mouseMoveCount == 1) {
+        const int rx = (int)(lastLParam & 0xFFFF);
+        const int ry = (int)((lastLParam >> 16) & 0xFFFF);
+        Check(rx == 30 && ry == 40,
+              "the coalesced WM_MOUSEMOVE carries the SECOND (latest) position, not the first");
+    }
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
+// TASK-24H-0213: WM_TIMER coalescing (src/internal/FreeApiMessageQueue.cpp:91-101)
+// drops a duplicate WM_TIMER for the same hwnd+timer-id (wParam) when one is
+// already queued -- WM_TIMER is not a hard real-time ticker on real Win32
+// either, so piling up stale timer messages just produces jitter. Existing
+// timer tests exercise SetTimer/WM_TIMER delivery broadly but don't isolate
+// this specific invariant directly.
+static void TestWmTimerCoalescingKeepsOnlyOneQueuedMessagePerHwndAndId()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_TimerCoalesce";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_TimerCoalesce", "Test",
+                                 WS_POPUPWINDOW | WS_VISIBLE,
+                                 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the WM_TIMER coalescing test window");
+    if (!hwnd) return;
+
+    DrainMessages();
+
+    const UINT_PTR kTimerId = 4242;
+    // Posted directly (not via SetTimer) -- coalescing lives in PushMessage
+    // itself, so this exercises the exact same code path a real SetTimer-
+    // generated WM_TIMER would, without needing to wait on real elapsed time.
+    PostMessageA(hwnd, WM_TIMER, kTimerId, 0);
+    PostMessageA(hwnd, WM_TIMER, kTimerId, 0);
+
+    int timerCount = 0;
+    MSG msg{};
+    int limit = 200;
+    while (limit-- > 0) {
+        if (!PeekMessageA(&msg, hwnd, 0, 0, PM_REMOVE)) break;
+        if (msg.message == WM_TIMER && msg.wParam == kTimerId) {
+            ++timerCount;
+        }
+    }
+
+    Check(timerCount == 1,
+          "two WM_TIMER messages posted back-to-back for the same hwnd+timer-id coalesce into exactly one queued message");
 
     DestroyWindow(hwnd);
     DrainMessages();
@@ -1063,11 +1221,14 @@ int main()
     TestDefWindowProcHandlesWmClose();
     TestDestroyWindowDispatchesWmDestroySynchronously();
     TestRegisterClassADiscardsNonWndprocFields();
+    TestDispatchMessageARoutesNullHwndToSoleRegisteredWindow();
     TestPeekMessageNoRemoveAndRemove();
     TestPeekMessageAIgnoresNonZeroFilterArguments();
     TestPeekMessageANeverSleepsOnEmptyQueue();
     TestGetMessageReturnsFalseOnQuit();
     TestMouseMoveLParamPackingAndModifierFlags();
+    TestWmMouseMoveCoalescingKeepsOnlyLatestPosition();
+    TestWmTimerCoalescingKeepsOnlyOneQueuedMessagePerHwndAndId();
     TestApplyKeyboardModifierFlagsHelperWithSyntheticKeystate();
     TestClientToScreenTracksWindowPositionNotStale();
     TestSetCursorPosAndGetCursorPosRoundTrip();

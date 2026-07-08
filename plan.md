@@ -1976,7 +1976,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0209: Add a regression test exercising DispatchMessageA's null-hwnd single-window fallback path
-Status: TODO
+Status: DONE — added TestDispatchMessageARoutesNullHwndToSoleRegisteredWindow (tests/test_winuser_regressions.cpp): registers one window, PostMessageA(NULL, WM_USER+77, ...), drains, asserts delivery to the sole window's own WndProc with the correct HWND. Verified passing (23/23 suite).
 Priority: P2
 Area: WinUser
 Type: Test
@@ -2074,7 +2074,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0213: Add a dedicated regression test for WM_TIMER message coalescing
-Status: TODO
+Status: DONE — added TestWmTimerCoalescingKeepsOnlyOneQueuedMessagePerHwndAndId (tests/test_winuser_regressions.cpp): two PostMessageA(hwnd, WM_TIMER, id, 0) calls back-to-back, drains, asserts exactly one WM_TIMER with that id survives. Verified passing (23/23 suite).
 Priority: P2
 Area: WinUser
 Type: Test
@@ -2098,7 +2098,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0214: Add a dedicated regression test for WM_MOUSEMOVE message coalescing
-Status: TODO
+Status: DONE — added TestWmMouseMoveCoalescingKeepsOnlyLatestPosition (tests/test_winuser_regressions.cpp): two InjectMouseMotion calls back-to-back before draining, asserts exactly one WM_MOUSEMOVE survives and carries the second (latest) position. Verified passing (23/23 suite).
 Priority: P2
 Area: WinUser
 Type: Test
@@ -4678,7 +4678,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1105: Clarify or rename the misleading FreeApiDiagnosticsFastEnabled() alias
-Status: TODO
+Status: DONE — added explanatory comments to the declaration (src/internal/FreeApiDiagnostics.hpp) and definition (FreeApiDiagnostics.cpp) stating it's intentionally identical to FreeApiDiagnosticsEnabled(), exists only to mark hot-path call sites semantically. No call sites touched, no behavior change.
 Priority: P2
 Area: Diagnostics
 Type: Cleanup

@@ -34,6 +34,16 @@ void AdjustDiagLiveBytes(std::atomic<int64_t>& liveCounter,
                          int64_t delta);
 
 bool FreeApiDiagnosticsEnabled();
+
+// TASK-24H-1105: intentionally identical to FreeApiDiagnosticsEnabled()
+// above -- same cached O(1) static-int check, not a distinct or cheaper
+// code path despite the "Fast" name. Exists only to mark, semantically,
+// that a call site (message dispatch, message-queue coalescing -- see
+// src/winuser_message.cpp and src/internal/FreeApiMessageQueue.cpp) is on a
+// genuinely hot path and was deliberately checked for cost, not to signal a
+// different implementation. Do not "fix" this by making it actually
+// faster/differently cached without an evidenced need, and do not remove it
+// or its call sites without a separate, explicitly-approved cleanup task.
 bool FreeApiDiagnosticsFastEnabled();
 bool FreeApiGdiDebugEnabled();
 long FreeApiReadRssKB();
