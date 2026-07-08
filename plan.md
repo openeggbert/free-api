@@ -2636,7 +2636,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0402: Locate the in-game UI path to planetblupi's level-editor decor flood-fill mode
-Status: TODO
+Status: DONE — traced ChangePhase/CreateButtons/VK_RETURN handling in ../planetblupi/src/event.cpp and documented the exact sequence in docs/target-games.md's new "Manual playtest key/menu sequences" section: Enter x2 (to WM_PHASE_INIT) -> click "Privé" (WM_PHASE_PRIVATE, sets m_bPrivate=TRUE) -> click "Build" (WM_PHASE_BUILD, hidden unless m_bPrivate; event.cpp:3038-3043). Also found WM_DECOR1 (a decor tool) is unconditionally auto-selected the instant WM_PHASE_BUILD is entered (event.cpp:2977-2985's SetState(WM_DECOR1,1)), so no further click is needed before a human can test MK_CONTROL. Traced from source only (research-only task, no source/test files modified), not run against a live build — a human tester should confirm before relying on it for TASK-24H-0403.
 Priority: P2
 Area: WinUser
 Type: Audit

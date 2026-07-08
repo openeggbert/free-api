@@ -59,3 +59,59 @@ are actually load-bearing:
   music (background music otherwise plays silently, which is not an error —
   see the README's "SoundFont requirement" section under "MIDI / MCI Music"
   for the exact lookup order and how to supply one).
+
+## Manual playtest key/menu sequences (planetblupi)
+
+`MK_SHIFT`/`MK_CONTROL` (see `docs/supported-apis.md`) each drive a distinct
+planetblupi feature with zero automated coverage (SDL's headless keyboard-
+state query can't fake real `SDL_GetKeyboardState()` results — see
+`tests/test_winuser_regressions.cpp:27-37`), so both require a real human
+playtest (`plan.md` `TASK-24H-0401`/`0402`/`0403`). Both sequences below were
+traced from `../planetblupi/src/event.cpp` source, not observed by running
+the game — a human tester should confirm they still hold.
+
+**`MK_SHIFT` — drag-select multi-unit highlight** (`event.cpp:3440,3472,3504`,
+live `WM_PHASE_PLAY` gameplay):
+
+From the cold-boot title/intro screens, press **Enter four times**
+(`WM_PHASE_INTRO1`→`INTRO2`→`INIT`→`INFO`→`PLAY`, `ChangePhase`'s VK_RETURN
+handling at `event.cpp:4811-4844`; dismiss the 30s attract-mode auto-demo
+with any keypress first if it triggers). Then hold Shift and drag over units
+to test the highlight.
+
+**`MK_CONTROL` — level-editor decor flood-fill** (`event.cpp:3843,3877,3908`,
+`WM_PHASE_BUILD`, TASK-24H-0402):
+
+Reaching the level editor needs two mouse clicks instead of pure keyboard —
+the keyboard-only `Enter × 4` path above never sets `m_bPrivate`, and the
+editor's entry button is hidden unless `m_bPrivate` is true
+(`SetHide(WM_PHASE_BUILD, bHide)`, `event.cpp:3038-3043`):
+
+1. Press Enter twice to reach the `WM_PHASE_INIT` title/mode-select screen
+   (same first two Enters as the `MK_SHIFT` sequence above).
+2. Click the **"Privé"** button (`WM_PHASE_PRIVATE`, string resource
+   `TX_BUTTON_PRIVE`=188, `event.cpp:130-135`; compiled out under `_DEMO`
+   builds). This sets `m_bPrivate=TRUE` and transitions to `WM_PHASE_INFO`
+   (`event.cpp:5052-5056`) — do **not** press Enter here, since Enter at
+   `WM_PHASE_INIT` skips straight to `WM_PHASE_INFO` without ever setting
+   `m_bPrivate`, leaving the editor entry button hidden.
+3. On the resulting info screen, click the now-visible **"Build"** button
+   (`WM_PHASE_BUILD`, string resource `TX_BUTTON_BUILDP`=110,
+   `event.cpp:231-237`; also compiled out under `_DEMO`). This calls
+   `ChangePhase(WM_PHASE_BUILD)` directly (the generic
+   `case WM_PHASE_*: ChangePhase(message);` handler, `event.cpp:5083`) —
+   again, do not press Enter (Enter at `WM_PHASE_INFO` goes to
+   `WM_PHASE_PLAY` instead, `event.cpp:4827-4835`).
+4. The level editor canvas (`WM_PHASE_BUILD`) is now showing. A decor tool
+   is **already active** the instant this screen appears —
+   `ChangePhase`'s own `WM_PHASE_BUILD` setup unconditionally runs
+   `SetState(WM_DECOR1, 1)` (`event.cpp:2977-2985`, before any further
+   click), so `GetState(WM_DECOR1)==1` (the "herbe"/terrain decor category)
+   holds immediately. No extra step is required before testing
+   `MK_CONTROL`; optionally click one of the five decor-category buttons
+   shown at the editor's left edge (`WM_DECOR1`-`WM_DECOR5`: terrain/
+   plants/buildings/blupi-characters/catastrophes, `event.cpp:826-864`) to
+   pick a different category first.
+5. Hold Ctrl and click (or drag) over the decor-placement area to test the
+   flood-fill (`ArrangeFill`) behavior — see `TASK-24H-0403` for the actual
+   playtest steps and where to record the result.
