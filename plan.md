@@ -5531,3 +5531,28 @@ Acceptance criteria:
 Out of scope:
 - Do not change `wsprintfA`'s implementation — test/documentation-only task; no bug was found in the real function.
 - Do not add support for format specifiers beyond what `vsnprintf` already provides (no custom Win32-specific format extensions) — none is evidenced by either game's real usage.
+
+---
+
+### TASK-24H-1225: Add direct test coverage and documentation for OutputDebugStringA
+Status: DONE — added TestOutputDebugStringAPrintsToStdoutAndIsNullSafe (tests/test_winuser_regressions.cpp, POSIX-only): verifies NULL-input safety and captures real stdout output via a dup2-based fd redirect to prove the exact printed content, matching both games' real call shape (plain string literal, no format specifiers). Hit and fixed two genuine, instructive bugs in the TEST itself while verifying across all three build trees (not in the real OutputDebugStringA implementation, which needed no changes): (1) the test's own read-back `fopen(absolutePath, "r")` call was silently rewritten by free-api's own global `#define fopen free_api_fopen` macro (this test file includes <windows.h>), which strips a leading slash from absolute paths -- turning the read-back into an unfindable relative lookup, while mkstemp/open/access (not macro-redirected) all correctly saw the real file the whole time, making this a confusing, inconsistent-looking failure. Fixed by using a relative temp filename throughout. (2) stdout is fully buffered when not a TTY, so a Check() call's printf output sitting unflushed in the buffer immediately before the dup2 redirect got flushed into the temp file ahead of (and, since fgets only reads one line, instead of) the real target content once fflush ran after the redirect. Fixed with an explicit fflush() immediately before dup2. Documented both as a general test-authoring caveat in docs/headers.md's fopen section, since any future test using an absolute path with a raw fopen() call in a file that includes <windows.h> would hit the same silent redirection.
+Priority: P1
+Area: WinBase
+Type: Test
+Evidence: src/winbase.cpp:64-68 (OutputDebugStringA); ../free-eggbert/src/misc.cpp:32; ../planetblupi/src/wave.cpp:234,264,268 (both games' real DirectSound-failure diagnostic call sites, plain string literals); found by a session-4 strict test-coverage audit fork -- real, live logic with zero test coverage, completely unclassified in both docs/supported-apis.md and docs/out-of-scope.md
+Depends on: None
+
+Problem:
+`OutputDebugStringA` is real, live logic (a null-checked `printf` to stdout, not a stub) on both games' DirectSound-failure diagnostic paths, but had zero test coverage and wasn't documented anywhere at all.
+
+Required work:
+- Add a direct test verifying NULL-input safety and the actual printed content, matching both games' real call shape.
+
+Acceptance criteria:
+- New test directly exercises `OutputDebugStringA`, verifying real output content, not just "doesn't crash".
+- Existing tests still pass.
+- No unrelated API is added.
+
+Out of scope:
+- Do not change `OutputDebugStringA`'s implementation — test-only task; no bug was found in the real function (only in this test's own first two drafts, both fixed before landing).
+- Do not add Windows-specific coverage for this POSIX-only test technique (dup2-based fd redirection) — out of scope for this session's Linux-only test environment.

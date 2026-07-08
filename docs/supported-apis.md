@@ -29,6 +29,7 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `WaitMessage` | WinUser | Yes | Yes | IMPLEMENTED (polling-based: checks queue, sleeps ~1ms once if empty, then returns `TRUE` unconditionally — not a true blocking wait, see `docs/out-of-scope.md`) | `test_winuser_regressions.cpp` |
 | `PostQuitMessage`/`PostMessageA` | WinUser | Yes | Yes | IMPLEMENTED (cross-thread-safe) | `test_timer_regressions.cpp` (stress test) |
 | `wsprintfA` | WinUser | Yes (`soundbass.cpp:142`, `sound.cpp:117`, sound-diagnostic path) | Yes (`sound.cpp:99`, same path) | IMPLEMENTED (`vsnprintf` into a fixed 1024-byte buffer) | `test_winuser_regressions.cpp` |
+| `OutputDebugStringA` | WinBase | Yes (`misc.cpp:32`, DirectSound-failure diagnostic path) | Yes (`wave.cpp:234,264,268`, same shape) | IMPLEMENTED (null-checked `printf` to stdout) | `test_winuser_regressions.cpp` |
 | `DefWindowProcA` (`WM_CLOSE`→destroy, `WM_DESTROY`→quit) | WinUser | Yes | Yes | IMPLEMENTED | `test_winuser_regressions.cpp` |
 | `GetClientRect` | WinUser | Yes | Yes (hot path) | IMPLEMENTED | `test_winuser_regressions.cpp` |
 | `SetTimer`/`KillTimer`/`WM_TIMER` | WinUser/Timers | dead | Yes (live) | IMPLEMENTED | `test_timer_regressions.cpp` |

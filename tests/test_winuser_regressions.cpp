@@ -53,6 +53,10 @@
 #include <atomic>
 #include <thread>
 
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
+
 // Internal, non-public helper (src/internal/FreeApiMessageQueue.cpp) --
 // forward-declared here purely so this test can exercise its OR-logic
 // directly with a synthetic keystate array, matching the established
@@ -1237,6 +1241,84 @@ static void TestWsprintfAFormatsAndHandlesEdgeCases()
     Check(strlen(longBuf) < 1024, "wsprintfA's actual written buffer content is bounded to the internal 1024-byte limit, not overflowed");
 }
 
+// TASK-24H-1225: OutputDebugStringA (src/winbase.cpp) is real, live logic
+// (a null-checked printf to stdout, not a stub) on both games' DirectSound-
+// failure diagnostic paths (free-eggbert misc.cpp:32; planetblupi
+// wave.cpp:234,264,268, called with plain string literals, no format
+// specifiers), but had zero test coverage and was completely unclassified
+// in both docs/supported-apis.md and docs/out-of-scope.md (found by a
+// session-4 strict test-coverage audit fork). Captures real stdout output
+// via dup2 (POSIX-only, matching this test suite's existing convention of
+// skipping POSIX-specific coverage on _WIN32) to verify the actual printed
+// content, not just "doesn't crash".
+//
+// IMPORTANT: the temp file is opened by a RELATIVE name, not an absolute
+// "/tmp/..." path -- this test file #includes <windows.h>, which globally
+// redefines `fopen` to `free_api_fopen` (include/windows.h,
+// docs/headers.md's "Why windows.h globally redefines fopen"). That
+// wrapper normalizes every path through NormalizeFilesystemPath, which
+// deliberately strips a leading slash so a game's rooted-looking path
+// (e.g. "\User\save.xch") stays relative to CWD instead of escaping to the
+// real filesystem root (TASK-24H-0708). An earlier version of this test
+// used an absolute "/tmp/..." path for the read-back fopen() call, which
+// got silently rewritten into a relative lookup that could never find the
+// file -- `mkstemp`/`open`/`access` (none of which go through the fopen
+// macro) all correctly saw the real file the whole time, only the
+// macro-redirected `fopen()` call was affected. Fixed by using a bare
+// relative filename throughout, which free_api_fopen resolves identically
+// to the real fopen (no leading slash to strip).
+#if !defined(_WIN32)
+static void TestOutputDebugStringAPrintsToStdoutAndIsNullSafe()
+{
+    Check(true, "OutputDebugStringA(nullptr) does not crash (exercised below, before any assertion could run if it did)");
+    OutputDebugStringA(nullptr);
+
+    char tmpPath[] = "free-api-odsa-test-XXXXXX"; // relative to CWD -- see comment above
+    int tmpFd = mkstemp(tmpPath);
+    Check(tmpFd >= 0, "temp file created to capture OutputDebugStringA's real stdout output");
+    if (tmpFd < 0) return;
+
+    fflush(stdout);
+    int savedStdoutFd = dup(STDOUT_FILENO);
+    Check(savedStdoutFd >= 0, "original stdout fd saved for restoration");
+
+    // Flush again, immediately before redirecting: when stdout isn't a
+    // TTY it's fully buffered, so the Check() call directly above may
+    // still have unflushed text sitting in stdout's user-space buffer.
+    // dup2 only changes what the *file descriptor* points to -- it has no
+    // effect on that already-buffered text, which would otherwise get
+    // flushed into this test's temp file ahead of (and instead of, since
+    // fgets below only reads one line) OutputDebugStringA's own output.
+    fflush(stdout);
+    dup2(tmpFd, STDOUT_FILENO);
+    OutputDebugStringA("Failed to create sound buffer\n");
+    fflush(stdout);
+
+    // Restore stdout before making any further Check()/printf() calls --
+    // every other test in this binary depends on real stdout working.
+    dup2(savedStdoutFd, STDOUT_FILENO);
+    close(savedStdoutFd);
+    close(tmpFd);
+
+    FILE* readBack = fopen(tmpPath, "r");
+    char captured[256] = {0};
+    if (readBack) {
+        fgets(captured, sizeof(captured), readBack);
+        fclose(readBack);
+    }
+    remove(tmpPath);
+
+    // Uses strstr rather than strcmp: this redirect window is on the main
+    // thread with nothing else running between dup2 and fflush, so in
+    // practice the capture is exact, but asserting "contains" rather than
+    // "equals" keeps this test robust against any incidental extra output
+    // rather than being needlessly brittle about exact byte-for-byte
+    // buffer contents, which isn't the property under test.
+    Check(strstr(captured, "Failed to create sound buffer\n") != nullptr,
+          "OutputDebugStringA actually prints its argument's exact text to stdout, matching both games' real call shape");
+}
+#endif
+
 int main()
 {
     printf("[winuser-regressions] Starting\n");
@@ -1272,6 +1354,9 @@ int main()
     TestSetCursorReturnsPreviousHandle();
     TestLoadCursorAAndLoadIconAReturnNonNullForAllRealNames();
     TestWsprintfAFormatsAndHandlesEdgeCases();
+#if !defined(_WIN32)
+    TestOutputDebugStringAPrintsToStdoutAndIsNullSafe();
+#endif
 
     SDL_Quit();
 

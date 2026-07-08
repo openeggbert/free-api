@@ -48,3 +48,18 @@ normalization transparently, without touching either game's source at all.
 
 See `tests/test_file_regressions.cpp` for the regression coverage over
 `free_api_fopen`'s backslash/case-fallback behavior.
+
+**Test-author caveat (found while writing `TASK-24H-1225`):** this applies
+to test files too, not just game source — any `tests/*.cpp` that
+`#include <windows.h>` gets this same global `fopen`→`free_api_fopen`
+redirect for its *own* `fopen()` calls, including ones that have nothing to
+do with the WinAPI surface under test. Concretely: a test that does
+`fopen("/tmp/some-file", "r")` will have that absolute path silently
+normalized by `NormalizeFilesystemPath` — which strips the leading
+slash — turning it into a *relative* lookup that can never find the file.
+`mkstemp`/`open`/`access` and other non-`fopen` POSIX calls are **not**
+affected (only the literal `fopen` token is macro-redirected), which makes
+this a confusing, inconsistent-looking failure if you don't know the macro
+is there: those other calls succeed against the real absolute path while
+`fopen()` alone fails. Prefer relative temp-file paths (resolved against
+the test's CWD) in any test file that includes `<windows.h>`.
