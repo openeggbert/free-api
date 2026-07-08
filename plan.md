@@ -886,10 +886,12 @@ backlog above — it does not replace it. Every task below cites concrete
 * **P3** — pure docs cleanup, compile-only stub classification,
   nice-to-have verification.
 
-175 atomic tasks total, organized by area: Build/Integration (17),
-Scope/Headers (18), WinUser message-loop (17), Window/Cursor (16), Input
-(12), Timers (9), GDI (16), Files (14), Resources (8), WinMM/MIDI/MCI
-(10), Joystick (5), Diagnostics (13), Documentation (20).
+175 atomic tasks total (177 as of session 4, which added `TASK-24H-1221`/
+`1222` for the previously-untracked MIDI-audio/rendering human sign-off
+gap), organized by area: Build/Integration (17), Scope/Headers (18),
+WinUser message-loop (17), Window/Cursor (16), Input (12), Timers (9), GDI
+(17), Files (14), Resources (8), WinMM/MIDI/MCI (11), Joystick (5),
+Diagnostics (13), Documentation (20).
 
 ## Build and Integration
 
@@ -5408,4 +5410,70 @@ Out of scope:
 - Do not remove `HFONT`/`HPALETTE`.
 - Do not add any font/palette-creation API.
 
-</content>
+---
+
+### TASK-24H-1221: Human-playtest MIDI audio sign-off for both target games
+Status: TODO
+Priority: P1
+Area: WinMM
+Type: Verification
+Evidence: NEXT.md (multiple sessions' prose mentions "MIDI audio... still needed" under human playtests, with no formal task ever filed for it); TASK-24H-1109 (MCI_OPEN log-spam fix, session 4); src/MidiMusic.cpp; docs/README's "SoundFont requirement" section
+Depends on: None
+
+Problem:
+Every session since the original 24-hour audit has listed "MIDI audio" as an outstanding human-verification item in `NEXT.md`'s prose, but no `TASK-24H-*` entry was ever filed for it — `TASK-24H-1209`'s evidence line cites "NEXT.md §8 items 5-6" for this, but that citation doesn't resolve to anything concrete in any preserved version of `NEXT.md` (found by session 4's independent audit). MIDI playback has real automated coverage for the mechanical MCI_OPEN/PLAY/CLOSE sequence (`tests/test_mci_sequences.cpp`) and for the specific log-spam regression this session fixed (`tests/test_midi_backend_failure.cpp`), but neither of those hears actual audio or exercises a real soundfont-equipped system across a real play session — only a human with real speakers/headphones and a real audio device can confirm music is actually audible, isn't corrupted/glitching, and that the MCI_OPEN log-spam fix holds up outside a synthetic single-process test.
+
+Required work (a human playtest, not an implementation task):
+- Ensure a `.sf2` SoundFont is available at one of the documented lookup locations (see README's "SoundFont requirement" section) or set `FREE_API_SOUNDFONT`.
+- Launch `../free-eggbert`'s built game; confirm the process starts and reaches a screen/state where background MIDI music would normally play (per that game's own menu/level flow). Listen for audible, non-corrupted music (not silence-by-error, not garbled/stuttering playback).
+- Launch `../planetblupi`'s built game; repeat the same audible-music check for its own menu/gameplay music.
+- For both games, watch the console/log output (run with `FREE_API_DEBUG_MIDI=1` for detail if needed) across a real session involving multiple level/track loads (e.g. navigating menus, starting and restarting missions) and confirm no repeated `[midi] SDL_InitSubSystem(AUDIO) failed`/`SDL_OpenAudioDeviceStream failed` log spam appears more than once per process, per `TASK-24H-1109`'s fix (this can only be fully exercised on a machine with a genuinely unavailable audio device — if the test machine's audio works fine, note that the log-spam scenario itself wasn't triggered and only confirm normal playback instead).
+- Record the exact steps and pass/fail outcome for both games separately in `NEXT.md`.
+
+Acceptance criteria:
+- Both target games are confirmed to start successfully as part of this playtest (a prerequisite check, not the focus).
+- MIDI/background music is confirmed audible and non-corrupted in both games (or the absence of a soundfont is confirmed to degrade gracefully to silence, not an error/crash, per documented behavior).
+- No repeated `MCI_OPEN`-triggered audio-backend-failure log spam is observed across a real multi-level-load session in either game.
+- Outcome (pass/fail, with specifics) is recorded in `NEXT.md`, distinctly for each game.
+- If any behavior fails to match the expected (audible music, or graceful silent fallback, or non-repeating failure logs), a new follow-up bug task is filed citing the exact observed vs. expected behavior.
+- No source or test files are modified as part of performing this playtest itself (recording the outcome in `NEXT.md` is the only expected file change).
+
+Out of scope:
+- Do not implement MCI digital-video/AVI playback as part of this task — permanently out of scope (see `docs/out-of-scope.md`).
+- Do not add new MIDI/MCI APIs, new debug flags, or change `MidiState`'s backend-failure latch as part of this playtest — this task verifies existing, already-implemented behavior only.
+- Do not attempt this task headlessly/via SDL's dummy audio driver — that cannot produce or verify actually-audible sound; a real audio backend and real listening are required.
+
+---
+
+### TASK-24H-1222: Human-playtest rendering/asset-loading/save-load sign-off for both target games
+Status: TODO
+Priority: P1
+Area: GDI
+Type: Verification
+Evidence: NEXT.md (multiple sessions' prose mentions "rendering" as still needed under human playtests, with no formal task ever filed for it); TASK-24H-1109/0605/0601 (this cycle's real GDI/rendering-path fixes); docs/out-of-scope.md's "RES_<id>" placeholder note; docs/scope.md
+Depends on: None
+
+Problem:
+Like MIDI audio (`TASK-24H-1221`), "rendering" has been mentioned as an outstanding human-verification item in `NEXT.md`'s prose across multiple sessions but was never filed as a real, trackable task. Free API's GDI/blit subsystem has extensive automated coverage of individual functions in isolation (`tests/test_gdi_regressions.cpp`) — including this cycle's flagship `StretchBlt` Y-clamp fix (`TASK-24H-0601`) and this session's `LoadImageA` path-normalization fix (`TASK-24H-0605`) — but no test can confirm the *visual, end-to-end* result actually looks correct on screen across a real play session, nor that `LoadStringA`'s real string-table data never surfaces its `"RES_<id>"` debug placeholder in shipped game UI (`docs/out-of-scope.md`'s explicit "never acceptable in shipped game UI" rule), nor that save/load round-trips still work when driven through a real interactive session rather than a synthetic test fixture.
+
+Required work (a human playtest, not an implementation task):
+- Launch `../free-eggbert`'s built game; confirm the process starts, the window appears, and sprite/background assets visibly render (menus, in-level graphics) without corruption, wrong colors, missing tiles, or obviously misplaced content.
+- Launch `../planetblupi`'s built game; repeat the same visual check, including its level-editor/build-mode screen if convenient (exercises the `CreateBitmap` 8-bit greyscale-only path documented as a known limitation in fullscreen mode — note if this is visibly wrong, though it's already a known, accepted gap).
+- For both games, watch all visible UI text (menus, buttons, tooltips) across normal navigation and confirm no string ever displays as a literal `"RES_<id>"` placeholder (e.g. `"RES_106"`) — every real UI string should show real, readable text.
+- For both games, exercise a real save and load cycle (or the closest equivalent each game exposes — e.g. planetblupi's mission/private-level save slots) and confirm the game resumes in the expected state, not a crash or corrupted/blank state.
+- Record the exact steps and pass/fail outcome for both games separately in `NEXT.md`.
+
+Acceptance criteria:
+- Both target games are confirmed to start successfully as part of this playtest (a prerequisite check, not the focus).
+- Rendering/blitting/image loading is confirmed visually correct (no corruption, wrong colors, or missing assets) in both games.
+- No `"RES_<id>"` placeholder string is observed in either game's shipped UI during normal navigation.
+- A real save/load cycle is confirmed to work correctly in at least one of the two games (both if the tester has time).
+- Outcome (pass/fail, with specifics) is recorded in `NEXT.md`, distinctly for each game.
+- If any behavior fails to match the expected (correct rendering, no `RES_<id>` leakage, working save/load), a new follow-up bug task is filed citing the exact observed vs. expected behavior.
+- No source or test files are modified as part of performing this playtest itself (recording the outcome in `NEXT.md` is the only expected file change).
+
+Out of scope:
+- Do not fix `CreateBitmap`'s known 8-bit greyscale-only limitation as part of this task — already documented, accepted, out of scope (`TASK-24H-0602`/`0603`).
+- Do not fix `FreeApiDestroySurfaceDC`'s garbage-pointer segfault as part of this task — already documented, accepted, out of scope.
+- Do not add any new GDI/rendering API, debug flag, or resource-loading behavior as part of this playtest — this task verifies existing, already-implemented behavior only.
+- Do not attempt this task headlessly/via SDL's dummy video driver — that cannot produce or verify actually-correct visual output; a real display backend and real looking are required.
