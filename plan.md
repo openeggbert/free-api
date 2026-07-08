@@ -2403,7 +2403,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0309: Document MoveWindow's confirmed dead-reach status; no logical-state-update implementation
-Status: TODO
+Status: DONE — added a code comment at MoveWindow's definition (src/winuser_window.cpp) and a new docs/out-of-scope.md section stating it never updates g_freeApiWindowStates's logical width/height, and that this is safe only because the sole call sites (movie.cpp in both games) are dead-reach behind the always-failing AVI probe. No behavior change.
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -2504,7 +2504,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0313: Add missing docs/supported-apis.md rows for DestroyWindow, MoveWindow, and SetWindowTextA
-Status: TODO
+Status: DONE — added all three rows: DestroyWindow (synchronous WM_DESTROY dispatch, tested), MoveWindow (PARTIAL, dead-reach caveat per TASK-24H-0309, no test since dead-reach), SetWindowTextA (IMPLEMENTED, now tested via TASK-24H-1226).
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -5556,3 +5556,27 @@ Acceptance criteria:
 Out of scope:
 - Do not change `OutputDebugStringA`'s implementation — test-only task; no bug was found in the real function (only in this test's own first two drafts, both fixed before landing).
 - Do not add Windows-specific coverage for this POSIX-only test technique (dup2-based fd redirection) — out of scope for this session's Linux-only test environment.
+
+---
+
+### TASK-24H-1226: Add direct test coverage for SetWindowTextA
+Status: DONE — added TestSetWindowTextASetsRealWindowTitle (tests/test_winuser_regressions.cpp): creates a real window, calls SetWindowTextA, and verifies via SDL_GetWindowTitle that the real SDL window's title actually changed (not just "doesn't crash"); also covers NULL hWnd (returns FALSE) and NULL lpString (treated as empty title, not an error). Companion to TASK-24H-0313 (which added the missing docs/supported-apis.md row) -- the audit fork that found this gap noted 0313 only tracked the documentation gap, not a missing test.
+Priority: P1
+Area: WinUser
+Type: Test
+Evidence: src/winuser_window.cpp:293-302 (SetWindowTextA); ../free-eggbert/src/blupi.cpp:532,541; ../planetblupi/src/blupi.cpp:453,462 (both games' real window-title-setting call sites); found by a session-4 strict test-coverage audit fork -- real, live logic (a genuine SDL_SetWindowTitle call) with zero test coverage
+Depends on: None
+
+Problem:
+`SetWindowTextA` is real, live logic used by both games to set their window title, but had zero test coverage — only documented as a missing row (`TASK-24H-0313`), never as a missing test.
+
+Required work:
+- Add a direct test that creates a real window, calls `SetWindowTextA`, and verifies the actual SDL window title changed via `SDL_GetWindowTitle`.
+
+Acceptance criteria:
+- New test directly exercises `SetWindowTextA`, verifying the real title change, not just "doesn't crash".
+- Existing tests still pass.
+- No unrelated API is added.
+
+Out of scope:
+- Do not change `SetWindowTextA`'s implementation — test-only task; no bug was found in the real function.

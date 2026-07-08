@@ -31,6 +31,9 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `wsprintfA` | WinUser | Yes (`soundbass.cpp:142`, `sound.cpp:117`, sound-diagnostic path) | Yes (`sound.cpp:99`, same path) | IMPLEMENTED (`vsnprintf` into a fixed 1024-byte buffer) | `test_winuser_regressions.cpp` |
 | `OutputDebugStringA` | WinBase | Yes (`misc.cpp:32`, DirectSound-failure diagnostic path) | Yes (`wave.cpp:234,264,268`, same shape) | IMPLEMENTED (null-checked `printf` to stdout) | `test_winuser_regressions.cpp` |
 | `DefWindowProcA` (`WM_CLOSE`→destroy, `WM_DESTROY`→quit) | WinUser | Yes | Yes | IMPLEMENTED | `test_winuser_regressions.cpp` |
+| `DestroyWindow` | WinUser | Yes | Yes | IMPLEMENTED (synchronously dispatches `WM_DESTROY` to the window's own `WndProc` before tearing the window down) | `test_winuser_regressions.cpp` (`TestDestroyWindowDispatchesWmDestroySynchronously`) |
+| `MoveWindow` | WinUser | dead-reach only | dead-reach only | PARTIAL — repositions/resizes the real SDL window, but never updates `g_freeApiWindowStates`'s logical width/height (`GetClientRect`/`ClientToScreen`/`ScreenToClient` would go stale after a real resize). Confirmed harmless: the only call sites in either game are inside `movie.cpp`, itself dead-reach since the AVI probe always fails (`TASK-24H-0309`) | none (dead-reach; not exercised by either game in practice) |
+| `SetWindowTextA` | WinUser | Yes (`blupi.cpp:532,541`) | Yes (`blupi.cpp:453,462`) | IMPLEMENTED (real `SDL_SetWindowTitle` call) | `test_winuser_regressions.cpp` (`TestSetWindowTextASetsRealWindowTitle`) |
 | `GetClientRect` | WinUser | Yes | Yes (hot path) | IMPLEMENTED | `test_winuser_regressions.cpp` |
 | `SetTimer`/`KillTimer`/`WM_TIMER` | WinUser/Timers | dead | Yes (live) | IMPLEMENTED | `test_timer_regressions.cpp` |
 | `timeSetEvent`/`timeKillEvent` | WinMM/Timers | Yes (live) | dead | IMPLEMENTED | `test_timer_regressions.cpp` |

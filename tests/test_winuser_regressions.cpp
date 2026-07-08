@@ -1319,6 +1319,43 @@ static void TestOutputDebugStringAPrintsToStdoutAndIsNullSafe()
 }
 #endif
 
+// TASK-24H-1226: SetWindowTextA (src/winuser_window.cpp) is real, live
+// logic (a genuine SDL_SetWindowTitle call, not a stub) used by both games
+// to set their window title (free-eggbert blupi.cpp:532,541; planetblupi
+// blupi.cpp:453,462), but had zero test coverage and no
+// docs/supported-apis.md row (found by a session-4 strict test-coverage
+// audit fork; TASK-24H-0313 tracked only the missing doc row until now).
+static void TestSetWindowTextASetsRealWindowTitle()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_SetWindowText";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_SetWindowText", "Initial Title",
+                                 WS_POPUPWINDOW | WS_VISIBLE, 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the SetWindowTextA test window");
+    if (!hwnd) return;
+
+    Check(SetWindowTextA(hwnd, "New Title") == TRUE, "SetWindowTextA returns TRUE for a valid window");
+
+    auto* sdlWindow = reinterpret_cast<SDL_Window*>(hwnd);
+    const char* actualTitle = SDL_GetWindowTitle(sdlWindow);
+    Check(actualTitle != nullptr && strcmp(actualTitle, "New Title") == 0,
+          "SetWindowTextA actually changes the real SDL window's title, matching both games' real usage (setting the title bar text)");
+
+    Check(SetWindowTextA(nullptr, "x") == FALSE, "SetWindowTextA(NULL hWnd, ...) returns FALSE instead of crashing");
+
+    Check(SetWindowTextA(hwnd, nullptr) == TRUE, "SetWindowTextA(hwnd, NULL) returns TRUE (treated as an empty title, not an error)");
+    const char* emptyTitle = SDL_GetWindowTitle(sdlWindow);
+    Check(emptyTitle != nullptr && emptyTitle[0] == '\0', "SetWindowTextA(hwnd, NULL) sets an empty title, not a crash or stale leftover");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
 int main()
 {
     printf("[winuser-regressions] Starting\n");
@@ -1357,6 +1394,7 @@ int main()
 #if !defined(_WIN32)
     TestOutputDebugStringAPrintsToStdoutAndIsNullSafe();
 #endif
+    TestSetWindowTextASetsRealWindowTitle();
 
     SDL_Quit();
 

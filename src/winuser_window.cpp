@@ -255,6 +255,14 @@ BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
     return TRUE;
 }
 
+// TASK-24H-0309: does NOT update g_freeApiWindowStates's logical
+// width/height, so GetClientRect/ClientToScreen/ScreenToClient's tracked
+// size would go stale after a real resize. Confirmed harmless, not a
+// TODO: the only call sites in either target game are inside movie.cpp,
+// itself dead-reach since the AVI probe always fails (see
+// docs/out-of-scope.md's MCI digital-video section) -- neither game's
+// live code path ever actually calls this. Do not add logical-state
+// tracking here without new evidence a real, reachable call site needs it.
 BOOL WINAPI MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint)
 {
     (void)bRepaint;

@@ -69,6 +69,22 @@ video playback — there is no evidence either game's actual player-visible
 behavior needs it, and doing so would require a video codec dependency this
 project has no other reason to take on.
 
+## `MoveWindow`'s stale logical-size tracking (TASK-24H-0309)
+
+**Confirmed harmless, not a TODO.** `MoveWindow` (`src/winuser_window.cpp`)
+repositions/resizes the real SDL window via `SDL_SetWindowPosition`/
+`SDL_SetWindowSize`, but never updates `g_freeApiWindowStates`'s tracked
+logical width/height — so `GetClientRect`/`ClientToScreen`/
+`ScreenToClient` would report stale dimensions after a real `MoveWindow`
+resize, if anything actually called `MoveWindow` on a live window.
+
+Nothing does: the only `MoveWindow` call sites in either target game are
+inside `movie.cpp`'s AVI-playback code path, which is itself dead-reach
+(see "MCI digital-video / AVI movie playback" above — the AVI probe always
+fails, so `movie.cpp`'s body, including its `MoveWindow` calls, never
+executes in either game). Do not add logical-state-update handling to
+`MoveWindow` without new evidence a real, reachable call site needs it.
+
 ## Resource subsystem: `FindResourceA` miss → file-based fallback
 
 **This is the actual, currently-working behavior, not a hypothetical or a
