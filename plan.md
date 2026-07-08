@@ -1087,7 +1087,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0009: Consolidate scattered build/test command documentation into one canonical reference
-Status: TODO
+Status: DONE — docs/cmake-options.md already accumulated the dummy-driver requirement, FREE_API_TARGET_GAME override examples, and the free-direct bridge build section across earlier sessions; this session added docs/testing.md as the companion test-workflow reference (TASK-24H-1208) and linked both from Documentation.md/README.md. NOTE: did not trim NEXT.md §7's command listing to a bare pointer as this task's own text asked, because TASK-24H-1208's out-of-scope clause explicitly says "do not remove the commands from NEXT.md §7 -- that section can stay as a session-log convenience" -- the two tasks' instructions conflict; kept NEXT.md's commands intact per the more conservative instruction.
 Priority: P2
 Area: Build
 Type: Documentation
@@ -5087,7 +5087,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1208: Create docs/testing.md consolidating the scattered "how to run tests" instructions
-Status: TODO
+Status: DONE — created docs/testing.md: standalone/target-game build+test invocations, the SDL_VIDEODRIVER=dummy/SDL_AUDIODRIVER=dummy requirement and why, running one test binary directly, the ExtractStringTable.cmake negative-path reproduction command, sanitizer runs, and the free-direct standalone check. Linked from Documentation.md's Build section (also fixed its stale ctest command to include the dummy-driver vars) and README.md's Build Instructions. NEXT.md §7's commands intentionally left intact per this task's own out-of-scope clause.
 Priority: P2
 Area: Docs
 Type: Documentation

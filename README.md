@@ -233,7 +233,10 @@ cmake --build build
 This is the default, sibling-of-a-target-game build. For every other
 supported build mode (standalone with a system-installed SDL3, building
 inside `../free-eggbert` or `../planetblupi`, and the relevant CMake
-options), see [`docs/cmake-options.md`](docs/cmake-options.md).
+options), see [`docs/cmake-options.md`](docs/cmake-options.md). For running
+the test suite (including the required `SDL_VIDEODRIVER`/`SDL_AUDIODRIVER`
+environment variables and sanitizer runs), see
+[`docs/testing.md`](docs/testing.md).
 
 ### Examples
 

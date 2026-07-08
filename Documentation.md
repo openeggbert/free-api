@@ -77,8 +77,14 @@ every flag below is **off** unless noted.
 ```bash
 cmake -B build -DFREE_API_BUILD_TESTS=ON
 cmake --build build
-ctest --test-dir build
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --test-dir build
 ```
+
+See [`docs/testing.md`](docs/testing.md) for the full test-running
+workflow (why the `SDL_VIDEODRIVER`/`SDL_AUDIODRIVER` vars above are
+required, running against each target game, sanitizer runs, etc.) and
+[`docs/cmake-options.md`](docs/cmake-options.md) for the full build-mode
+reference.
 
 ## Generating Doxygen HTML
 
