@@ -338,6 +338,83 @@ if(FREE_API_BUILD_TESTS)
     add_test(NAME check_no_hardcoded_paths
              COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoHardcodedPaths.cmake")
 
+    # TASK-24H-0801/0802: negative-path tests proving ExtractStringTable.cmake's
+    # fail-loud gates (REQUIRE_STRINGS, VERIFY_ID/VERIFY_TEXT, USED_IDS_FILE's
+    # missing-ID and duplicate-ID checks) actually fire on broken input,
+    # rather than being trusted by code-reading alone. Each uses the small
+    # cmake/test-fixtures/minimal-stringtable.rc fixture (one STRINGTABLE
+    # entry, IDS_TEST_STRING=42="Hello Test") and CTest's WILL_FAIL property
+    # to assert the underlying `cmake -P` invocation fails (non-zero exit /
+    # FATAL_ERROR), which CTest then reports as this *test* PASSING.
+    set(_free_api_st_fixture_rc "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures/minimal-stringtable.rc")
+    set(_free_api_st_fixture_header "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures/minimal-resource.h")
+
+    # Positive control: proves the fixture itself is valid and the extractor
+    # succeeds end-to-end (correct VERIFY_ID/VERIFY_TEXT, correct
+    # USED_IDS_FILE) -- so the negative tests below are known to be failing
+    # for the *specific broken parameter under test*, not some unrelated
+    # fixture problem.
+    add_test(NAME extract_string_table_fixture_positive_control
+             COMMAND ${CMAKE_COMMAND}
+                     -DOUTPUT_CPP=${CMAKE_CURRENT_BINARY_DIR}/test-fixtures-out/positive.cpp
+                     -DRC_FILE=${_free_api_st_fixture_rc}
+                     -DRC_ENCODING=UTF-8
+                     -DRESOURCE_HEADERS=${_free_api_st_fixture_header}
+                     -DREQUIRE_STRINGS=ON -DTARGET_GAME_NAME=test-fixture
+                     -DVERIFY_ID=42 "-DVERIFY_TEXT=Hello Test"
+                     -DUSED_IDS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures/used-ids-valid.txt
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake")
+
+    # REQUIRE_STRINGS: a missing .rc file must be a FATAL_ERROR, not a
+    # silent empty-table fallback, when REQUIRE_STRINGS is set.
+    add_test(NAME extract_string_table_require_strings_fails_on_missing_rc
+             COMMAND ${CMAKE_COMMAND}
+                     -DOUTPUT_CPP=${CMAKE_CURRENT_BINARY_DIR}/test-fixtures-out/missing-rc.cpp
+                     -DRC_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures/does-not-exist.rc
+                     -DRC_ENCODING=UTF-8
+                     -DRESOURCE_HEADERS=${_free_api_st_fixture_header}
+                     -DREQUIRE_STRINGS=ON -DTARGET_GAME_NAME=test-fixture
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake")
+    set_tests_properties(extract_string_table_require_strings_fails_on_missing_rc PROPERTIES WILL_FAIL TRUE)
+
+    # VERIFY_ID/VERIFY_TEXT: a known-ID/text mismatch must be a FATAL_ERROR.
+    add_test(NAME extract_string_table_verify_id_fails_on_text_mismatch
+             COMMAND ${CMAKE_COMMAND}
+                     -DOUTPUT_CPP=${CMAKE_CURRENT_BINARY_DIR}/test-fixtures-out/verify-mismatch.cpp
+                     -DRC_FILE=${_free_api_st_fixture_rc}
+                     -DRC_ENCODING=UTF-8
+                     -DRESOURCE_HEADERS=${_free_api_st_fixture_header}
+                     -DREQUIRE_STRINGS=ON -DTARGET_GAME_NAME=test-fixture
+                     -DVERIFY_ID=42 "-DVERIFY_TEXT=This Is Not The Real Text"
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake")
+    set_tests_properties(extract_string_table_verify_id_fails_on_text_mismatch PROPERTIES WILL_FAIL TRUE)
+
+    # USED_IDS_FILE missing-ID gate: a manifest listing an ID absent from
+    # the extracted table must be a FATAL_ERROR.
+    add_test(NAME extract_string_table_used_ids_fails_on_missing_id
+             COMMAND ${CMAKE_COMMAND}
+                     -DOUTPUT_CPP=${CMAKE_CURRENT_BINARY_DIR}/test-fixtures-out/missing-id.cpp
+                     -DRC_FILE=${_free_api_st_fixture_rc}
+                     -DRC_ENCODING=UTF-8
+                     -DRESOURCE_HEADERS=${_free_api_st_fixture_header}
+                     -DREQUIRE_STRINGS=ON -DTARGET_GAME_NAME=test-fixture
+                     -DUSED_IDS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures/used-ids-missing.txt
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake")
+    set_tests_properties(extract_string_table_used_ids_fails_on_missing_id PROPERTIES WILL_FAIL TRUE)
+
+    # USED_IDS_FILE duplicate-ID gate: a manifest listing the same ID twice
+    # must be a FATAL_ERROR, checked before the missing-ID check.
+    add_test(NAME extract_string_table_used_ids_fails_on_duplicate_id
+             COMMAND ${CMAKE_COMMAND}
+                     -DOUTPUT_CPP=${CMAKE_CURRENT_BINARY_DIR}/test-fixtures-out/duplicate-id.cpp
+                     -DRC_FILE=${_free_api_st_fixture_rc}
+                     -DRC_ENCODING=UTF-8
+                     -DRESOURCE_HEADERS=${_free_api_st_fixture_header}
+                     -DREQUIRE_STRINGS=ON -DTARGET_GAME_NAME=test-fixture
+                     -DUSED_IDS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures/used-ids-duplicate.txt
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake")
+    set_tests_properties(extract_string_table_used_ids_fails_on_duplicate_id PROPERTIES WILL_FAIL TRUE)
+
     add_executable(test_input_pipeline tests/test_input_pipeline.cpp)
     set_target_properties(test_input_pipeline PROPERTIES
             CXX_STANDARD 20

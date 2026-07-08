@@ -1,0 +1,7 @@
+# Positive-control fixture: lists exactly the one ID (42) that IS present
+# in minimal-stringtable.rc's extracted table, so the "everything is
+# correct" baseline case can be proven to actually pass -- otherwise a
+# negative-path test could pass for the wrong reason (e.g. the fixture
+# itself being broken) rather than because the specific gate under test
+# fired correctly.
+42

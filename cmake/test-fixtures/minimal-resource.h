@@ -1,0 +1,1 @@
+#define IDS_TEST_STRING 42

@@ -1,0 +1,5 @@
+# TASK-24H-0802 negative-path fixture: lists an ID (999) that is not
+# present in minimal-stringtable.rc's extracted table (which only
+# contains 42), to prove USED_IDS_FILE's missing-ID gate actually fails
+# configure.
+999

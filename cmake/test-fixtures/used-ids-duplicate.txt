@@ -1,0 +1,5 @@
+# TASK-24H-0802 negative-path fixture: lists ID 42 twice, to prove
+# USED_IDS_FILE's duplicate-ID gate actually fails configure (checked
+# before, and independently of, the missing-ID gate).
+42
+42

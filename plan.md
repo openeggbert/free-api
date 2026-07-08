@@ -3935,7 +3935,7 @@ Out of scope:
 ## Resources and Strings
 
 ### TASK-24H-0801: Add negative-path test proving `REQUIRE_STRINGS`/`VERIFY_ID` actually fail configure on broken input
-Status: TODO
+Status: DONE — new CTest tests (CMakeLists.txt) using a small fixture (cmake/test-fixtures/minimal-stringtable.rc + minimal-resource.h) and WILL_FAIL: extract_string_table_require_strings_fails_on_missing_rc, extract_string_table_verify_id_fails_on_text_mismatch. A positive-control test (extract_string_table_fixture_positive_control) proves the fixture itself is valid. All confirmed failing at the exact expected FATAL_ERROR line via `ctest -VV`. 22/22 in all three build modes.
 Priority: P1
 Area: Resources
 Type: Test
@@ -3963,7 +3963,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0802: Add negative-path test proving `USED_IDS_FILE`'s missing-ID and duplicate-ID gates actually fail configure
-Status: TODO
+Status: DONE — new CTest tests (CMakeLists.txt) using the same fixture plus cmake/test-fixtures/used-ids-missing.txt and used-ids-duplicate.txt: extract_string_table_used_ids_fails_on_missing_id, extract_string_table_used_ids_fails_on_duplicate_id. Both confirmed failing at the exact expected FATAL_ERROR line. 22/22 in all three build modes.
 Priority: P1
 Area: Resources
 Type: Test
