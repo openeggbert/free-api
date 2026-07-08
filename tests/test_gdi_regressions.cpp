@@ -10,21 +10,19 @@
  * src/wingdi_blit.cpp were already implemented before this test existed;
  * this file locks in their behavior, which had no test coverage at all.
  *
- * Uses FreeApiCreateSurfaceDC/FreeApiDestroySurfaceDC -- internal, non-WINAPI
- * C entry points (declared in src/wingdi_dc.cpp) that free-direct already
- * depends on to expose a GDI-compatible DC backed by a DirectDraw surface's
- * own pixel memory. Forward-declared here (not part of the public windows.h
- * surface) purely to construct a controlled destination buffer for testing.
+ * Uses FreeApiCreateSurfaceDC/FreeApiDestroySurfaceDC (include/free_api_bridge.h)
+ * -- the documented free-direct-bridge entry points, not part of the Win32
+ * surface -- that free-direct already depends on to expose a GDI-compatible
+ * DC backed by a DirectDraw surface's own pixel memory. Used here purely to
+ * construct a controlled destination buffer for testing.
  */
 #include <windows.h>
+#include <free_api_bridge.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <atomic>
 #include <vector>
-
-extern "C" HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel);
-extern "C" BOOL FreeApiDestroySurfaceDC(HDC hdc);
 
 // Test-local forward declarations of internal diagnostic counters (defined
 // in src/internal/FreeApiDiagnostics.hpp/.cpp) -- not part of the public

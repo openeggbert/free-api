@@ -412,7 +412,7 @@ Out of scope:
 
 ### TASK-0002: Add a real shared header declaration for `FreeApiCreateSurfaceDC`/`FreeApiDestroySurfaceDC`
 
-Status: TODO
+Status: DONE — fixed during the 24-hour autonomous session as `TASK-24H-0101`, which also covered a third undeclared bridge function found in this session's audit, `FreeApiSetWindowFullscreen`. New header `include/free_api_bridge.h`; `../free-direct/src/directdraw/DirectDraw.cpp`, `examples/04_gdi_minimap.cpp`, and `tests/test_gdi_regressions.cpp` all updated to use it instead of local hand-declarations. Verified: free-api standalone, both target games (including the `free-api`+`free-direct` diamond dependency), and `../free-direct` standalone all build and link cleanly; 17/17 tests pass everywhere.
 Priority: P1
 Area: GDI / Header hygiene
 Type: Hardening
@@ -1305,7 +1305,7 @@ Out of scope:
 ## Scope and Public API
 
 ### TASK-24H-0101: Add public header declarations for all three undeclared free-direct bridge functions
-Status: TODO
+Status: DONE — new include/free_api_bridge.h is now the single authoritative declaration site for all three functions, explicitly labeled as the free-direct-bridge exception (not part of the Win32 surface). ../free-direct/src/directdraw/DirectDraw.cpp, examples/04_gdi_minimap.cpp, and tests/test_gdi_regressions.cpp all migrated. Verified across free-api standalone, both target games (diamond free-api+free-direct dependency), and ../free-direct standalone; 17/17 everywhere.
 Priority: P1
 Area: Integration
 Type: Implementation

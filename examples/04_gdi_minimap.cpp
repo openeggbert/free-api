@@ -31,18 +31,17 @@
  */
 #include <windows.h>
 #include <windowsx.h>
+#include <free_api_bridge.h>
 #include <SDL3/SDL.h>
 #include <cstdio>
 #include <vector>
 #include <cstdint>
 
-// Internal, non-public free-api entry points (src/wingdi_dc.cpp) that
-// free-direct uses to wrap a real pixel buffer as a GDI-compatible
-// Surface-kind HDC. Forward-declared here purely so this example can
-// present StretchBlt's output, exactly like tests/test_gdi_regressions.cpp
-// does for testing.
-extern "C" HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel);
-extern "C" BOOL FreeApiDestroySurfaceDC(HDC hdc);
+// FreeApiCreateSurfaceDC/FreeApiDestroySurfaceDC (free_api_bridge.h) are the
+// documented free-direct-bridge entry points that free-direct uses to wrap a
+// real pixel buffer as a GDI-compatible Surface-kind HDC. Used here purely so
+// this example can present StretchBlt's output, exactly like
+// tests/test_gdi_regressions.cpp does for testing.
 
 static bool g_running = true;
 

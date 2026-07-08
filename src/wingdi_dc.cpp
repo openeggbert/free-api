@@ -1,4 +1,5 @@
 #include "windows.h"
+#include "free_api_bridge.h"
 #include "internal/FreeApiGdi.hpp"
 #include "internal/FreeApiDiagnostics.hpp"
 #include "internal/FreeApiWindowRegistry.hpp"
