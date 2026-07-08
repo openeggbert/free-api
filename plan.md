@@ -991,7 +991,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0005: Verify the free-direct bridge build and document its FREE_API_BUILD_TESTS=OFF coverage gap
-Status: TODO
+Status: DONE — re-verified this session (standalone ../free-direct build succeeds, links cleanly against include/free_api_bridge.h) and documented in docs/cmake-options.md's new "The ../free-direct bridge build" section, including the FREE_API_BUILD_TESTS=OFF coverage-gap caveat.
 Priority: P1
 Area: Integration
 Type: Verification
@@ -1016,7 +1016,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0006: Verify the diamond add_subdirectory(free-api)/add_subdirectory(free-direct) case from a single game build
-Status: TODO
+Status: DONE — re-verified this session via a real Ninja rebuild of ../free-eggbert's FREEDIRECT backend: exactly 17 (not 34) CTest tests registered, both SPEEDY_BLUPI_WINDOWS and FREE_DIRECT built and linked cleanly, confirming free-direct's `if(NOT TARGET free-api)` guard still works. Documented in docs/cmake-options.md's new "The ../free-direct bridge build" section.
 Priority: P1
 Area: Integration
 Type: Verification

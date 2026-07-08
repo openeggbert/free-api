@@ -84,6 +84,41 @@ cmake -B build -DFREE_API_TARGET_GAME=planetblupi
 Passing an unrecognized value fails configure immediately with a clear
 error listing the four allowed values.
 
+## The `../free-direct` bridge build
+
+`../free-direct` (a sibling project implementing the DirectDraw/
+DirectSound/DirectPlay subset both target games also need) depends on
+Free API via `add_subdirectory(../free-api FREE_API)`, guarded by
+`if(NOT TARGET free-api)`. Confirmed working standalone:
+
+```bash
+cd ../free-direct
+cmake -S . -B build -DFREE_API_USE_SYSTEM_SDL3=ON
+cmake --build build
+```
+
+This configures, builds, and links `libfree-api.a` → `libfree-direct.a` →
+the `FREE_DIRECT` executable cleanly, using
+[`include/free_api_bridge.h`](../include/free_api_bridge.h) for the three
+free-direct-bridge functions.
+
+**Coverage gap:** `../free-direct/CMakeLists.txt` forces
+`FREE_API_BUILD_TESTS OFF` before its `add_subdirectory()` call, so this
+standalone build never builds or registers Free API's own 17-test CTest
+suite. A passing `../free-direct` build proves configure/build/link only,
+not Free API's own regression coverage — run Free API's own test suite
+separately (see "Tests" above) for that.
+
+**The diamond dependency case:** when either target game builds with its
+`FREEDIRECT` backend, its own `CMakeLists.txt` calls
+`add_subdirectory()` on *both* `../free-api` and `../free-direct` in the
+same configure run; `free-direct`'s own `if(NOT TARGET free-api)` guard is
+what prevents the `free-api` target (and its 17 tests) from being
+registered twice. Confirmed via a real Ninja rebuild of `../free-eggbert`
+with its `FREEDIRECT` backend: exactly 17 CTest tests registered (not
+34), both `SPEEDY_BLUPI_WINDOWS` and `FREE_DIRECT` executables built, all
+tests passing.
+
 ## Examples
 
 `FREE_API_BUILD_EXAMPLES` defaults to `OFF` (these are interactive
