@@ -25,6 +25,14 @@ void InputLog(const char* fmt, ...)
     SDL_Log("[free-api input] %s", buf);
 }
 
+WPARAM ApplyKeyboardModifierFlags(const bool* keys, WPARAM base)
+{
+    WPARAM wp = base;
+    if (keys && (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT])) wp |= MK_SHIFT;
+    if (keys && (keys[SDL_SCANCODE_LCTRL]  || keys[SDL_SCANCODE_RCTRL]))  wp |= MK_CONTROL;
+    return wp;
+}
+
 void PushMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     const bool diagEnabled = FreeApiDiagnosticsFastEnabled();
@@ -346,10 +354,7 @@ void PumpSdlEvents()
                 // handler (CEvent::PlayMove) reads wParam&MK_SHIFT every move
                 // to support shift-drag cell highlighting, not just at the
                 // initial button press.
-                const bool* keys = SDL_GetKeyboardState(nullptr);
-                WPARAM wp = g_mouseButtons;
-                if (keys && (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT])) wp |= MK_SHIFT;
-                if (keys && (keys[SDL_SCANCODE_LCTRL]  || keys[SDL_SCANCODE_RCTRL]))  wp |= MK_CONTROL;
+                WPARAM wp = ApplyKeyboardModifierFlags(SDL_GetKeyboardState(nullptr), g_mouseButtons);
 
                 InputLog("MOUSE_MOTION x=%d y=%d wParam=0x%X -> WM_MOUSEMOVE",
                     x, y, (unsigned)wp);
@@ -395,10 +400,7 @@ void PumpSdlEvents()
                     g_mouseButtons &= ~mk;
                 }
                 // Build wParam: current button state + keyboard modifiers
-                const bool* keys = SDL_GetKeyboardState(nullptr);
-                WPARAM wp = g_mouseButtons;
-                if (keys && (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]))   wp |= MK_SHIFT;
-                if (keys && (keys[SDL_SCANCODE_LCTRL]  || keys[SDL_SCANCODE_RCTRL]))    wp |= MK_CONTROL;
+                WPARAM wp = ApplyKeyboardModifierFlags(SDL_GetKeyboardState(nullptr), g_mouseButtons);
                 InputLog("MOUSE_BTN %s btn=%d x=%d y=%d wParam=0x%X -> msg=0x%04X",
                     isDown ? "DOWN" : "UP", event.button.button, x, y, (unsigned)wp, msg);
                 PushMessage(hwnd, msg, wp, lp);

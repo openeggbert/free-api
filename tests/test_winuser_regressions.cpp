@@ -35,6 +35,15 @@
  * from a broken one in this headless environment. MK_LBUTTON is used below
  * instead because free-api tracks button state itself (not via
  * SDL_GetKeyboardState), so it is reliably testable via SDL_PushEvent.
+ *
+ * TASK-24H-0404/0405: the MK_SHIFT/MK_CONTROL OR-logic itself is now
+ * factored out into FreeApi::Internal::ApplyKeyboardModifierFlags(), a
+ * pure function over an SDL keyboard-state array. That closes the
+ * automated-coverage gap for the *mechanism* with a synthetic keystate
+ * array below, even though the live end-to-end SDL_GetKeyboardState() path
+ * still can't be exercised via SDL_PushEvent in this headless environment
+ * (see the note above) -- the end-to-end gameplay feature still needs a
+ * human playtest (plan.md TASK-24H-0401/0403).
  */
 #include <windows.h>
 #include <windowsx.h>
@@ -42,6 +51,15 @@
 #include <cstdio>
 #include <atomic>
 #include <thread>
+
+// Internal, non-public helper (src/internal/FreeApiMessageQueue.cpp) --
+// forward-declared here purely so this test can exercise its OR-logic
+// directly with a synthetic keystate array, matching the established
+// pattern of test-local forward declarations into internal state already
+// used by tests/test_gdi_regressions.cpp for the diagnostic counters.
+namespace FreeApi::Internal {
+WPARAM ApplyKeyboardModifierFlags(const bool* keys, WPARAM base);
+}
 
 static int g_failures = 0;
 
@@ -372,6 +390,64 @@ static void TestGetMessageReturnsFalseOnQuit()
     MSG msg{};
     BOOL result = GetMessageA(&msg, nullptr, 0, 0);
     Check(result == FALSE, "GetMessageA returns FALSE (0) when WM_QUIT is queued");
+}
+
+// TASK-24H-0405: synthetic-keystate unit test for the extracted
+// ApplyKeyboardModifierFlags() helper (TASK-24H-0404). Directly exercises
+// the OR-logic with a hand-built keystate array covering every combination
+// of Shift/Ctrl held, since SDL_PushEvent-injected key events don't update
+// the real SDL_GetKeyboardState() array in this headless environment (see
+// the file-level doc comment above).
+static void TestApplyKeyboardModifierFlagsHelperWithSyntheticKeystate()
+{
+    bool keys[SDL_SCANCODE_COUNT] = {};
+
+    // Baseline: no modifiers held, base bits (e.g. a button-down flag) pass through untouched.
+    WPARAM none = FreeApi::Internal::ApplyKeyboardModifierFlags(keys, MK_LBUTTON);
+    Check((none & MK_SHIFT) == 0 && (none & MK_CONTROL) == 0 && (none & MK_LBUTTON) != 0,
+          "ApplyKeyboardModifierFlags: no modifiers held -> no MK_SHIFT/MK_CONTROL, base bits preserved");
+
+    // Left Shift only.
+    keys[SDL_SCANCODE_LSHIFT] = true;
+    WPARAM leftShift = FreeApi::Internal::ApplyKeyboardModifierFlags(keys, 0);
+    Check((leftShift & MK_SHIFT) != 0 && (leftShift & MK_CONTROL) == 0,
+          "ApplyKeyboardModifierFlags: SDL_SCANCODE_LSHIFT alone sets MK_SHIFT only");
+    keys[SDL_SCANCODE_LSHIFT] = false;
+
+    // Right Shift only (both L/R variants must collapse to the same generic MK_SHIFT).
+    keys[SDL_SCANCODE_RSHIFT] = true;
+    WPARAM rightShift = FreeApi::Internal::ApplyKeyboardModifierFlags(keys, 0);
+    Check((rightShift & MK_SHIFT) != 0 && (rightShift & MK_CONTROL) == 0,
+          "ApplyKeyboardModifierFlags: SDL_SCANCODE_RSHIFT alone also sets MK_SHIFT");
+    keys[SDL_SCANCODE_RSHIFT] = false;
+
+    // Left Ctrl only.
+    keys[SDL_SCANCODE_LCTRL] = true;
+    WPARAM leftCtrl = FreeApi::Internal::ApplyKeyboardModifierFlags(keys, 0);
+    Check((leftCtrl & MK_CONTROL) != 0 && (leftCtrl & MK_SHIFT) == 0,
+          "ApplyKeyboardModifierFlags: SDL_SCANCODE_LCTRL alone sets MK_CONTROL only");
+    keys[SDL_SCANCODE_LCTRL] = false;
+
+    // Right Ctrl only.
+    keys[SDL_SCANCODE_RCTRL] = true;
+    WPARAM rightCtrl = FreeApi::Internal::ApplyKeyboardModifierFlags(keys, 0);
+    Check((rightCtrl & MK_CONTROL) != 0 && (rightCtrl & MK_SHIFT) == 0,
+          "ApplyKeyboardModifierFlags: SDL_SCANCODE_RCTRL alone also sets MK_CONTROL");
+    keys[SDL_SCANCODE_RCTRL] = false;
+
+    // Both Shift and Ctrl held together, plus a pre-existing button bit.
+    keys[SDL_SCANCODE_LSHIFT] = true;
+    keys[SDL_SCANCODE_LCTRL]  = true;
+    WPARAM both = FreeApi::Internal::ApplyKeyboardModifierFlags(keys, MK_RBUTTON);
+    Check((both & MK_SHIFT) != 0 && (both & MK_CONTROL) != 0 && (both & MK_RBUTTON) != 0,
+          "ApplyKeyboardModifierFlags: Shift+Ctrl held together sets both flags and preserves base bits");
+    keys[SDL_SCANCODE_LSHIFT] = false;
+    keys[SDL_SCANCODE_LCTRL]  = false;
+
+    // A null keys pointer (defensive case) must not crash and must not set any modifier flags.
+    WPARAM nullKeys = FreeApi::Internal::ApplyKeyboardModifierFlags(nullptr, MK_LBUTTON);
+    Check((nullKeys & MK_SHIFT) == 0 && (nullKeys & MK_CONTROL) == 0 && (nullKeys & MK_LBUTTON) != 0,
+          "ApplyKeyboardModifierFlags: a null keys pointer is handled safely (no modifier flags set, no crash)");
 }
 
 static void InjectMouseMotion(SDL_Window* sdlWin, float x, float y)
@@ -849,6 +925,7 @@ int main()
     TestPeekMessageANeverSleepsOnEmptyQueue();
     TestGetMessageReturnsFalseOnQuit();
     TestMouseMoveLParamPackingAndModifierFlags();
+    TestApplyKeyboardModifierFlagsHelperWithSyntheticKeystate();
     TestClientToScreenTracksWindowPositionNotStale();
     TestSetCursorPosAndGetCursorPosRoundTrip();
     TestShowWindowUpdateWindowSetFocusSequence();

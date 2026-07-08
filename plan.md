@@ -2691,7 +2691,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0404: Extract a shared MK_SHIFT/MK_CONTROL modifier-flag helper
-Status: TODO
+Status: DONE — FreeApi::Internal::ApplyKeyboardModifierFlags(keys, base) extracted (src/internal/FreeApiMessageQueue.{hpp,cpp}); both mouse-motion and mouse-button handlers now call it instead of duplicating the OR-logic inline.
 Priority: P1
 Area: WinUser
 Type: Refactor
@@ -2718,7 +2718,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0405: Add a synthetic-keystate unit test for the modifier-flag helper
-Status: TODO
+Status: DONE — TestApplyKeyboardModifierFlagsHelperWithSyntheticKeystate (tests/test_winuser_regressions.cpp) covers no-modifiers/L+R Shift/L+R Ctrl/both-together/null-keys cases via a hand-built keystate array.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -2745,7 +2745,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0406: Add a regression test asserting unmapped scancodes produce no message
-Status: TODO
+Status: DONE — Test 11 (tests/test_input_pipeline.cpp) injects SDL_SCANCODE_CAPSLOCK down/up and asserts no WM_KEYDOWN/WM_SYSKEYDOWN/WM_KEYUP/WM_SYSKEYUP is produced.
 Priority: P1
 Area: WinUser
 Type: Test
@@ -2771,7 +2771,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0407: Add a regression test for planetblupi's 'A'-'Z' cheat-code VK mapping
-Status: TODO
+Status: DONE — Test 10 (tests/test_input_pipeline.cpp) covers a representative sample (A, B, M, Y, Z) of the letter-scancode-to-VK mapping.
 Priority: P1
 Area: WinUser
 Type: Test

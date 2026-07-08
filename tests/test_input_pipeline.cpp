@@ -389,6 +389,71 @@ int main()
         }
     }
 
+    g_received.clear();
+
+    // --- Test 10 (TASK-24H-0407): planetblupi's cheat-code system reads
+    // `wParam >= 'A' && wParam <= 'Z'` directly from WM_KEYDOWN
+    // (event.cpp:4633), and these same WM_KEYDOWN events are persisted
+    // verbatim to demo files by DemoRecEvent -- so an incorrect letter-key
+    // VK mapping would be both a live-gameplay bug and a demo-file-
+    // compatibility bug. Despite Test 7's broad VK_* coverage above, it
+    // covers zero letter scancodes. Sample across the full A-Z range.
+    {
+        const VkCase letterCases[] = {
+            {SDL_SCANCODE_A, 'A', "VK 'A'"},
+            {SDL_SCANCODE_M, 'M', "VK 'M'"},
+            {SDL_SCANCODE_Z, 'Z', "VK 'Z'"},
+            {SDL_SCANCODE_B, 'B', "VK 'B'"},
+            {SDL_SCANCODE_Y, 'Y', "VK 'Y'"},
+        };
+        for (const auto& lc : letterCases) {
+            g_received.clear();
+            InjectKeyEvent(sdlWin, true, lc.scancode);
+            DrainMessages();
+            if (HasMsg(WM_KEYDOWN, static_cast<WPARAM>(lc.expectedVk), true)) {
+                printf("[input-pipeline-test] PASS: WM_KEYDOWN delivers %s (0x%02X)\n", lc.name, (unsigned)lc.expectedVk);
+            } else {
+                printf("[input-pipeline-test] FAIL: %s not delivered with the expected wParam\n", lc.name);
+                SDL_Quit();
+                return 1;
+            }
+            InjectKeyEvent(sdlWin, false, lc.scancode);
+            DrainMessages();
+        }
+    }
+
+    g_received.clear();
+
+    // --- Test 11 (TASK-24H-0406): SdlScancodeToVK silently returns 0 for
+    // any scancode not in its explicit table, and the caller drops the
+    // event entirely rather than forwarding a garbage VK code -- confirmed
+    // correct, safe-default behavior, but previously only exercised via
+    // the mapped-key cases above, never asserted as a positive claim for
+    // an unmapped key. SDL_SCANCODE_CAPSLOCK is confirmed absent from the
+    // scancode->VK switch in src/internal/FreeApiMessageQueue.cpp.
+    {
+        InjectKeyEvent(sdlWin, true, SDL_SCANCODE_CAPSLOCK);
+        DrainMessages();
+        if (!HasMsg(WM_KEYDOWN) && !HasMsg(WM_SYSKEYDOWN)) {
+            printf("[input-pipeline-test] PASS: an unmapped scancode (CAPSLOCK) produces no WM_KEYDOWN/WM_SYSKEYDOWN message\n");
+        } else {
+            printf("[input-pipeline-test] FAIL: an unmapped scancode (CAPSLOCK) unexpectedly produced a key message\n");
+            SDL_Quit();
+            return 1;
+        }
+
+        g_received.clear();
+        InjectKeyEvent(sdlWin, false, SDL_SCANCODE_CAPSLOCK);
+        DrainMessages();
+        if (!HasMsg(WM_KEYUP) && !HasMsg(WM_SYSKEYUP)) {
+            printf("[input-pipeline-test] PASS: an unmapped scancode (CAPSLOCK) produces no WM_KEYUP/WM_SYSKEYUP message\n");
+        } else {
+            printf("[input-pipeline-test] FAIL: an unmapped scancode (CAPSLOCK) unexpectedly produced a key-up message\n");
+            SDL_Quit();
+            return 1;
+        }
+    }
+
     printf("[input-pipeline-test] ALL TESTS PASSED\n");
     SDL_Quit();
     return 0;
