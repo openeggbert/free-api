@@ -2,10 +2,11 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `b5e611c` (2026-07-08, `develop` branch, 26 commits
-ahead of `origin/develop`, **not yet pushed**; working tree clean). See
-[`plan.md`](plan.md) for the full task backlog (12 original tasks +
-175-task `TASK-24H-0001`–`1220` backlog) and
+state as of commit `e70d2bf` (2026-07-08, `develop` branch, 5 commits
+ahead of `origin/develop` — the previous 26 were pushed earlier this
+session, then 5 more landed after; **not yet pushed**; working tree clean).
+See [`plan.md`](plan.md) for the full task backlog (12 original tasks +
+177-task `TASK-24H-0001`–`1222` backlog, grew by 2 this session) and
 [`docs/audit-24h-free-api.md`](docs/audit-24h-free-api.md) for the full
 24-hour deep audit that backlog was derived from.
 
@@ -32,11 +33,21 @@ functions, declared in `include/free_api_bridge.h`).
 produced the audit, the 175-task backlog, and closed all P0/P1 work.
 **Session 4 (this pass)** began with an independent, skeptical audit fork
 (user-requested, "verify whether 'all P0/P1 closed' is actually true") that
-re-confirmed the P0/P1 claim but found 5 concrete follow-up gaps; this
-session implemented all 5, then continued through 8 more P2/P3 tasks.
-**71 of 175 new tasks are now DONE** — all verified, tested, and committed;
-**0 P0, 0 AI-doable P1 tasks remain** (1 P1 left, `TASK-24H-0401`, is a
-human-only playtest). 55 P2 and 48 P3 tasks remain — see section 8.
+re-confirmed the P0/P1 claim but found 5 concrete follow-up gaps; implemented
+all 5, then continued through 8 more P2/P3 tasks (13 total, first half).
+The user then asked for a genuine, independent MIDI-audio/rendering
+human-sign-off tracking gap (found by that same audit) to be closed
+properly: added `TASK-24H-1221`/`1222` (formal, P1, human-playtest-only
+tasks with concrete acceptance criteria) and
+`docs/target-game-verification.md` (`TASK-24H-1209`, one consolidated,
+runnable checklist covering all four remaining human playtests), then
+continued through 7 more P2 cleanup tasks (path-normalization
+consolidation, duplicate-declaration cleanup, documentation consistency).
+**77 of 177 new tasks are now DONE**, 1 marked OBSOLETE (superseded by
+another this session) — all verified, tested, and committed; **0 P0, 0
+AI-doable P1 tasks remain** (3 P1 left — `TASK-24H-0401`/`1221`/`1222` —
+all human-only, all with acceptance criteria and one consolidated
+checklist doc). 49 P2 and 47 P3 tasks remain — see section 8.
 
 **Important architectural decisions (unchanged across all sessions):**
 
@@ -85,10 +96,12 @@ in all three build modes and both sanitizer builds. Session 4 added:
 `test_midi_backend_failure` (new binary), plus new tests in
 `test_timer_regressions.cpp` (`TestGDebugInputSurvivesRaceUnderSanitizer`),
 `test_gdi_regressions.cpp` (`TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd`),
-and `test_winuser_regressions.cpp`
+`test_winuser_regressions.cpp`
 (`TestDispatchMessageARoutesNullHwndToSoleRegisteredWindow`,
 `TestWmMouseMoveCoalescingKeepsOnlyLatestPosition`,
-`TestWmTimerCoalescingKeepsOnlyOneQueuedMessagePerHwndAndId`).
+`TestWmTimerCoalescingKeepsOnlyOneQueuedMessagePerHwndAndId`), and
+`test_file_paths.cpp` (`TestNormalizeFilesystemPathCharacterization`,
+`TestFreeApiFopenPrefixNormalizationCharacterization`).
 
 **What does NOT work / known gaps:** unchanged except for items closed in
 section 3 below. MCI digital-video remains intentionally unimplemented.
@@ -102,6 +115,40 @@ checklist covering all of them:
 
 ## 3. Recent changes (session 4, this pass, most recent first)
 
+* **Deduplicated `_lopen`/`_lread`/`_lclose` declarations** (`TASK-24H-0103`/
+  `0713`) — `include/io.h` redeclared them verbatim even though its own
+  `#include <windows.h>` already transitively pulls in `winbase.h`'s
+  declaration; removed the redundant one.
+* **Updated README's input-pipeline "Verified:" line** (`TASK-24H-1203`) to
+  match current test coverage (full `VK_*` sweep, `F10` SYSKEY quirk,
+  unmapped-scancode case, boundary `lParam` packing, 2000-event stress test)
+  instead of the original 5 message types.
+* **Path-normalization consolidation** (`TASK-24H-0703`/`0704`/`0705`/`0706`)
+  — added direct characterization tests for `NormalizeFilesystemPath` and
+  `free_api_fopen` (`TASK-24H-0703`); `TASK-24H-0704` marked OBSOLETE (its
+  premise, unifying `NormalizePath` with `NormalizeFilesystemPath`, is moot
+  now that `NormalizePath` no longer exists); **implemented**
+  `TASK-24H-0705` — `free_api_fopen` (`include/windows.h`) now calls
+  `NormalizeFilesystemPath` directly via a forward declaration instead of
+  reimplementing the identical prefix-normalization logic inline (verified
+  no new link dependency: both games' own executables already always link
+  free-api). `TASK-24H-0706` (the same migration for `NormalizeMidiPath`)
+  deliberately left for a dedicated future pass — its fallback logic is
+  more involved and it's file-local code, not a header-only change.
+* **Created `docs/target-game-verification.md`; closed `TASK-24H-1209`** —
+  one consolidated, runnable checklist covering launch instructions, MIDI
+  audio sign-off, rendering sign-off, the `LoadStringA`/`"RES_<id>"` check,
+  the save/load check, both planetblupi gameplay-access sequences, and the
+  `MK_SHIFT`/`MK_CONTROL` playtest steps — cross-referencing rather than
+  duplicating `docs/target-games.md` and the relevant task IDs.
+* **Added formal `TASK-24H-1221`/`1222`** (MIDI audio / rendering human
+  sign-off, P1, human-playtest-only) — closes the real tracking gap this
+  session's own earlier audit found (mentioned in `NEXT.md` prose across
+  multiple sessions, never a real backlog task). Both have concrete
+  acceptance criteria (both games start; music audible/non-corrupted or
+  gracefully silent; no repeated `MCI_OPEN` log spam; rendering/blitting/
+  asset-loading visually correct; no `"RES_<id>"` UI leakage; save/load
+  works) and explicitly cannot be completed by an AI agent.
 * **Removed now-dead `NormalizePath`** (`TASK-24H-0615`, closes duplicate
   `TASK-24H-1220`) — its only call site migrated to
   `NormalizeFilesystemPath` earlier this session; re-grepped to confirm
@@ -249,8 +296,9 @@ No lint/formatter is configured in this repository.
 ## 8. Next smallest tasks
 
 **0 P0, 0 AI-doable P1 tasks remain TODO.** 3 P1 (`TASK-24H-0401`,
-`1221`, `1222` — all human-only) and 55 P2 + 48 P3 tasks remain. Concrete
-starting points:
+`1221`, `1222` — all human-only) and 49 P2 + 47 P3 tasks remain (1 P2,
+`TASK-24H-0704`, is marked OBSOLETE rather than TODO/DONE — see section 3).
+Concrete starting points:
 
 1. **Human playtests** — all four now formally tracked with acceptance
    criteria and one consolidated checklist:
@@ -318,9 +366,10 @@ Unchanged from prior sessions' list, plus:
 
 ```
 Read NEXT.md first, then skim docs/audit-24h-free-api.md's Executive
-Verdict (§1) for full context. plan.md has 175 new TASK-24H-* tasks; 71
+Verdict (§1) for full context. plan.md has 177 new TASK-24H-* tasks; 77
 are DONE (grep "Status: DONE" near "TASK-24H" to see which), 0 P0 and 0
-AI-doable P1 remain TODO (1 P1 left is human-only). Work through P2/P3
+AI-doable P1 remain TODO (3 P1 left, TASK-24H-0401/1221/1222, are all
+human-only -- see docs/target-game-verification.md). Work through P2/P3
 tasks per section 8's "Next smallest tasks" list -- many explicitly
 duplicate another task ID ("implement once, close both"), check plan.md
 for that note before starting. Make small, verified improvements; batch
