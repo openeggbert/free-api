@@ -16,6 +16,11 @@ ATOM WINAPI RegisterClassA(const WNDCLASSA* lpWndClass)
         return 0;
     }
 
+    // Only lpfnWndProc is retained. hIcon/hCursor/hbrBackground/style/
+    // cbClsExtra/cbWndExtra/lpszMenuName are intentionally dropped -- no
+    // evidenced call site in either target game reads any of them back
+    // after registration. See tests/test_winuser_regressions.cpp's
+    // TestRegisterClassADiscardsNonWndprocFields (TASK-24H-0301).
     g_registeredClasses[lpWndClass->lpszClassName] = lpWndClass->lpfnWndProc;
     return 1;
 }

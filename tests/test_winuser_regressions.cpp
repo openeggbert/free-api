@@ -309,6 +309,61 @@ static void TestDestroyWindowDispatchesWmDestroySynchronously()
     DrainMessages();
 }
 
+// TASK-24H-0301: positive proof that only lpfnWndProc is retained by
+// RegisterClassA -- re-registers the SAME class name with a full,
+// differently-populated WNDCLASSA (different hIcon/hCursor/hbrBackground/
+// style/lpszMenuName, and critically a DIFFERENT lpfnWndProc) and confirms
+// the second registration's WndProc is the one that actually runs. If any
+// non-WNDPROC field were retained/consulted, or if the first registration's
+// WndProc somehow lingered, this would either fail to compile (the
+// registry's value type is literally WNDPROC, see
+// src/internal/FreeApiWindowRegistry.hpp) or DestroyTrackingWndProc's
+// WM_DESTROY flag would never be set.
+static void TestRegisterClassADiscardsNonWndprocFields()
+{
+    const char* kClassName = "RegTest_ReRegister";
+
+    WNDCLASSA first{};
+    first.style         = CS_HREDRAW | CS_VREDRAW;
+    first.lpfnWndProc    = RegTestWndProc;
+    first.hInstance      = (HINSTANCE)1;
+    first.hIcon          = LoadIconA((HINSTANCE)1, "IDR_MAINFRAME");
+    first.hCursor        = LoadCursorA((HINSTANCE)1, "IDC_ARROW");
+    first.hbrBackground  = GetStockBrush(BLACK_BRUSH);
+    first.lpszMenuName   = "RegTest_ReRegister_MenuA";
+    first.lpszClassName  = kClassName;
+    Check(RegisterClassA(&first) != 0, "first RegisterClassA call for the re-register test succeeds");
+
+    g_destroyReceived = false;
+
+    WNDCLASSA second{};
+    second.style         = 0;
+    second.lpfnWndProc    = DestroyTrackingWndProc; // deliberately different from `first`
+    second.hInstance      = (HINSTANCE)1;
+    second.hIcon          = nullptr;
+    second.hCursor        = nullptr;
+    second.hbrBackground  = nullptr;
+    second.lpszMenuName   = "RegTest_ReRegister_MenuB";
+    second.lpszClassName  = kClassName; // same class name as `first`
+    Check(RegisterClassA(&second) != 0,
+          "re-registering the same class name with an entirely different (and sparser) field set still succeeds");
+
+    HWND hwnd = CreateWindowA(kClassName, "Test",
+                               WS_POPUPWINDOW | WS_VISIBLE,
+                               0, 0, 320, 240,
+                               HWND_DESKTOP, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowA succeeds against the re-registered class");
+
+    if (hwnd) {
+        DrainMessages();
+        DestroyWindow(hwnd);
+        Check(g_destroyReceived,
+              "the SECOND registration's lpfnWndProc (not the first's) handles the window -- "
+              "proves only lpfnWndProc is retained/updated by RegisterClassA, nothing else lingers or matters");
+        DrainMessages();
+    }
+}
+
 static void TestPeekMessageNoRemoveAndRemove()
 {
     WNDCLASSA wc{};
@@ -347,6 +402,48 @@ static void TestPeekMessageNoRemoveAndRemove()
     MSG msg4{};
     BOOL got4 = PeekMessageA(&msg4, hwnd, kCustomMsg, kCustomMsg, PM_NOREMOVE);
     Check(got4 == FALSE, "PeekMessageA(PM_REMOVE) actually removed the message (not found afterward)");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
+// TASK-24H-0202: positive-assertion companion to TestPeekMessageNoRemoveAndRemove.
+// That test only ever passes filter args that either match the posted
+// message or hit an already-empty queue -- it never proves PeekMessageA
+// ignores a filter that, under REAL Win32 semantics, would exclude the
+// posted message. This test posts a message with one ID, then peeks with a
+// deliberately mismatched hWnd and a wMsgFilterMin/wMsgFilterMax range that
+// excludes that message ID, and asserts it's still returned -- a genuine
+// regression guard for the documented TASK-24H-0201 decision (see
+// src/winuser_message.cpp and include/winuser.h's PeekMessageA doc comments).
+static void TestPeekMessageAIgnoresNonZeroFilterArguments()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_PeekFilterIgnored";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_PeekFilterIgnored", "Test",
+                                 WS_POPUPWINDOW | WS_VISIBLE,
+                                 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for PeekMessageA filter-ignoring test window");
+    if (!hwnd) return;
+
+    DrainMessages();
+
+    const UINT kPostedMsg = WM_USER + 5;
+    PostMessageA(hwnd, kPostedMsg, 7, 0);
+
+    // A real Win32 PeekMessageA with this hWnd/filter combination would
+    // find nothing: a different, never-created HWND, and a filter range
+    // that excludes kPostedMsg entirely.
+    HWND mismatchedHwnd = reinterpret_cast<HWND>(0x1234);
+    MSG msg{};
+    BOOL got = PeekMessageA(&msg, mismatchedHwnd, kPostedMsg + 100, kPostedMsg + 200, PM_REMOVE);
+    Check(got == TRUE && msg.message == kPostedMsg && msg.wParam == 7,
+          "PeekMessageA ignores hWnd/wMsgFilterMin/wMsgFilterMax and still returns a message a real Win32 filter would have excluded");
 
     DestroyWindow(hwnd);
     DrainMessages();
@@ -868,6 +965,50 @@ static void TestShowCursorHidesAndShowsRealCursor()
     Check(SDL_CursorVisible(), "ShowCursor(TRUE) actually shows the real OS cursor again");
 }
 
+// TASK-24H-0311: ShowCursor's signed counter has no clamp (matching real
+// Win32) -- several TRUE-in-a-row calls must keep incrementing above 0, and
+// several FALSE-in-a-row calls must keep decrementing below -1, with a
+// single opposite call only partially recovering a deeply-shifted counter.
+// Relative to whatever baseline count the counter happens to be at when
+// this test runs (it's process-global and shared with the test above), not
+// assumed to start at exactly 0.
+static void TestShowCursorCounterAccumulatesWithoutClamping()
+{
+    ShowCursor(TRUE);
+    const int baseline = ShowCursor(FALSE); // net-zero pair; reads the counter's value before this test's excursion
+
+    int afterFiveShows = baseline;
+    for (int i = 0; i < 5; ++i) {
+        afterFiveShows = ShowCursor(TRUE);
+    }
+    Check(afterFiveShows == baseline + 5,
+          "five consecutive ShowCursor(TRUE) calls each increment the counter by one, unclamped");
+    Check(SDL_CursorVisible(), "cursor stays visible after repeated ShowCursor(TRUE)");
+
+    // Walk back to baseline, then go deeply negative.
+    for (int i = 0; i < 5; ++i) {
+        ShowCursor(FALSE);
+    }
+    int afterSevenHides = baseline;
+    for (int i = 0; i < 7; ++i) {
+        afterSevenHides = ShowCursor(FALSE);
+    }
+    Check(afterSevenHides == baseline - 7,
+          "seven consecutive ShowCursor(FALSE) calls each decrement the counter by one, unclamped");
+    Check(!SDL_CursorVisible(), "cursor stays hidden after repeated ShowCursor(FALSE)");
+
+    const int afterOneShow = ShowCursor(TRUE);
+    Check(afterOneShow == baseline - 6,
+          "a single ShowCursor(TRUE) only partially recovers a deeply-negative counter");
+    Check(!SDL_CursorVisible(), "cursor stays hidden when the counter is still negative after one partial recovery");
+
+    // Restore the counter to baseline so later tests in this binary aren't
+    // affected by this test's excursion.
+    for (int i = 0; i < 6; ++i) {
+        ShowCursor(TRUE);
+    }
+}
+
 static void TestSetCursorReturnsPreviousHandle()
 {
     HCURSOR first = LoadCursorA(nullptr, "IDC_ARROW");
@@ -921,7 +1062,9 @@ int main()
     TestCreateWindowExAFullscreenPath();
     TestDefWindowProcHandlesWmClose();
     TestDestroyWindowDispatchesWmDestroySynchronously();
+    TestRegisterClassADiscardsNonWndprocFields();
     TestPeekMessageNoRemoveAndRemove();
+    TestPeekMessageAIgnoresNonZeroFilterArguments();
     TestPeekMessageANeverSleepsOnEmptyQueue();
     TestGetMessageReturnsFalseOnQuit();
     TestMouseMoveLParamPackingAndModifierFlags();
@@ -933,6 +1076,7 @@ int main()
     TestWaitMessageDoesNotBusySpin();
     TestDestroyWindowFatalInitFailurePathDoesNotCrash();
     TestShowCursorHidesAndShowsRealCursor();
+    TestShowCursorCounterAccumulatesWithoutClamping();
     TestSetCursorReturnsPreviousHandle();
     TestLoadCursorAAndLoadIconAReturnNonNullForAllRealNames();
 

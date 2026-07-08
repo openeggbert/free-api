@@ -1799,7 +1799,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0202: Add a positive-assertion test proving PeekMessageA safely ignores non-zero filter arguments
-Status: TODO
+Status: DONE — added TestPeekMessageAIgnoresNonZeroFilterArguments (test_winuser_regressions.cpp): posts a message, peeks with a mismatched hWnd and an excluding wMsgFilterMin/Max range, asserts the message is still returned. Verified passing (22/22 suite).
 Priority: P2
 Area: WinUser
 Type: Test
@@ -2195,7 +2195,7 @@ Out of scope:
 ## Window and Cursor
 
 ### TASK-24H-0301: Add positive test that RegisterClassA discards non-WNDPROC WNDCLASSA fields
-Status: TODO
+Status: DONE — added TestRegisterClassADiscardsNonWndprocFields (test_winuser_regressions.cpp): re-registers the same class name with a fully different field set (including a different lpfnWndProc) and confirms the second registration's WndProc is the one that actually runs. Added a cross-referencing comment at src/winuser_window.cpp:19 (RegisterClassA). Verified passing (22/22 suite).
 Priority: P2
 Area: WinUser
 Type: Test
@@ -2451,7 +2451,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0311: Add ShowCursor counter overflow/underflow regression test
-Status: TODO
+Status: DONE — added TestShowCursorCounterAccumulatesWithoutClamping (test_winuser_regressions.cpp): 5x ShowCursor(TRUE) in a row, 7x ShowCursor(FALSE) in a row, and a single partial-recovery call, all asserted relative to the counter's baseline value (process-global, shared with the adjacent test). Verified passing (22/22 suite).
 Priority: P2
 Area: WinUser
 Type: Test
@@ -3376,7 +3376,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0609: Add a bitmap-lifecycle leak regression test for g_diagCompatBitmaps
-Status: TODO
+Status: DONE — added TestCreateBitmapRepeatedLifecycleDoesNotLeak (test_gdi_regressions.cpp), mirroring the existing DC-side test's shape: 5000 CreateBitmap/DeleteObject cycles, asserts g_diagCompatBitmaps returns to baseline and g_diagCompatBitmapsEver increases by exactly the iteration count. Verified passing (22/22 suite).
 Priority: P2
 Area: GDI
 Type: Test
@@ -3473,7 +3473,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0613: Add regression test coverage for StretchBlt's early-rejection branches
-Status: TODO
+Status: DONE — added TestStretchBltEarlyRejectionBranchesReturnFalseAndLeaveDestUntouched (test_gdi_regressions.cpp), covering all three branches: non-SRCCOPY rop (using real Win32 SRCAND's raw value, not a new #define), invalid/mismatched DC pair (Memory-kind destination; source with no bitmap selected), and degenerate zero/negative width/height on each of the four dimension args. Uses only real allocated handles of the wrong kind, never a raw invented pointer (per the documented AsCompatDC garbage-pointer segfault finding). Verified passing (22/22 suite).
 Priority: P2
 Area: GDI
 Type: Test

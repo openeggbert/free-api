@@ -32,6 +32,8 @@
 namespace FreeApi::Internal {
 extern std::atomic<int64_t> g_diagCompatDcs;
 extern std::atomic<int64_t> g_diagCompatDcsEver;
+extern std::atomic<int64_t> g_diagCompatBitmaps;
+extern std::atomic<int64_t> g_diagCompatBitmapsEver;
 }
 
 // Test-local only: neither target game unpacks a COLORREF's components (only
@@ -326,6 +328,77 @@ static void TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX()
     DeleteDC(srcDc);
 }
 
+// TASK-24H-0613: StretchBlt (src/wingdi_blit.cpp:13-147) has three defensive
+// early-rejection branches -- non-SRCCOPY rop, an invalid/mismatched-kind DC
+// pair, and degenerate (zero/negative) dimensions -- none of which had any
+// test coverage before this. Neither game is known to trigger these paths,
+// but this function sits right next to the flagship TASK-24H-0601 fix and
+// deserves baseline coverage so a future refactor of its entry checks can't
+// silently break them. Every case uses a real, non-garbage handle of the
+// "wrong" kind (per this project's documented AsCompatDC/AsCompatBitmap
+// garbage-pointer segfault finding, tests/test_gdi_regressions.cpp's
+// TestBridgeGdiHelpersRejectionAndEdgeCases), never a raw invented pointer.
+static void TestStretchBltEarlyRejectionBranchesReturnFalseAndLeaveDestUntouched()
+{
+    const int srcW = 2, srcH = 2;
+    std::vector<uint8_t> srcPixels(static_cast<size_t>(srcW) * srcH * 4, 0x77);
+    HBITMAP srcBitmap = MakeSourceBitmap(srcW, srcH, srcPixels);
+    HDC srcDc = CreateCompatibleDC(nullptr);
+    SelectObject(srcDc, srcBitmap);
+
+    // (a) non-SRCCOPY rop. Uses real Win32's SRCAND value (0x008800C6)
+    // directly rather than adding a new #define -- free-api deliberately
+    // only defines SRCCOPY (see include/wingdi.h), and this task must not
+    // add support for or a symbol for any other ROP.
+    {
+        TestSurface dest(2, 2);
+        const DWORD kRealWin32SrcAnd = 0x008800C6;
+        BOOL ok = StretchBlt(dest.hdc, 0, 0, 2, 2, srcDc, 0, 0, srcW, srcH, kRealWin32SrcAnd);
+        Check(ok == FALSE, "StretchBlt rejects a non-SRCCOPY rop (SRCAND's real value)");
+        Check(dest.IsSentinelAt(0, 0), "a rejected non-SRCCOPY call leaves the destination untouched");
+    }
+
+    // (b) invalid/mismatched DC pair: a Memory DC (not Surface-kind) as the
+    // destination is rejected regardless of the source.
+    {
+        HDC memDestDc = CreateCompatibleDC(nullptr);
+        BOOL ok = StretchBlt(memDestDc, 0, 0, 2, 2, srcDc, 0, 0, srcW, srcH, SRCCOPY);
+        Check(ok == FALSE, "StretchBlt rejects a Memory-kind (not Surface-kind) destination DC");
+        DeleteDC(memDestDc);
+    }
+
+    // (b) invalid/mismatched DC pair: a Memory DC with no bitmap selected as
+    // the source is rejected.
+    {
+        TestSurface dest(2, 2);
+        HDC emptySrcDc = CreateCompatibleDC(nullptr); // valid DC, but no SelectObject call
+        BOOL ok = StretchBlt(dest.hdc, 0, 0, 2, 2, emptySrcDc, 0, 0, srcW, srcH, SRCCOPY);
+        Check(ok == FALSE, "StretchBlt rejects a source DC with no bitmap selected");
+        Check(dest.IsSentinelAt(0, 0), "a rejected empty-source call leaves the destination untouched");
+        DeleteDC(emptySrcDc);
+    }
+
+    // (c) degenerate zero/negative width/height, checked independently for
+    // each of the four dimension arguments.
+    {
+        TestSurface dest(2, 2);
+        Check(StretchBlt(dest.hdc, 0, 0, 0, 2, srcDc, 0, 0, srcW, srcH, SRCCOPY) == FALSE,
+              "StretchBlt rejects wDest==0");
+        Check(StretchBlt(dest.hdc, 0, 0, 2, 0, srcDc, 0, 0, srcW, srcH, SRCCOPY) == FALSE,
+              "StretchBlt rejects hDest==0");
+        Check(StretchBlt(dest.hdc, 0, 0, -1, 2, srcDc, 0, 0, srcW, srcH, SRCCOPY) == FALSE,
+              "StretchBlt rejects wDest<0");
+        Check(StretchBlt(dest.hdc, 0, 0, 2, 2, srcDc, 0, 0, 0, srcH, SRCCOPY) == FALSE,
+              "StretchBlt rejects wSrc==0");
+        Check(StretchBlt(dest.hdc, 0, 0, 2, 2, srcDc, 0, 0, srcW, -3, SRCCOPY) == FALSE,
+              "StretchBlt rejects hSrc<0");
+        Check(dest.IsSentinelAt(0, 0), "rejected degenerate-dimension calls leave the destination untouched");
+    }
+
+    DeleteObject(srcBitmap);
+    DeleteDC(srcDc);
+}
+
 static void TestGetSetPixelRoundTripOnSurfaceDc()
 {
     TestSurface dest(2, 2);
@@ -426,6 +499,30 @@ static void TestCreateCompatibleDcRepeatedLifecycleDoesNotLeak()
           "repeated CreateCompatibleDC/DeleteDC cycles leave the live-DC count unchanged (no leak)");
     Check(g_diagCompatDcsEver.load() == baselineEver + kIterations,
           "every CreateCompatibleDC call in the loop was accounted for exactly once");
+}
+
+// TASK-24H-0609: bitmap-side equivalent of the DC-lifecycle test above --
+// g_diagCompatBitmaps (incremented in src/internal/FreeApiGdi.cpp:42 and
+// src/wingdi_bitmap.cpp:107, decremented in src/wingdi_bitmap.cpp:89) had no
+// direct test coverage at all. Verifies many CreateBitmap/DeleteObject
+// cycles don't crash and don't leak the live-bitmap count.
+static void TestCreateBitmapRepeatedLifecycleDoesNotLeak()
+{
+    using namespace FreeApi::Internal;
+
+    const int64_t baselineLive = g_diagCompatBitmaps.load();
+    const int64_t baselineEver = g_diagCompatBitmapsEver.load();
+
+    const int kIterations = 5000;
+    for (int i = 0; i < kIterations; ++i) {
+        HBITMAP bmp = CreateBitmap(4, 4, 1, 32, nullptr);
+        DeleteObject(bmp);
+    }
+
+    Check(g_diagCompatBitmaps.load() == baselineLive,
+          "repeated CreateBitmap/DeleteObject cycles leave the live-bitmap count unchanged (no leak)");
+    Check(g_diagCompatBitmapsEver.load() == baselineEver + kIterations,
+          "every CreateBitmap call in the loop was accounted for exactly once");
 }
 
 // TASK-0060 (plan.md): both games branch their TrueColor-vs-palette
@@ -716,10 +813,12 @@ int main()
     TestStretchBlt1to1OutOfRangeSourceRectClipsSafely();
     TestStretchBltScaledNearestNeighborSamplesCorrectSourcePixel();
     TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX();
+    TestStretchBltEarlyRejectionBranchesReturnFalseAndLeaveDestUntouched();
     TestGetSetPixelRoundTripOnSurfaceDc();
     TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba();
     TestCreateBitmap16BitRgb565ConvertsToExpectedRgba32();
     TestCreateCompatibleDcRepeatedLifecycleDoesNotLeak();
+    TestCreateBitmapRepeatedLifecycleDoesNotLeak();
     TestGetDeviceCapsSizePaletteReportsTrueColorHost();
     TestGetSystemPaletteEntriesFills256WellFormedEntries();
     TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
