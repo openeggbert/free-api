@@ -53,7 +53,32 @@ boundary is symbol-family, not file-based:
 Do not audit or modify `free-direct` itself based on this note — that
 project is out of this repo's scope; this is a boundary statement only.
 
-## Full audit
+### The actual bridge-exception surface (`TASK-24H-0102`/`1219`)
+
+The documented `free-direct`-bridge exception (`plan.md` `TASK-0011`) names
+`FreeApiRunWinMain` and the three `include/free_api_bridge.h` functions
+(`FreeApiCreateSurfaceDC`, `FreeApiDestroySurfaceDC`,
+`FreeApiSetWindowFullscreen`) as the symbols `free-direct` is allowed to
+consume without a `../free-eggbert`/`../planetblupi` usage citation. This
+session's audit found one more, real, currently-unfixed coupling beyond
+that list: `../free-direct/src/diagnostics/Diagnostics.cpp:18,70-72`
+forward-declares `FreeApi::Platform::ReadRssKB()` raw and calls it
+directly — a fully **internal** free-api implementation detail
+(`src/platform/PlatformProcessInfo.hpp:11`), never declared in any public
+header, and not part of the bridge exception above. Free API already has
+its own internal wrapper for the identical value,
+`FreeApi::Internal::FreeApiReadRssKB()`
+(`src/internal/FreeApiDiagnostics.hpp:39`, implemented
+`src/internal/FreeApiDiagnostics.cpp:83-85` as a one-line passthrough to
+the same `ReadRssKB()`), which `free-direct` does not use — it reaches
+past the wrapper straight into the internal platform symbol instead.
+
+This is documented here as a known, real gap rather than fixed: whether
+the right fix is (a) exposing `FreeApiReadRssKB()` (or `ReadRssKB()`
+itself) as a fourth, real bridge-header declaration, or (b) leaving
+`free-direct`'s reach as an accepted, if informal, coupling since it's a
+diagnostics-only value with no gameplay-correctness stakes, is a follow-on
+implementation decision for a future task — not decided here.
 
 The full, evidence-based usage audit (headers, functions, types, constants,
 messages, GDI/WinMM/file behavior actually used by both games, current

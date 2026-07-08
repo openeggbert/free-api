@@ -1334,7 +1334,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0102: Document free-direct's reach into internal FreeApi::Platform::ReadRssKB
-Status: TODO
+Status: DONE — added "The actual bridge-exception surface" subsection to docs/scope.md's "Boundary with free-direct" section, naming the ReadRssKB reach explicitly, noting the existing unused FreeApiReadRssKB() wrapper, and leaving the fix-or-accept decision open for a future task. No behavior change.
 Priority: P1
 Area: Integration
 Type: Documentation
@@ -5356,7 +5356,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1219: Document the free-direct bridge-exception symbols consumed without public header declarations
-Status: TODO
+Status: DONE — folded into TASK-24H-0102's docs/scope.md edit (same subsection covers all four documented bridge functions plus the ReadRssKB internal-reach case).
 Priority: P2
 Area: Docs
 Type: Documentation
