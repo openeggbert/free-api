@@ -91,7 +91,7 @@ cmake --build build --target test_input_pipeline
 # Expected output: [input-pipeline-test] ALL TESTS PASSED
 ```
 
-Verified: `WM_MOUSEMOVE`, `WM_LBUTTONDOWN/UP`, `WM_RBUTTONDOWN`, `WM_KEYDOWN` (VK_SPACE), `WM_KEYUP` (VK_ESCAPE).
+Verified: `WM_MOUSEMOVE`, `WM_LBUTTONDOWN/UP`, `WM_RBUTTONDOWN`, `WM_KEYDOWN`/`WM_KEYUP` across a full `VK_*` sweep (letters, digits, arrows, function keys), the `F10`→`WM_SYSKEYDOWN`/`WM_SYSKEYUP` quirk, an unmapped-scancode-produces-no-message case, boundary/negative `lParam` packing, and a 2000-event sustained-input stress test.
 
 ### MIDI / MCI Music (`mmsystem.h`) — TinySoundFont + TinyMidiLoader
 

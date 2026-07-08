@@ -4966,7 +4966,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1203: Update README.md's input-pipeline "Verified:" line to reflect current test coverage
-Status: TODO
+Status: DONE — rewrote README.md's "Verified:" line to mention the full VK_* sweep, the F10 SYSKEY quirk, the unmapped-scancode case, boundary/negative lParam packing, and the 2000-event stress test, not just the original 5 message types. No test coverage added, documentation only.
 Priority: P3
 Area: Docs
 Type: Documentation
