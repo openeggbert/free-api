@@ -135,6 +135,85 @@ static void TestMkdirWithBackslashPath()
     rmdir(root.c_str());
 }
 
+// TASK-24H-0708: NormalizeFilesystemPath strips leading slashes after
+// backslash-conversion specifically so a Windows-rooted path like "\User"
+// (free-eggbert's real, bare call shape -- event.cpp:4193, `_mkdir("\User")`)
+// is treated as relative to the current working directory instead of
+// escaping to the real filesystem root. TestMkdirWithBackslashPath above
+// already exercises the fix, but always prepends an already-absolute temp
+// root before the backslash segment (`root + "\\User"`) -- it never passes
+// the bare `"\User"` literal with nothing prepended, so it doesn't actually
+// prove the path can't resolve to the real `/User` on disk. This test does:
+// it chdir()s into a disposable temp root and calls `_mkdir("\User")` with
+// the exact literal free-eggbert uses.
+#if !defined(_WIN32)
+static void TestMkdirBareBackslashUserLiteralStaysRelativeToCwd()
+{
+    std::string root = MakeTempRoot("mkdir-bare-literal");
+    Check(!root.empty(), "temp root created for the bare \"\\User\" literal test");
+    if (root.empty()) return;
+
+    char oldCwd[4096];
+    Check(getcwd(oldCwd, sizeof(oldCwd)) != nullptr, "captured original working directory");
+    Check(chdir(root.c_str()) == 0, "chdir into the disposable temp root succeeded");
+
+    // The exact bare literal free-eggbert passes -- no temp-root prefix.
+    // MakeTempRoot's mkdtemp template has no directory component, so `root`
+    // itself is a path relative to the *original* CWD -- now that we've
+    // chdir()'d into it, check for "User" relative to the *new* CWD (i.e.
+    // relative to `root` seen from outside), not "root + /User" again.
+    int rc = _mkdir("\\User");
+    Check(rc == 0, "_mkdir(\"\\\\User\") (the bare literal, no prefix) returns success");
+    Check(DirExists("User"),
+          "_mkdir(\"\\\\User\") creates the directory relative to the current working directory "
+          "(the disposable temp root), not the real filesystem root");
+
+    // Best-effort: confirm nothing was created at the real filesystem root.
+    // (Even without this check, a regression in the leading-slash-strip
+    // would already fail the two assertions above -- either the call fails
+    // outright, typically due to lacking write permission at the real `/`,
+    // or -- if it unexpectedly succeeds -- the directory would not be where
+    // the assertion above expects it, since it would have been created at
+    // the real root instead.)
+    struct stat realRootUserSt{};
+    bool realRootUserExists = (::stat("/User", &realRootUserSt) == 0);
+    Check(!realRootUserExists,
+          "no directory was created at the real filesystem root /User as a side effect");
+
+    rmdir("User");
+    chdir(oldCwd);
+    rmdir(root.c_str());
+}
+#endif
+
+// TASK-24H-0714: DeleteFileA (routed through NormalizeFilesystemPath) has a
+// real, evidenced call site in free-eggbert (event.cpp:5170,
+// DeleteFileA("data/demo.3d.blp"), called before re-recording a demo file)
+// but had zero test coverage anywhere in this suite.
+static void TestDeleteFileARemovesRealFileAndFailsSafelyForMissingFile()
+{
+    std::string root = MakeTempRoot("deletefile");
+    Check(!root.empty(), "temp root created for DeleteFileA test");
+    if (root.empty()) return;
+
+    const std::string target = root + "/demo.3d.blp";
+    FILE* f = fopen(target.c_str(), "wb");
+    Check(f != nullptr, "fixture file created for DeleteFileA test");
+    if (f) { fputs("x", f); fclose(f); }
+
+    struct stat st{};
+    Check(::stat(target.c_str(), &st) == 0, "fixture file exists on disk before DeleteFileA");
+
+    BOOL deleted = DeleteFileA(target.c_str());
+    Check(deleted == TRUE, "DeleteFileA returns TRUE for an existing file");
+    Check(::stat(target.c_str(), &st) != 0, "the file no longer exists on disk after DeleteFileA");
+
+    BOOL deletedAgain = DeleteFileA(target.c_str());
+    Check(deletedAgain == FALSE, "DeleteFileA returns FALSE (not a crash) for an already-deleted/nonexistent file");
+
+    rmdir(root.c_str());
+}
+
 static void TestBackslashAndForwardSlashPathsBothResolve()
 {
     std::string root = MakeTempRoot("paths");
@@ -291,6 +370,10 @@ int main()
     TestCreateDirectoryAWithBackslashPath();
     TestMkdirCreatesRealDirectory();
     TestMkdirWithBackslashPath();
+#if !defined(_WIN32)
+    TestMkdirBareBackslashUserLiteralStaysRelativeToCwd();
+#endif
+    TestDeleteFileARemovesRealFileAndFailsSafelyForMissingFile();
     TestBackslashAndForwardSlashPathsBothResolve();
     TestFindResourceAMissesThenLopenLreadLcloseDecodesRealBmpHeader();
 

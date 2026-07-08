@@ -3758,7 +3758,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0708: Add a regression test locking in the leading-backslash filesystem-root-escape fix
-Status: TODO
+Status: DONE — TestMkdirBareBackslashUserLiteralStaysRelativeToCwd (tests/test_file_regressions.cpp) chdir()s into a disposable temp root and calls _mkdir("\User") with the exact bare literal free-eggbert uses, asserting it lands relative to CWD and confirming nothing was created at the real /User.
 Priority: P1
 Area: Files
 Type: Test
@@ -3909,7 +3909,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0714: Add regression test coverage for `DeleteFileA`
-Status: TODO
+Status: DONE — TestDeleteFileARemovesRealFileAndFailsSafelyForMissingFile (tests/test_file_regressions.cpp) covers the real-delete and already-deleted/nonexistent-file cases.
 Priority: P1
 Area: Files
 Type: Test
