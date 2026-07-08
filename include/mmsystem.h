@@ -77,6 +77,21 @@ typedef struct _WAVEFORMAT {
     WORD nBlockAlign;
 } WAVEFORMAT, *PWAVEFORMAT, *LPWAVEFORMAT;
 
+// TASK-24H-0107: MCI_OPEN_PARMS/LPMCI_OPEN_PARMS and MCI_PLAY_PARMS/
+// LPMCI_PLAY_PARMS are each guarded by a FREE_API_MCI_*_DEFINED macro here
+// AND independently aliased to the differently-shaped MCI_DGV_* structs in
+// digitalv.h. windows.h includes mmsystem.h (this file) before digitalv.h
+// gets a chance to define its own alias, so THIS shape always wins,
+// regardless of which header a caller directly includes -- deliberate-by-
+// necessity, not accidental: both games' live MIDI/sequencer call sites
+// (../free-eggbert/src/sound.cpp:574,713; ../planetblupi/src/sound.cpp:524)
+// and src/MidiMusic.cpp:537,597's casts all use exactly this
+// (lpstrDeviceType/lpstrElementName-shaped) layout. Confirmed via grep
+// (this session) that neither game's AVI-probe code (movie.cpp) ever uses
+// the bare MCI_OPEN_PARMS/MCI_PLAY_PARMS alias -- it always references
+// MCI_DGV_OPEN_PARMS/LPMCI_DGV_OPEN_PARMS by their DGV-prefixed names
+// directly, so no code path anywhere relies on this alias resolving to the
+// MCI_DGV_* shape instead.
 #ifndef FREE_API_MCI_OPEN_PARMS_DEFINED
 #define FREE_API_MCI_OPEN_PARMS_DEFINED
 typedef struct _MCI_OPEN_PARMSA {
@@ -91,6 +106,8 @@ typedef MCI_OPEN_PARMSA MCI_OPEN_PARMS;
 typedef LPMCI_OPEN_PARMSA LPMCI_OPEN_PARMS;
 #endif
 
+// See the MCI_OPEN_PARMS comment immediately above -- the same include-
+// order-determined, confirmed-safe resolution applies here.
 #ifndef FREE_API_MCI_PLAY_PARMS_DEFINED
 #define FREE_API_MCI_PLAY_PARMS_DEFINED
 typedef struct _MCI_PLAY_PARMS {

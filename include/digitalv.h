@@ -110,6 +110,17 @@ typedef struct tagMCI_DGV_PLAY_PARMS {
     DWORD_PTR dwSpeed;
 } MCI_DGV_PLAY_PARMS, *LPMCI_DGV_PLAY_PARMS;
 
+// TASK-24H-0107: this guard never actually fires in practice. <windows.h>
+// (included at the top of this file) already includes mmsystem.h, which
+// defines FREE_API_MCI_PLAY_PARMS_DEFINED with a *different*-shaped
+// MCI_PLAY_PARMS (dwCallback/dwFrom/dwTo, matching both games' live
+// "sequencer" MIDI calls), before this line is ever reached -- so
+// mmsystem.h's shape always wins, not this MCI_DGV_PLAY_PARMS alias.
+// Confirmed safe: neither game's AVI-probe code (movie.cpp) ever uses the
+// bare MCI_PLAY_PARMS alias for its (always-unreached, since "avivideo"
+// never actually opens) MCI_PLAY call -- it explicitly declares
+// MCI_DGV_PLAY_PARMS and casts to LPMCI_DGV_PLAY_PARMS by name, same
+// pattern as the MCI_OPEN case above.
 #ifndef FREE_API_MCI_PLAY_PARMS_DEFINED
 #define FREE_API_MCI_PLAY_PARMS_DEFINED
 typedef MCI_DGV_PLAY_PARMS MCI_PLAY_PARMS;
@@ -120,6 +131,15 @@ typedef struct tagMCI_DGV_PAUSE_PARMS {
     DWORD_PTR dwCallback;
 } MCI_DGV_PAUSE_PARMS, *LPMCI_DGV_PAUSE_PARMS;
 
+// TASK-24H-0107: same include-order situation as MCI_PLAY_PARMS above --
+// <windows.h>'s transitive mmsystem.h include already defines
+// FREE_API_MCI_OPEN_PARMS_DEFINED with the differently-shaped, real
+// sequencer-call MCI_OPEN_PARMS before this line is reached, so this
+// MCI_DGV_OPEN_PARMS alias never actually wins. Confirmed safe: both
+// games' AVI-probe code (../free-eggbert/src/movie.cpp:34,103;
+// ../planetblupi/src/movie.cpp:31,100) explicitly declares
+// MCI_DGV_OPEN_PARMS and casts to LPMCI_DGV_OPEN_PARMS by name for its
+// MCI_OPEN calls, never the bare MCI_OPEN_PARMS alias.
 #ifndef FREE_API_MCI_OPEN_PARMS_DEFINED
 #define FREE_API_MCI_OPEN_PARMS_DEFINED
 typedef MCI_DGV_OPEN_PARMS MCI_OPEN_PARMS;

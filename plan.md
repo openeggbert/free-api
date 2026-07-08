@@ -1462,7 +1462,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0107: Resolve or document the MCI_OPEN_PARMS/MCI_PLAY_PARMS include-order-fragile shape aliasing
-Status: TODO
+Status: DONE — added explanatory comments at all four guard sites (include/mmsystem.h's MCI_OPEN_PARMS/MCI_PLAY_PARMS definitions, include/digitalv.h's MCI_DGV-aliased versions). Verified via grep that both games' AVI-probe code (movie.cpp, both MCI_OPEN and MCI_PLAY calls) always explicitly names MCI_DGV_OPEN_PARMS/MCI_DGV_PLAY_PARMS, never the bare alias -- confirming the include-order-determined mmsystem.h-wins resolution is safe. No behavior change. 22/22 in all three build modes; both target games still build/link.
 Priority: P1
 Area: Headers
 Type: Bugfix
