@@ -1388,7 +1388,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0104: Consolidate duplicate MCIDEVICEID typedef between mciapi.h and mmsystem.h
-Status: TODO
+Status: DONE — NOTE: implemented via TASK-24H-0905's direction (mmsystem.h canonical, not mciapi.h as this task's own text originally suggested) since mciapi.h is confirmed completely unused by either game (only a commented-out reference in free-eggbert's movie.cpp) while mmsystem.h is the actually-included, foundational header. Guarded with FREE_API_MCIDEVICEID_DEFINED; mciapi.h now includes mmsystem.h and checks the same guard. Verified mciapi.h still compiles standalone (ad-hoc probe, not a committed test since neither game includes it). See TASK-24H-0905 for full verification detail.
 Priority: P2
 Area: Headers
 Type: Refactor
@@ -1414,7 +1414,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0105: Consolidate duplicate mciSendCommandA/MCI_* constant declarations between digitalv.h and mmsystem.h
-Status: TODO
+Status: DONE — mmsystem.h made canonical for the 7 shared constants (MCI_OPEN/CLOSE/PLAY/NOTIFY/WAIT/OPEN_TYPE/OPEN_ELEMENT, each per-macro #ifndef-guarded) and mciSendCommandA's declaration + mciSendCommand macro (guarded behind FREE_API_MCISENDCOMMANDA_DECLARED). digitalv.h's copies now check the same guards (already transitively sees mmsystem.h via its own #include <windows.h>). MCI_STATUS/MCI_PAUSE (digitalv.h-only, not duplicated) and MCI_DGV_* (digital-video-only) left untouched. See TASK-24H-0905 for full verification.
 Priority: P2
 Area: Headers
 Type: Refactor
@@ -4261,7 +4261,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0905: Consolidate duplicate MCIDEVICEID/mciSendCommandA/MCI_* declarations across digitalv.h, mmsystem.h, and mciapi.h
-Status: TODO
+Status: DONE — mmsystem.h made canonical (see TASK-24H-0104/0105 for the per-symbol detail): MCIDEVICEID guarded by FREE_API_MCIDEVICEID_DEFINED; mciSendCommandA + its mciSendCommand macro guarded by FREE_API_MCISENDCOMMANDA_DECLARED; the 7 shared MCI_* constants each individually #ifndef-guarded. digitalv.h and mciapi.h both check the same guards instead of redefining. mciapi.h now includes <mmsystem.h> so it remains independently compilable (confirmed via an ad-hoc standalone-compile probe; not added to tests/test_header_compile.cpp since that file's own scope rule is "only headers actually included by one of the two target games," and neither game includes mciapi.h -- confirmed via grep, only a commented-out reference exists in free-eggbert's movie.cpp). No signature/behavior changes. Verified: full 23-test suite passes in all three build trees (standalone, free-eggbert, planetblupi); both games' own executables (SPEEDY_BLUPI_WINDOWS, PLANET_BLUPI_WINDOWS) build/link cleanly.
 Priority: P2
 Area: WinMM
 Type: Refactor

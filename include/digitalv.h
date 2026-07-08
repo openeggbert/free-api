@@ -38,17 +38,35 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+// TASK-24H-0105/0905: these 7 constants are canonically defined in
+// mmsystem.h (this file's own #include <windows.h> above already pulled
+// it in transitively, so those definitions already ran) -- per-macro
+// #ifndef guards mean this is a no-op fallback, not a real redefinition.
+#ifndef MCI_OPEN
 #define MCI_OPEN 0x0803
+#endif
+#ifndef MCI_CLOSE
 #define MCI_CLOSE 0x0804
+#endif
+#ifndef MCI_PLAY
 #define MCI_PLAY 0x0806
+#endif
 #define MCI_STATUS 0x0814
 #define MCI_PAUSE 0x0809
 
+#ifndef MCI_NOTIFY
 #define MCI_NOTIFY 0x00000001L
+#endif
+#ifndef MCI_WAIT
 #define MCI_WAIT 0x00000002L
+#endif
 
+#ifndef MCI_OPEN_TYPE
 #define MCI_OPEN_TYPE 0x00002000L
+#endif
+#ifndef MCI_OPEN_ELEMENT
 #define MCI_OPEN_ELEMENT 0x00000200L
+#endif
 
 #define MCI_STATUS_ITEM 0x00000100L
 
@@ -152,7 +170,15 @@ typedef LPMCI_DGV_OPEN_PARMS LPMCI_OPEN_PARMS;
  * Only "sequencer" MIDI devices are handled; other types are declined.
  * @note Status: PARTIAL
  */
+// TASK-24H-0105/0905: canonically declared in mmsystem.h (already
+// transitively included via this file's #include <windows.h> above); this
+// guard skips the redeclaration instead of duplicating an identical
+// signature unconditionally.
+#ifndef FREE_API_MCISENDCOMMANDA_DECLARED
+#define FREE_API_MCISENDCOMMANDA_DECLARED
 MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam);
+#define mciSendCommand mciSendCommandA
+#endif
 
 /**
  * @brief Returns the device ID for a named MCI device.
@@ -162,7 +188,6 @@ MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwComma
  */
 MCIDEVICEID WINAPI mciGetDeviceIDA(LPCSTR lpszDevice);
 
-#define mciSendCommand mciSendCommandA
 #define mciGetDeviceID mciGetDeviceIDA
 
 #ifdef __cplusplus

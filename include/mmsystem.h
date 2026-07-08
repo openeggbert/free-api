@@ -27,7 +27,15 @@ typedef UINT MMRESULT;
  * @brief Identifier type for MCI devices.
  * @note Status: PARTIAL
  */
+// TASK-24H-0104/0905: canonical definition site -- include/mciapi.h checks
+// this same guard instead of redefining. mmsystem.h is the more
+// foundational, actually-included-by-both-games header; mciapi.h is
+// currently unused by either game (only a commented-out include exists in
+// free-eggbert's movie.cpp).
+#ifndef FREE_API_MCIDEVICEID_DEFINED
+#define FREE_API_MCIDEVICEID_DEFINED
 typedef UINT MCIDEVICEID;
+#endif
 /**
  * @brief Error code type returned by MCI APIs.
  * @note Status: PARTIAL
@@ -167,15 +175,33 @@ typedef HMIDIOUT* LPHMIDIOUT;
 
 #define WAVE_FORMAT_PCM 1
 
+// TASK-24H-0105/0905: these 7 constants are also declared identically in
+// digitalv.h (which #include <windows.h>s this file transitively, so this
+// definition always runs first) -- per-macro #ifndef guards make mmsystem.h
+// the canonical source instead of an unguarded, drift-risking duplicate.
+#ifndef MCI_OPEN
 #define MCI_OPEN 0x0803
+#endif
+#ifndef MCI_CLOSE
 #define MCI_CLOSE 0x0804
+#endif
+#ifndef MCI_PLAY
 #define MCI_PLAY 0x0806
+#endif
 #define MCI_SET 0x080D
+#ifndef MCI_NOTIFY
 #define MCI_NOTIFY 0x00000001L
+#endif
+#ifndef MCI_WAIT
 #define MCI_WAIT 0x00000002L
+#endif
+#ifndef MCI_OPEN_TYPE
 #define MCI_OPEN_TYPE 0x00002000L
+#endif
 #define MCI_OPEN_TYPE_ID 0x00001000L
+#ifndef MCI_OPEN_ELEMENT
 #define MCI_OPEN_ELEMENT 0x00000200L
+#endif
 #define MCI_SET_TIME_FORMAT 0x00000400L
 #define MCI_FORMAT_TMSF 10
 #define MCI_TRACK 0x00000010L
@@ -265,14 +291,20 @@ MMRESULT WINAPI midiOutClose(HMIDIOUT hmo);
  * - Looping (MCI_PLAY looping flag): TODO
  * - CD audio: TODO
  */
+// TASK-24H-0105/0905: canonical declaration site -- digitalv.h (which
+// #include <windows.h>s this file transitively) checks this same guard
+// instead of redeclaring an identical signature.
+#ifndef FREE_API_MCISENDCOMMANDA_DECLARED
+#define FREE_API_MCISENDCOMMANDA_DECLARED
 MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam);
+#define mciSendCommand mciSendCommandA
+#endif
 /**
  * @brief Converts an MCI error code to a human-readable string.
  * @note Status: IMPLEMENTED
  */
 BOOL WINAPI mciGetErrorStringA(MCIERROR mcierr, LPSTR pszText, UINT cchText);
 
-#define mciSendCommand mciSendCommandA
 #define mciGetErrorString mciGetErrorStringA
 
 #ifdef __cplusplus
