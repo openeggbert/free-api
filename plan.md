@@ -1362,7 +1362,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0103: Consolidate duplicate _lopen/_lread/_lclose declarations between io.h and winbase.h
-Status: TODO
+Status: DONE — removed the verbatim redeclaration from include/io.h (which already transitively sees winbase.h's declaration via its own #include <windows.h> -> winbase.h chain); winbase.h is now the sole textual declaration site. Verified: test_header_compile + full 23-test suite pass in all three build trees (standalone, free-eggbert, planetblupi). Closes duplicate TASK-24H-0713.
 Priority: P2
 Area: Headers
 Type: Refactor
@@ -3713,7 +3713,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0706: Migrate `NormalizeMidiPath`'s prefix-normalization to the shared core
-Status: TODO
+Status: TODO — NOTE re-scoped (not yet done): since TASK-24H-0704 became obsolete (NormalizePath removed), this should migrate NormalizeMidiPath's backslash-conversion step to call NormalizeFilesystemPath directly (same pattern TASK-24H-0705 used for free_api_fopen), not a separate new "shared core" symbol. Deliberately deferred rather than done in the same pass as TASK-24H-0705: NormalizeMidiPath's fallback (progressive-suffix-uppercase search, MidiMusic.cpp) is materially more involved than free_api_fopen's single-basename-uppercase fallback, and it's file-local code inside the MIDI subsystem rather than a header-only change -- lower risk to verify carefully in its own dedicated pass than to rush alongside four other tasks.
 Priority: P2
 Area: Files
 Type: Refactor
@@ -3891,7 +3891,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0713: Deduplicate verbatim `_lopen`/`_lread`/`_lclose` declarations between `io.h` and `winbase.h`
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0103; implemented once there (see that entry).
 Priority: P2
 Area: Files
 Type: Cleanup

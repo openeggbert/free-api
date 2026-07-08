@@ -54,12 +54,12 @@ int _access(const char* path, int mode);
 int access(const char* path, int mode);
 #endif /* _WIN32 */
 
-/** @brief Low-level file open; declared in windows.h. @note Status: PARTIAL */
-int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite);
-/** @brief Low-level file read; declared in windows.h. @note Status: PARTIAL */
-UINT WINAPI _lread(int hFile, LPVOID lpBuffer, UINT uBytes);
-/** @brief Low-level file close; declared in windows.h. @note Status: PARTIAL */
-int WINAPI _lclose(int hFile);
+// TASK-24H-0713/0103: _lopen/_lread/_lclose are declared exactly once, in
+// winbase.h -- not redeclared here. io.h's own #include <windows.h> above
+// already pulls in winbase.h (windows.h:54), which already declares all
+// three, so any file that includes <io.h> sees them transitively. A
+// previous verbatim redeclaration here (harmless, since it agreed exactly,
+// but a real drift risk) was removed.
 
 #ifndef _MAX_FNAME
 #define _MAX_FNAME 260
