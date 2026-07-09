@@ -547,6 +547,38 @@ if(FREE_API_BUILD_TESTS)
         add_test(NAME test_timeb COMMAND test_timeb)
     endif()
 
+    # TASK-24H-0010: LABELS grouping tests by subsystem, for `ctest -L
+    # <label>` iteration on one area without running the full suite. Opt-in
+    # tooling only -- a plain `ctest` with no -L filter still runs
+    # everything, unaffected. Only labels tests that actually exist in this
+    # configuration (guards mirror each test's own registration above).
+    set_tests_properties(test_winuser_regressions test_input_pipeline
+        PROPERTIES LABELS "winuser")
+    set_tests_properties(test_gdi_regressions PROPERTIES LABELS "gdi")
+    set_tests_properties(test_mci_sequences test_mci_avivideo_regressions
+        test_midi_backend_failure test_joystick_regressions
+        PROPERTIES LABELS "winmm")
+    set_tests_properties(test_timer_regressions PROPERTIES LABELS "winuser;winmm")
+    set_tests_properties(test_file_regressions test_file_paths
+        PROPERTIES LABELS "file")
+    set_tests_properties(test_resources test_loadstring_regressions
+        PROPERTIES LABELS "resources")
+    set_tests_properties(test_planetblupi_loop test_eggbert_loop
+        PROPERTIES LABELS "integration")
+    set_tests_properties(basic_test check_no_hardcoded_paths
+        test_header_compile test_sdl_log_gating test_winmain_bridge
+        PROPERTIES LABELS "hygiene")
+    if(NOT WIN32)
+        set_tests_properties(test_timeb PROPERTIES LABELS "hygiene")
+    endif()
+    set_tests_properties(
+        extract_string_table_fixture_positive_control
+        extract_string_table_require_strings_fails_on_missing_rc
+        extract_string_table_verify_id_fails_on_text_mismatch
+        extract_string_table_used_ids_fails_on_missing_id
+        extract_string_table_used_ids_fails_on_duplicate_id
+        PROPERTIES LABELS "hygiene")
+
     # TASK-24H-0506 follow-up (post-session-3 audit item E): when
     # FREE_API_SANITIZE is set, resolve the actual sanitizer runtime .so and
     # auto-LD_PRELOAD it for every real test-binary CTest entry, so a plain

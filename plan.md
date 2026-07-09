@@ -1113,7 +1113,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0010: Add CTest LABELS grouping tests by subsystem
-Status: TODO
+Status: DONE — added set_tests_properties(...PROPERTIES LABELS...) calls grouping all 25 current tests (grew from 17 since this task was written) into winuser/gdi/winmm/file/resources/integration/hygiene. Verified ctest -L <label> runs a sensible non-empty subset for each label, and a plain ctest with no -L filter still runs all 25, unaffected. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Build
 Type: Implementation
