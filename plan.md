@@ -3006,7 +3006,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0504: Document that SetTimer/WM_TIMER has no one-shot mode
-Status: TODO
+Status: DONE — added the sentence to include/winuser.h's SetTimer doc comment. Comment-only. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -3354,7 +3354,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0608: Document SelectObject's simplified NULL-return behavior for non-bitmap objects
-Status: TODO
+Status: DONE — updated both the header doc comment (include/wingdi.h) and a matching code comment (src/wingdi_dc.cpp) to state the NULL-for-non-bitmap behavior explicitly. No behavior change. Verified 26/26 in all three build trees.
 Priority: P3
 Area: GDI
 Type: Documentation
@@ -3739,7 +3739,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0707: Document `_lopen`/`_lread`/`_lclose`'s unsynchronized handle table as a known limitation
-Status: TODO
+Status: DONE — added a code comment above g_openFiles/g_nextFileHandle (src/winbase_file.cpp) and a matching note to docs/supported-apis.md's row. Re-confirmed both games' only call sites are single-threaded ddutil.cpp chains. No behavior change. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Files
 Type: Documentation
@@ -3816,7 +3816,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0710: Document `RemoveDirectoryA`'s zero evidenced call sites and zero test coverage
-Status: TODO
+Status: DONE — added a new row to docs/supported-apis.md (previously had no row at all). Confirmed its only exerciser (tests/basic_test.cpp) is inside #ifdef _WIN32 blocks that never compile on Linux. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Files
 Type: Documentation
@@ -4049,7 +4049,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0805: Document planetblupi's 6 orphaned `TX_INFO_SETUP` IDs in `docs/used-string-ids.md`
-Status: TODO
+Status: DONE — re-verified via grep against resource.h and all three .rc files: TX_INFO_SETUP1-5 (162-166) present, TX_INFO_SETUP6-10b (167-172) absent from .rc and source. Added the note. Verified 26/26 in all three build trees (docs-only).
 Priority: P3
 Area: Resources
 Type: Documentation
@@ -4511,7 +4511,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1004: Strengthen out-of-scope.md's joystick note with exhaustive-reassignment evidence
-Status: TODO
+Status: DONE — added the exact assignment/read line citations to docs/out-of-scope.md's joystick note. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Joystick
 Type: Documentation
@@ -4538,7 +4538,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1005: Document the SDL_INIT_JOYSTICK teardown-free side effect at its source
-Status: TODO
+Status: DONE — added a comment at EnsureJoystickSubsystem (src/winmm.cpp) explaining the no-teardown behavior is deliberate/accepted. No SDL_QuitSubSystem added. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Joystick
 Type: Documentation
@@ -4863,7 +4863,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1112: Consolidate reviewed rare-logging dispositions into docs/out-of-scope.md
-Status: TODO
+Status: DONE — added "Unconditional logging: reviewed and intentional sites" section listing all 6 reviewed sites with file:line and rationale, matching the code comments added by TASK-24H-1106-1111. No code changed. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Diagnostics
 Type: Documentation
@@ -5339,7 +5339,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1218: Add a pointer to docs/audit-24h-free-api.md from Documentation.md's doc index
-Status: TODO
+Status: DONE — added the pointer to Documentation.md's introductory section, alongside the existing plan.md/supported-apis.md pointers. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Docs
 Type: Documentation

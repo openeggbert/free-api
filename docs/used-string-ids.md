@@ -34,6 +34,17 @@ left over from removed features). Cross-checking confirmed this directly
 subset of its 364 extracted strings; planetblupi's 257 unique used string
 IDs are all 257 of its extracted strings (no unused strings at all).
 
+**One specific, confirmed example (TASK-24H-0805):** planetblupi's
+`include/resource.h:120-130` defines `TX_INFO_SETUP1` through
+`TX_INFO_SETUP10b` (IDs 162-172), but only `TX_INFO_SETUP1`-`TX_INFO_SETUP5`
+(162-166) appear in any of the three `.rc` files' `STRINGTABLE` data or in
+source (`../planetblupi/src/event.cpp:2291-2296`, via `DrawTextCenter`).
+`TX_INFO_SETUP6` through `TX_INFO_SETUP10b` (167-172) are defined in
+`resource.h` but appear in neither the `.rc` files nor any code reference —
+genuinely orphaned on the game's own side, not a free-api gap. This is the
+specific mechanism behind the general "not every `resource.h`-defined ID is
+used" statement above.
+
 ## How each ID was found (methodology)
 
 For each game, every `LoadString(...)` call site in `../free-eggbert/src`

@@ -21,6 +21,12 @@ namespace {
 std::mutex g_joystickMutex;
 std::unordered_map<UINT, SDL_Joystick*> g_openJoysticks; // keyed by Win32-style 0-based device index
 
+// TASK-24H-1005: SDL_INIT_JOYSTICK is intentionally never torn down anywhere
+// in this codebase (unlike SDL_INIT_VIDEO, which has a matching
+// SDL_QuitSubSystem in ShutdownVideoSubsystemIfLastWindow). This is a known,
+// accepted, process-lifetime side effect -- harmless but worth documenting
+// (docs/audit-24h-free-api.md §4.28, Known Risk #16). Do not add teardown
+// logic without new evidence it matters.
 bool EnsureJoystickSubsystem()
 {
     if (SDL_WasInit(SDL_INIT_JOYSTICK)) return true;

@@ -75,6 +75,11 @@ HDC WINAPI CreateCompatibleDC(HDC hdc)
     return reinterpret_cast<HDC>(dc);
 }
 
+// TASK-24H-0608: only bitmap objects are supported. Any other/invalid
+// handle falls through to the final "return NULL" below -- an intentional
+// simplification versus real Win32's no-op/return-current-default
+// behavior for other GDI object kinds, safe because neither game ever
+// selects anything but a bitmap into a DC.
 HGDIOBJ WINAPI SelectObject(HDC hdc, HGDIOBJ h)
 {
     CompatDC* dc = AsCompatDC(reinterpret_cast<void*>(hdc));

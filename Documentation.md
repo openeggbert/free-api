@@ -8,8 +8,10 @@ the target game(s) is implemented.
 See [`docs/scope.md`](docs/scope.md) for the project's scope policy: every new
 public API must cite a real usage site in `../free-eggbert` or `../planetblupi`.
 See [`docs/supported-apis.md`](docs/supported-apis.md) for the current,
-hand-maintained table of every implemented symbol and its status, and
-[`plan.md`](plan.md) for the full evidence-based usage audit and task backlog.
+hand-maintained table of every implemented symbol and its status,
+[`plan.md`](plan.md) for the full evidence-based usage audit and task backlog,
+and [`docs/audit-24h-free-api.md`](docs/audit-24h-free-api.md) for the deep
+24-hour audit `plan.md`'s `TASK-24H-*` backlog was derived from.
 
 ```text
 Legacy game source code

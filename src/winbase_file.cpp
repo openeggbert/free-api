@@ -26,6 +26,12 @@ void WINAPI SetLastError(DWORD dwErrCode)
 }
 #endif
 
+// TASK-24H-0707: no mutex protects these, unlike the equivalent _findfirst
+// session table (g_findSessionsMutex, src/crt_io.cpp). This is a latent
+// data race if _lopen/_lread/_lclose were ever called concurrently from
+// multiple threads -- intentional/deferred, not an oversight: neither
+// target game's file-I/O call sites (both single-threaded ddutil.cpp
+// chains) use these functions from more than one thread.
 static int g_nextFileHandle = 3;
 static std::unordered_map<int, FILE*> g_openFiles;
 

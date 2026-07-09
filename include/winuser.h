@@ -390,6 +390,8 @@ HWND WINAPI SetFocus(HWND hWnd);
  *
  * lpTimerFunc is ignored. If nIDEvent == 0, a unique ID is generated.
  * Timers only fire while the message loop calls PeekMessageA or GetMessageA.
+ * Repeats every uElapse ms until KillTimer is called -- there is no
+ * one-shot mode, matching real Win32 SetTimer semantics (TASK-24H-0504).
  * @note Status: PARTIAL
  */
 UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTimerFunc);

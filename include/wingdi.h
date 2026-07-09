@@ -140,7 +140,17 @@ COLORREF WINAPI GetPixel(HDC hdc, int x, int y);
 UINT WINAPI GetSystemPaletteEntries(HDC hdc, UINT iStartIndex, UINT nEntries, LPVOID lppe);
 
 //#3239
-/** @brief Selects an internal bitmap into a memory DC; returns previously selected object. @note Status: PARTIAL */
+/**
+ * @brief Selects an internal bitmap into a memory DC; returns previously selected object.
+ *
+ * Only bitmap objects are supported. Any other (or invalid) handle returns
+ * NULL, rather than performing real Win32's no-op/return-current-default
+ * behavior for other GDI object kinds (pens, brushes, fonts, regions) --
+ * an intentional simplification, safe because neither game ever selects
+ * anything but a bitmap into a DC (TASK-24H-0608).
+ *
+ * @note Status: PARTIAL
+ */
 HGDIOBJ WINAPI SelectObject(HDC hdc, HGDIOBJ h);
 
 //#3260

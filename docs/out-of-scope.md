@@ -318,6 +318,11 @@ that free-eggbert's own joystick-enable flag (`m_somethingJoystick`) is
 never set to anything but 0 — a real backend here does not, by itself,
 make the game actually poll it; that would need a further, separate change
 to free-eggbert's own source, which is out of this repo's scope.
+**Exhaustive-reassignment evidence (TASK-24H-1004):** `m_somethingJoystick`
+is assigned exactly once in the entire free-eggbert codebase, in its
+constructor (`event.cpp:1770`), and is only ever read afterward
+(`event.cpp:2048`, `2603`, `2720`) — it is provably never reassigned
+anywhere, not merely "never observed" to change.
 
 ## `AdjustWindowRect`'s identity transform (TASK-24H-0310)
 
@@ -336,6 +341,27 @@ as "STUB but not actually safe." All four have since been investigated and
 either implemented for real (`ShowCursor`/`SetCursor`/`LoadStringA`) or
 confirmed correct as designed (`AdjustWindowRect`'s identity transform) —
 see `docs/supported-apis.md` for their current status.)*
+
+## Unconditional logging: reviewed and intentional sites (TASK-24H-1112)
+
+Consolidates the individual code-comment justifications from
+`TASK-24H-1106`-`1111` into one place — every `SDL_Log` call site in this
+codebase that is deliberately left unconditional (not gated behind
+`FreeApiDiagnosticsEnabled()` et al.), with why:
+
+| Site | Rationale |
+|---|---|
+| `src/internal/FreeApiSdlVideo.cpp` (`EnsureVideoSubsystem`, `SDL_INIT_VIDEO failed`) | Failure path only; the success-path log next to it *is* gated (`TASK-24H-1227`). |
+| `src/internal/FreeApiGdi.cpp` (`CreateCompatBitmapFromSurface`, `SDL_ConvertSurface failed`) | Failure path only, never the success path (`TASK-24H-1107`). |
+| `src/winmm.cpp` (`timeSetEvent`'s invalid-args/`SDL_INIT_EVENTS`-failed/`SDL_AddTimer`-failed logs; `timeKillEvent`'s unknown-id warning) | Failure paths; confirmed to fire at most once per process given free-eggbert's single `timeSetEvent`/`timeKillEvent` call site and planetblupi's zero (`TASK-24H-1108`). |
+| `src/MidiMusic.cpp` (`SDL_InitSubSystem(AUDIO) failed`, `SDL_OpenAudioDeviceStream failed`) | Failure paths, deduplicated to once-per-process via the `backendInitFailed` latch (`TASK-24H-1109`). |
+| `src/winbase_file.cpp` (`_lopen` failed, `CreateDirectoryA` failed) | Failure paths; `_lopen`'s is bounded to once per bitmap-load attempt, `CreateDirectoryA`'s can recur on repeated real filesystem failures for planetblupi's live call site (`TASK-24H-1110`). |
+| `src/winmm.cpp` (`mciSendCommandA`, avivideo decline) | Informational about a permanent, deliberate decision; confirmed once-per-process via the `CMovie::Create()`/`m_bEnable` latch (`TASK-24H-1111`). |
+
+Not documented here: the two success-path logs this session found and
+*fixed* by gating (`EnsureVideoSubsystem`'s "SDL video initialized" and
+`timeSetEvent`'s success log, both `TASK-24H-1227`) — those are behavior
+changes, not "reviewed and kept as-is" sites.
 
 ## Removal/hiding policy for proven-unused symbols
 
