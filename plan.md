@@ -3998,7 +3998,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0803: Add direct unit-test coverage for `LoadResource`/`LockResource`/`SizeofResource`/`FreeResource`/`UnlockResource`'s stub contracts
-Status: TODO
+Status: DONE — added TestResourceStubFunctionsReturnDocumentedContracts (tests/test_resources.cpp): direct assertions for all 5 functions' documented return contracts, including NULL-handle safety for each. Verified 24/24 standalone.
 Priority: P2
 Area: Resources
 Type: Test

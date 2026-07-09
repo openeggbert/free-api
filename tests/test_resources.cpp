@@ -54,12 +54,42 @@ static void TestLoadStringAUnknownIdFallsBackToPlaceholder()
     Check(strcmp(buffer, expected) == 0, "LoadStringA falls back to the \"RES_<id>\" placeholder for an unknown ID");
 }
 
+// TASK-24H-0803: the five stub functions FindResourceA's permanent-miss
+// contract gates -- LoadResource, SizeofResource, LockResource,
+// UnlockResource, FreeResource -- previously had zero direct test
+// invocations confirming their individual return contracts.
+static void TestResourceStubFunctionsReturnDocumentedContracts()
+{
+    Check(LoadResource(nullptr, nullptr) == nullptr,
+          "LoadResource always returns NULL");
+
+    Check(SizeofResource(nullptr, nullptr) == 0,
+          "SizeofResource always returns 0");
+
+    HGLOBAL arbitraryHandle = reinterpret_cast<HGLOBAL>(static_cast<uintptr_t>(0x1234));
+    Check(LockResource(arbitraryHandle) == arbitraryHandle,
+          "LockResource passes its input handle straight through");
+    Check(LockResource(nullptr) == nullptr,
+          "LockResource(NULL) is null-safe and returns NULL");
+
+    Check(UnlockResource(arbitraryHandle) == FALSE,
+          "UnlockResource always returns FALSE");
+    Check(UnlockResource(nullptr) == FALSE,
+          "UnlockResource(NULL) is null-safe and returns FALSE");
+
+    Check(FreeResource(arbitraryHandle) == FALSE,
+          "FreeResource always returns FALSE");
+    Check(FreeResource(nullptr) == FALSE,
+          "FreeResource(NULL) is null-safe and returns FALSE");
+}
+
 int main()
 {
     printf("[resources] Starting\n");
 
     TestFindResourceAAlwaysMisses();
     TestLoadStringAUnknownIdFallsBackToPlaceholder();
+    TestResourceStubFunctionsReturnDocumentedContracts();
 
     if (g_failures > 0) {
         printf("[resources] %d FAILURE(S)\n", g_failures);
