@@ -395,6 +395,26 @@ user explicitly asks.
   race on `g_debugInput`, an SDL subsystem-refcount overflow in
   `timeSetEvent`, **and (session 4) MIDI backend-failure log spam and
   `LoadImageA`'s weak path normalization**.
+* **Fixed (TASK-24H-1229, deep-audit follow-up):** a GDI handle double-free
+  — `DeleteDC`/`DeleteObject`/`FreeApiDestroySurfaceDC` now clear the
+  handle's magic-number tag before `delete`, so a double-delete of the
+  same handle is rejected instead of risking a double-free against
+  already-freed memory. The regression test for this is intentionally
+  skipped under `FREE_API_SANITIZE=address`/`=thread` — see the test's own
+  doc comment in `tests/test_gdi_regressions.cpp` for why that's inherent
+  to this handle scheme, not a gap in the fix.
+* **Fixed (TASK-24H-1232, deep-audit follow-up):** the MIDI subsystem's
+  cross-translation-unit static destruction order dependency on the
+  message queue globals (previously safe only by incidental link order —
+  audit.md's highest-severity finding, R1). `MidiMusic.cpp`'s `g_midi` is
+  now a function-local static accessed via `GetMidiState()` (a Meyer's
+  singleton) instead of a plain namespace-scope static, so the language
+  guarantees it's constructed after, and therefore destroyed before,
+  `g_messageQueue`/`g_messageQueueMutex` — closing the teardown race by
+  rule, not link order. **Do not revert `GetMidiState()` back to a plain
+  `static MidiState g_midi;`** without re-reading this task's writeup in
+  `plan.md`/`audit.md` §7 Finding R1 first; that would silently
+  reintroduce the exact race this fix closes.
 * **Confirmed environment artifact, not a code bug (unchanged):**
   `test_winuser_regressions` fails 6 checks under this sandbox's default
   Wayland display; passes under `SDL_VIDEODRIVER=dummy` or real X11/Xvfb.

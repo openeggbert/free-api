@@ -164,9 +164,9 @@ struct MidiState {
     /**
      * @brief Destructor: stops the mixer thread and releases SDL audio resources.
      *
-     * Called automatically when the static g_midi object is destroyed at program
-     * exit.  Without this, std::thread's destructor calls std::terminate() (SIGABRT)
-     * if the thread is still joinable.
+     * Called automatically when the GetMidiState() function-local static is
+     * destroyed at program exit.  Without this, std::thread's destructor calls
+     * std::terminate() (SIGABRT) if the thread is still joinable.
      */
     ~MidiState() {
         /* Signal the mixer thread to stop and wait for it. */
@@ -200,7 +200,26 @@ struct MidiState {
     }
 };
 
-static MidiState g_midi;
+// TASK-24H-1232: a function-local static (Meyer's singleton) rather than a
+// plain namespace-scope static. g_messageQueue/g_messageQueueMutex
+// (FreeApiMessageQueue.cpp) are ordinary namespace-scope statics, whose
+// dynamic initialization completes before main() runs; this object's first
+// construction happens lazily, on the first call to GetMidiState() during
+// main()'s execution, which the language guarantees completes strictly
+// after all namespace-scope statics' construction. Per [basic.start.term],
+// static-duration objects are destroyed in the reverse order their
+// construction completed, and that ordering rule holds across the whole
+// program, not just within one translation unit -- so this object's
+// destructor (which stops and joins the mixer thread before releasing any
+// of its own resources) is guaranteed to run before g_messageQueue/
+// g_messageQueueMutex are destroyed, closing the link-order-dependent
+// teardown race audit.md's Finding R1 described. See docs/out-of-scope.md
+// for the fuller writeup.
+static MidiState& GetMidiState()
+{
+    static MidiState instance;
+    return instance;
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Path normalisation (backslash → forward slash, case-fallback)            */
@@ -280,7 +299,7 @@ static std::string NormalizeMidiPath(const char* raw)
 /**
  * @brief Background thread: renders MIDI → PCM → SDL audio stream.
  *
- * Runs until g_midi.running is set to false.
+ * Runs until GetMidiState().running is set to false.
  * @note Status: IMPLEMENTED
  */
 static void MixerThread()
@@ -288,23 +307,23 @@ static void MixerThread()
     /* Stereo float buffer for one render block. */
     std::vector<float> pcm(static_cast<size_t>(kBlockFrames) * 2);
 
-    while (g_midi.running.load()) {
+    while (GetMidiState().running.load()) {
         bool rendered = false;
 
         // Find the active session and render its next block under a
         // single, uninterrupted lock acquisition. A prior version looked
         // up `active` in one lock_guard scope, released the lock, then
         // dereferenced it after re-acquiring a second lock_guard scope --
-        // if MCI_CLOSE (which erases from g_midi.sessions) or MCI_OPEN
+        // if MCI_CLOSE (which erases from GetMidiState().sessions) or MCI_OPEN
         // (whose push_back can reallocate the vector) ran on another
         // thread during that released-lock gap, `active` became a
         // dangling pointer. That was the real, intermittent SIGSEGV behind
         // this file's MCI_OPEN kill-switch (now removed).
         {
-            std::lock_guard<std::mutex> lk(g_midi.mtx);
+            std::lock_guard<std::mutex> lk(GetMidiState().mtx);
 
             MidiSession* active = nullptr;
-            for (auto& s : g_midi.sessions) {
+            for (auto& s : GetMidiState().sessions) {
                 if (s.playing && !s.finished) {
                     active = &s;
                     break;
@@ -319,39 +338,39 @@ static void MixerThread()
                 while (active->cursor &&
                        active->cursor->time <= active->timeMs + blockMs)
                 {
-                    tsf_channel_set_pan(g_midi.soundFont,
+                    tsf_channel_set_pan(GetMidiState().soundFont,
                                         active->cursor->channel, 0.5f);
 
                     switch (active->cursor->type) {
                         case TML_PROGRAM_CHANGE:
                             tsf_channel_set_presetnumber(
-                                g_midi.soundFont,
+                                GetMidiState().soundFont,
                                 active->cursor->channel,
                                 active->cursor->program,
                                 (active->cursor->channel == 9));
                             break;
                         case TML_NOTE_ON:
                             tsf_channel_note_on(
-                                g_midi.soundFont,
+                                GetMidiState().soundFont,
                                 active->cursor->channel,
                                 active->cursor->key,
                                 static_cast<float>(active->cursor->velocity) / 127.0f);
                             break;
                         case TML_NOTE_OFF:
                             tsf_channel_note_off(
-                                g_midi.soundFont,
+                                GetMidiState().soundFont,
                                 active->cursor->channel,
                                 active->cursor->key);
                             break;
                         case TML_PITCH_BEND:
                             tsf_channel_set_pitchwheel(
-                                g_midi.soundFont,
+                                GetMidiState().soundFont,
                                 active->cursor->channel,
                                 active->cursor->pitch_bend);
                             break;
                         case TML_CONTROL_CHANGE:
                             tsf_channel_midi_control(
-                                g_midi.soundFont,
+                                GetMidiState().soundFont,
                                 active->cursor->channel,
                                 active->cursor->control,
                                 active->cursor->control_value);
@@ -364,12 +383,12 @@ static void MixerThread()
                 active->timeMs += blockMs;
 
                 /* Render audio. */
-                tsf_set_output(g_midi.soundFont, TSF_STEREO_INTERLEAVED,
+                tsf_set_output(GetMidiState().soundFont, TSF_STEREO_INTERLEAVED,
                                kMixSpec.freq, 0.0f);
-                tsf_render_float(g_midi.soundFont, pcm.data(), kBlockFrames, 0);
+                tsf_render_float(GetMidiState().soundFont, pcm.data(), kBlockFrames, 0);
 
                 /* Apply volume. */
-                const float vol = g_midi.volume;
+                const float vol = GetMidiState().volume;
                 if (vol != 1.0f) {
                     for (float& s : pcm) s *= vol;
                 }
@@ -394,7 +413,7 @@ static void MixerThread()
         if (rendered) {
             /* Submit PCM to SDL. */
             SDL_PutAudioStreamData(
-                g_midi.stream,
+                GetMidiState().stream,
                 pcm.data(),
                 static_cast<int>(pcm.size() * sizeof(float)));
         } else {
@@ -421,44 +440,44 @@ static void MixerThread()
  */
 static bool EnsureMidiBackend()
 {
-    if (g_midi.device != 0) return true; /* already open */
-    if (g_midi.backendInitFailed) return false; /* already failed once; don't re-log */
+    if (GetMidiState().device != 0) return true; /* already open */
+    if (GetMidiState().backendInitFailed) return false; /* already failed once; don't re-log */
 
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         SDL_Log("[midi] SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError());
-        g_midi.backendInitFailed = true;
+        GetMidiState().backendInitFailed = true;
         return false;
     }
 
-    g_midi.stream = SDL_OpenAudioDeviceStream(
+    GetMidiState().stream = SDL_OpenAudioDeviceStream(
         SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
         &kMixSpec, nullptr, nullptr);
 
-    if (!g_midi.stream) {
+    if (!GetMidiState().stream) {
         SDL_Log("[midi] SDL_OpenAudioDeviceStream failed: %s", SDL_GetError());
-        g_midi.backendInitFailed = true;
+        GetMidiState().backendInitFailed = true;
         return false;
     }
 
-    g_midi.device = SDL_GetAudioStreamDevice(g_midi.stream);
-    SDL_ResumeAudioStreamDevice(g_midi.stream);
+    GetMidiState().device = SDL_GetAudioStreamDevice(GetMidiState().stream);
+    SDL_ResumeAudioStreamDevice(GetMidiState().stream);
 
     /* Load SoundFont. */
-    g_midi.soundFont = LoadSoundFont();
-    if (g_midi.soundFont) {
-        tsf_set_output(g_midi.soundFont, TSF_STEREO_INTERLEAVED,
+    GetMidiState().soundFont = LoadSoundFont();
+    if (GetMidiState().soundFont) {
+        tsf_set_output(GetMidiState().soundFont, TSF_STEREO_INTERLEAVED,
                        kMixSpec.freq, 0.0f);
-        tsf_set_volume(g_midi.soundFont, 1.0f);
+        tsf_set_volume(GetMidiState().soundFont, 1.0f);
     } else {
         MIDI_LOG("audio backend started without SoundFont; music will stay silent");
         return true;
     }
 
     /* Start mixer thread. */
-    g_midi.running.store(true);
-    g_midi.thread = std::thread(MixerThread);
+    GetMidiState().running.store(true);
+    GetMidiState().thread = std::thread(MixerThread);
 
-    MIDI_LOG("audio backend started (device id=%u)", (unsigned)g_midi.device);
+    MIDI_LOG("audio backend started (device id=%u)", (unsigned)GetMidiState().device);
     return true;
 }
 
@@ -504,11 +523,11 @@ MMRESULT MidiMusicSetVolume(DWORD dwVolume)
     const float right = static_cast<float>((dwVolume >> 16) & 0xFFFF) / 65535.0f;
     const float gain  = (left + right) * 0.5f;
 
-    std::lock_guard<std::mutex> lk(g_midi.mtx);
-    g_midi.volume = gain;
+    std::lock_guard<std::mutex> lk(GetMidiState().mtx);
+    GetMidiState().volume = gain;
 
-    if (g_midi.soundFont) {
-        tsf_set_volume(g_midi.soundFont, gain);
+    if (GetMidiState().soundFont) {
+        tsf_set_volume(GetMidiState().soundFont, gain);
     }
 
     MIDI_LOG("midiOutSetVolume: left=%.3f right=%.3f → gain=%.3f", left, right, gain);
@@ -592,14 +611,14 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
 
         /* Register session. */
         {
-            std::lock_guard<std::mutex> lk(g_midi.mtx);
+            std::lock_guard<std::mutex> lk(GetMidiState().mtx);
             MidiSession sess;
-            sess.id       = g_midi.nextId++;
+            sess.id       = GetMidiState().nextId++;
             sess.filename = path;
             sess.song     = song;
             sess.cursor   = song;
             parms->wDeviceID = sess.id;
-            g_midi.sessions.push_back(std::move(sess));
+            GetMidiState().sessions.push_back(std::move(sess));
         }
 
         MIDI_LOG("MCI_OPEN: assigned device id=%u", (unsigned)parms->wDeviceID);
@@ -609,18 +628,18 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
     if (uMsg == MCI_PLAY) {
         auto* parms = reinterpret_cast<MCI_PLAY_PARMS*>(dwParam);
 
-        std::lock_guard<std::mutex> lk(g_midi.mtx);
-        for (auto& s : g_midi.sessions) {
+        std::lock_guard<std::mutex> lk(GetMidiState().mtx);
+        for (auto& s : GetMidiState().sessions) {
             if (s.id == mciId) {
                 /* Stop any current playback on other sessions. */
-                for (auto& other : g_midi.sessions) {
+                for (auto& other : GetMidiState().sessions) {
                     if (other.id != mciId) {
                         other.playing = false;
                     }
                 }
 
-                if (g_midi.soundFont) {
-                    tsf_reset(g_midi.soundFont);
+                if (GetMidiState().soundFont) {
+                    tsf_reset(GetMidiState().soundFont);
                 }
 
                 s.cursor   = s.song;
@@ -634,7 +653,7 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
                     s.notifyHwnd = nullptr;
                 }
 
-                if (!g_midi.soundFont) {
+                if (!GetMidiState().soundFont) {
                     s.playing = false;
                     s.finished = true;
                     if (s.notifyHwnd) {
@@ -657,8 +676,8 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
     }
 
     if (uMsg == MCI_CLOSE) {
-        std::lock_guard<std::mutex> lk(g_midi.mtx);
-        for (auto it = g_midi.sessions.begin(); it != g_midi.sessions.end(); ++it) {
+        std::lock_guard<std::mutex> lk(GetMidiState().mtx);
+        for (auto it = GetMidiState().sessions.begin(); it != GetMidiState().sessions.end(); ++it) {
             if (it->id == mciId) {
                 MIDI_LOG("MCI_CLOSE: device id=%u", (unsigned)mciId);
                 it->playing = false;
@@ -667,10 +686,10 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
                     it->song   = nullptr;
                     it->cursor = nullptr;
                 }
-                if (g_midi.soundFont) {
-                    tsf_reset(g_midi.soundFont);
+                if (GetMidiState().soundFont) {
+                    tsf_reset(GetMidiState().soundFont);
                 }
-                g_midi.sessions.erase(it);
+                GetMidiState().sessions.erase(it);
                 return 0;
             }
         }
