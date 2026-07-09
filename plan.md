@@ -2799,7 +2799,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0408: Add a regression test locking in WM_CHAR's ASCII-only forwarding behavior
-Status: TODO
+Status: DONE — added InjectTextInput helper + Test 12 (tests/test_input_pipeline.cpp): injects SDL_EVENT_TEXT_INPUT with "ab" + U+00E9 (2-byte UTF-8) + "cd", asserts WM_CHAR fires for exactly 'a','b','c','d' in order and the multi-byte sequence produces nothing and doesn't corrupt surrounding ASCII. Verified 24/24 standalone.
 Priority: P2
 Area: WinUser
 Type: Test

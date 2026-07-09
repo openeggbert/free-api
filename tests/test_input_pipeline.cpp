@@ -62,6 +62,20 @@ static void InjectKeyEvent(SDL_Window* sdlWin, bool down, SDL_Scancode sc)
     SDL_PushEvent(&ev);
 }
 
+// TASK-24H-0408: text is a plain string-literal pointer here, not memory
+// SDL itself allocated -- safe, because SDL only attempts to free an
+// SDL_EVENT_TEXT_INPUT event's text pointer if it finds a matching entry
+// in its own internal temporary-memory registry (SDL_LinkTemporaryMemoryToEvent);
+// a pointer it never registered (e.g. a string literal) is simply left alone.
+static void InjectTextInput(SDL_Window* sdlWin, const char* utf8Text)
+{
+    SDL_Event ev{};
+    ev.type = SDL_EVENT_TEXT_INPUT;
+    ev.text.windowID = SDL_GetWindowID(sdlWin);
+    ev.text.text = utf8Text;
+    SDL_PushEvent(&ev);
+}
+
 // Drain all messages via PeekMessage/DispatchMessage
 static void DrainMessages()
 {
@@ -449,6 +463,32 @@ int main()
             printf("[input-pipeline-test] PASS: an unmapped scancode (CAPSLOCK) produces no WM_KEYUP/WM_SYSKEYUP message\n");
         } else {
             printf("[input-pipeline-test] FAIL: an unmapped scancode (CAPSLOCK) unexpectedly produced a key-up message\n");
+            SDL_Quit();
+            return 1;
+        }
+    }
+
+    g_received.clear();
+
+    // --- Test 12 (TASK-24H-0408): WM_CHAR forwards only ASCII bytes
+    // (<128) from SDL_EVENT_TEXT_INPUT; non-ASCII UTF-8 bytes are silently
+    // dropped, and must not corrupt or skip the surrounding ASCII bytes.
+    // "ab" + U+00E9 ('e' with acute accent, 2-byte UTF-8: 0xC3 0xA9) + "cd".
+    {
+        InjectTextInput(sdlWin, "ab\xC3\xA9""cd");
+        DrainMessages();
+
+        std::vector<WPARAM> charWParams;
+        for (auto& m : g_received) {
+            if (m.msg == WM_CHAR) charWParams.push_back(m.wParam);
+        }
+
+        const std::vector<WPARAM> expected = {'a', 'b', 'c', 'd'};
+        if (charWParams == expected) {
+            printf("[input-pipeline-test] PASS: WM_CHAR forwards exactly the ASCII bytes ('a','b','c','d'), in order, dropping the 2-byte UTF-8 sequence between them\n");
+        } else {
+            printf("[input-pipeline-test] FAIL: WM_CHAR sequence mismatch -- expected 4 ASCII chars, got %zu messages\n", charWParams.size());
+            for (auto w : charWParams) printf("  wParam=0x%02X\n", (unsigned)w);
             SDL_Quit();
             return 1;
         }
