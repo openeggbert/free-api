@@ -4651,7 +4651,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1104: Add a quiet-by-default regression test for window and bitmap logging
-Status: TODO
+Status: DONE — added a minimal file-local SDL_SetLogOutputFunction-based capture helper in both tests/test_winuser_regressions.cpp (TestWindowStartupSequenceIsQuietByDefault) and tests/test_gdi_regressions.cpp (TestLoadImageASuccessPathIsQuietByDefault), asserting zero captured log lines for the CreateWindowExA->ShowWindow->UpdateWindow->SetFocus sequence and a successful LoadImageA call respectively, both with no diagnostics env var set. The winuser test initially FAILED against current code (proving it's a real regression guard, not a tautology): it caught a genuine, previously-undocumented gap in EnsureVideoSubsystem's unconditional "SDL video initialized" log, fixed as TASK-24H-1227. Verified 24/24 in all three build trees.
 Priority: P2
 Area: Diagnostics
 Type: Test
@@ -5580,3 +5580,29 @@ Acceptance criteria:
 
 Out of scope:
 - Do not change `SetWindowTextA`'s implementation — test-only task; no bug was found in the real function.
+
+---
+
+### TASK-24H-1227: Gate EnsureVideoSubsystem's unconditional "SDL video initialized" log behind FreeApiDiagnosticsEnabled()
+Status: DONE — wrapped the success-path SDL_Log in FreeApiDiagnosticsEnabled(), matching TASK-24H-1101/1102's exact pattern; left the failure-path log ("SDL_INIT_VIDEO failed") unconditional, matching the established success-gated/failure-unconditional convention. Found while building TASK-24H-1104's quiet-by-default test: EnsureVideoSubsystem tears down the video subsystem via ShutdownVideoSubsystemIfLastWindow whenever the last registered window is destroyed, and re-initializes (re-logging unconditionally) on the next CreateWindowExA -- so this log was not just a one-time startup log but could refire on every create/destroy/recreate cycle. Confirmed harmless for real gameplay (neither game destroys all its windows mid-session, so this only ever fired once in practice), but was a real, previously-uncaught gap in the same family as TASK-24H-1101/1102. Verified 24/24 in all three build trees.
+Priority: P2
+Area: Diagnostics
+Type: Bugfix
+Evidence: src/internal/FreeApiSdlVideo.cpp:19-25 (EnsureVideoSubsystem), :36-42 (ShutdownVideoSubsystemIfLastWindow); found by TASK-24H-1104's new quiet-by-default test failing against the pre-fix code
+Depends on: None
+
+Problem:
+`EnsureVideoSubsystem` (`src/internal/FreeApiSdlVideo.cpp`) logs "free-api EnsureVideoSubsystem: SDL video initialized" unconditionally on every successful `SDL_InitSubSystem(SDL_INIT_VIDEO)` call, with no `FreeApiDiagnosticsEnabled()` gate — unlike the rest of the codebase's disciplined gating (TASK-24H-1101/1102). Because `ShutdownVideoSubsystemIfLastWindow` tears the subsystem down whenever the last registered window is destroyed, this log is not a true one-time-per-process startup log: it refires every time the window count cycles from zero back to one, with no way to silence it short of a code change.
+
+Required work:
+- Wrap the success-path `SDL_Log` call in `if (FreeApiDiagnosticsEnabled()) { ... }`.
+- Leave the failure-path `SDL_Log` ("SDL_INIT_VIDEO failed") unconditional, matching the established convention that failure-path logs stay visible by default.
+
+Acceptance criteria:
+- A `CreateWindowExA`→`DestroyWindow` cycle repeated with zero windows remaining in between produces zero `SDL_Log` output with no diagnostics env var set.
+- Setting `FREE_API_DIAGNOSTICS=1` restores the log exactly as before.
+- Existing tests still pass in all three build trees.
+- No unrelated API is added.
+
+Out of scope:
+- Do not change `ShutdownVideoSubsystemIfLastWindow`'s teardown behavior — this task only gates the log, not the subsystem lifecycle.

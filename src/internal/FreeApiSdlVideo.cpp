@@ -1,4 +1,5 @@
 #include "internal/FreeApiSdlVideo.hpp"
+#include "internal/FreeApiDiagnostics.hpp"
 #include "internal/FreeApiMessageQueue.hpp"
 #include "internal/FreeApiWindowRegistry.hpp"
 
@@ -22,7 +23,9 @@ bool EnsureVideoSubsystem()
     }
 
     g_videoInitialized = true;
-    SDL_Log("free-api EnsureVideoSubsystem: SDL video initialized");
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api EnsureVideoSubsystem: SDL video initialized");
+    }
     // Initialize debug input flag from environment
     const char* dbgInput = SDL_getenv("FREE_API_DEBUG_INPUT");
     const char* dbgMouse = SDL_getenv("FREE_API_DEBUG_MOUSE");

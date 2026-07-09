@@ -18,6 +18,7 @@
  */
 #include <windows.h>
 #include <free_api_bridge.h>
+#include <SDL3/SDL.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -653,6 +654,51 @@ static void TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimen
     remove(fixturePath);
 }
 
+// TASK-24H-1104: minimal, file-local SDL_Log capture helper -- a regression
+// guard for TASK-24H-1102's "quiet by default" fix, so a future edit can't
+// silently reintroduce an ungated SDL_Log on LoadImageA's success path.
+static int g_gdiCapturedLogLineCount = 0;
+
+static void SDLCALL CountAllGdiLogLines(void* userdata, int category, SDL_LogPriority priority, const char* message)
+{
+    (void)userdata;
+    (void)category;
+    (void)priority;
+    (void)message;
+    ++g_gdiCapturedLogLineCount;
+}
+
+// TASK-24H-1104: with no FREE_API_DEBUG_GDI env var set (this test's normal
+// default state), a successful LoadImageA call must produce zero SDL_Log
+// output (TASK-24H-1102).
+static void TestLoadImageASuccessPathIsQuietByDefault()
+{
+    const int width = 4, height = 4;
+    const std::vector<uint8_t> bmpBytes = MakeMinimalBmp(width, height);
+
+    const char* fixturePath = "test_gdi_quiet_fixture.blp";
+    FILE* f = fopen(fixturePath, "wb");
+    Check(f != nullptr, "test fixture file opens for writing (quiet-LoadImageA test)");
+    if (f) {
+        fwrite(bmpBytes.data(), 1, bmpBytes.size(), f);
+        fclose(f);
+    }
+
+    g_gdiCapturedLogLineCount = 0;
+    SDL_SetLogOutputFunction(CountAllGdiLogLines, nullptr);
+
+    HANDLE h = LoadImageA(nullptr, fixturePath, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+
+    SDL_SetLogOutputFunction(nullptr, nullptr);
+
+    Check(h != nullptr, "LoadImageA succeeds for the quiet-by-default test fixture");
+    Check(g_gdiCapturedLogLineCount == 0,
+          "a successful LoadImageA call produces zero SDL_Log output with no FREE_API_DEBUG_GDI set");
+
+    if (h) DeleteObject(reinterpret_cast<HBITMAP>(h));
+    remove(fixturePath);
+}
+
 // TASK-24H-0605: LoadImageA now normalizes its path with
 // NormalizeFilesystemPath (src/wingdi_bitmap.cpp), not the weaker
 // NormalizePath every other file-opening entry point (_lopen,
@@ -866,6 +912,7 @@ int main()
     TestGetDeviceCapsSizePaletteReportsTrueColorHost();
     TestGetSystemPaletteEntriesFills256WellFormedEntries();
     TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
+    TestLoadImageASuccessPathIsQuietByDefault();
     TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd();
     TestSelectObjectDeleteObjectBitmapIntoDcLifecycle();
     TestFullLoadSelectBlitColorMatchDeleteSequence();

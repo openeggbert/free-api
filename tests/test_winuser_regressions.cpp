@@ -1020,6 +1020,54 @@ static void TestShowWindowUpdateWindowSetFocusSequence()
     DrainMessages();
 }
 
+// TASK-24H-1104: minimal, file-local SDL_Log capture helper. Counts lines
+// so TASK-24H-1101's "quiet by default" fix has a regression guard --
+// without this, a future edit could silently reintroduce an ungated
+// SDL_Log in the window-creation path with nothing to catch it.
+static int g_capturedLogLineCount = 0;
+
+static void SDLCALL CountAllLogLines(void* userdata, int category, SDL_LogPriority priority, const char* message)
+{
+    (void)userdata;
+    (void)category;
+    (void)priority;
+    (void)message;
+    ++g_capturedLogLineCount;
+}
+
+// TASK-24H-1104: with no diagnostics env var set (this test's normal
+// default state -- see docs/headers.md's test-authoring notes), the real
+// CreateWindowExA->ShowWindow->UpdateWindow->SetFocus sequence both games
+// run at startup must produce zero SDL_Log output (TASK-24H-1101).
+static void TestWindowStartupSequenceIsQuietByDefault()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_QuietStartup";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    g_capturedLogLineCount = 0;
+    SDL_SetLogOutputFunction(CountAllLogLines, nullptr);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_QuietStartup", "Test",
+                                 WS_POPUPWINDOW, 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+    SetFocus(hwnd);
+
+    SDL_SetLogOutputFunction(nullptr, nullptr);
+
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the quiet-startup test");
+    Check(g_capturedLogLineCount == 0,
+          "CreateWindowExA->ShowWindow->UpdateWindow->SetFocus produces zero SDL_Log output with no diagnostics env var set");
+
+    DrainMessages();
+    if (hwnd) DestroyWindow(hwnd);
+    DrainMessages();
+}
+
 // TASK-0034 (plan.md): both games read exactly CREATESTRUCT.hInstance on
 // WM_CREATE (free-eggbert blupi.cpp:508; planetblupi blupi.cpp:428-430).
 static HINSTANCE g_capturedCreateHInstance = nullptr;
@@ -1433,6 +1481,7 @@ int main()
     TestClientToScreenTracksWindowPositionNotStale();
     TestSetCursorPosAndGetCursorPosRoundTrip();
     TestShowWindowUpdateWindowSetFocusSequence();
+    TestWindowStartupSequenceIsQuietByDefault();
     TestWmCreateDeliversCorrectHInstance();
     TestWaitMessageDoesNotBusySpin();
     TestDestroyWindowFatalInitFailurePathDoesNotCrash();
