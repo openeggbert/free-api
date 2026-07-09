@@ -326,6 +326,67 @@ static void TestNotifyTriggeredCloseAndReopenStressTest()
     DestroyWindow(hwnd);
 }
 
+// TASK-24H-0902: the stress test above proves the notify-triggered
+// close/reopen pattern doesn't crash, but drives the cycle count directly
+// from the test body rather than reacting to a delivered MM_MCINOTIFY the
+// way both games' real WndProc does (free-eggbert blupi.cpp:562-580,
+// planetblupi blupi.cpp:483-501: on MCI_NOTIFY_SUCCESSFUL, close then
+// reopen+replay the same file). This positively proves the "loops
+// end-to-end via notify" claim (TASK-24H-0901): each cycle only proceeds
+// to reopen after actually observing that cycle's own fresh MM_MCINOTIFY
+// via the real message queue (PeekMessageA), not a direct function call
+// and not a leftover/stale notification from a prior cycle.
+static void TestMidiGenuinelyLoopsViaNotifyDrivenReplay()
+{
+    HWND hwnd = MakeTestWindow("RegTest_MciNotifyDrivenLoop");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the notify-driven-loop test");
+    if (!hwnd) return;
+
+    const std::string path = "test_mci_notify_loop_fixture.mid";
+    Check(WriteMinimalMidi(path), "MIDI fixture file is written for the notify-driven-loop test");
+
+    const int kCycles = 3;
+    int cyclesCompletedWithFreshNotify = 0;
+
+    for (int cycle = 0; cycle < kCycles; ++cycle) {
+        MCIDEVICEID id = 0;
+        MCIERROR openRc = OpenSequencer(path, &id);
+        if (openRc != 0) break;
+
+        MCIERROR playRc = PlayWithNotify(id, hwnd);
+        if (playRc != 0) {
+            mciSendCommandA(id, MCI_CLOSE, 0, 0);
+            break;
+        }
+
+        // Mandatory wait for THIS cycle's own notification -- unlike the
+        // stress test above, the loop does not proceed to the next cycle
+        // without it, so a regression that stops posting MM_MCINOTIFY (or
+        // that leaves a reopened session unable to reach completion) fails
+        // this test directly instead of merely not being exercised.
+        bool notified = WaitForMciNotifySuccessful(hwnd, 3000);
+        if (!notified) break;
+        ++cyclesCompletedWithFreshNotify;
+
+        // Mirror both games' real MM_MCINOTIFY handler: close, then
+        // immediately reopen+replay the same file (this is the actual
+        // game-side looping mechanism under test).
+        mciSendCommandA(id, MCI_CLOSE, 0, 0);
+    }
+
+    Check(cyclesCompletedWithFreshNotify == kCycles,
+          "MIDI music genuinely loops end-to-end: each of 3 notify-driven close->reopen->replay "
+          "cycles receives its own fresh MM_MCINOTIFY via the real message queue");
+
+    // Drain any straggler MM_MCINOTIFY messages so they don't leak into
+    // later tests.
+    MSG msg{};
+    while (PeekMessageA(&msg, hwnd, 0, 0, PM_REMOVE)) {}
+
+    remove(path.c_str());
+    DestroyWindow(hwnd);
+}
+
 // TASK-0094: "cdaudio" MCI_OPEN is gracefully declined, and doesn't break
 // the sequencer fallback both games use immediately after (free-eggbert
 // sound.cpp:723/soundbass.cpp:662 try cdaudio first, then fall back to the
@@ -467,6 +528,7 @@ int main()
     TestSequencerOpenPlayNotifyCloseSequence();
     TestMissingSoundFontStillSucceedsAndNotifiesPromptly();
     TestNotifyTriggeredCloseAndReopenStressTest();
+    TestMidiGenuinelyLoopsViaNotifyDrivenReplay();
     TestCdaudioGracefulDeclineDoesNotBreakSequencerFallback();
     TestMidiOutVolumeIterationSequence();
     TestMciGetDeviceIdaResultSafelyClosable();

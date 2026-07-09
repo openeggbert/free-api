@@ -4176,7 +4176,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0902: Add an end-to-end regression test proving MIDI music genuinely loops via notify-driven replay
-Status: TODO
+Status: DONE — added TestMidiGenuinelyLoopsViaNotifyDrivenReplay (tests/test_mci_sequences.cpp): 3 cycles of open->play(MCI_NOTIFY)->mandatory-wait-for-MM_MCINOTIFY-via-PeekMessageA->close->reopen, only proceeding to the next cycle after actually observing that cycle's own fresh notification (PM_REMOVE consumes it, so no stale/leftover notification can satisfy a later cycle). Fails if MM_MCINOTIFY stops being posted or a reopened session never completes. Verified 24/24 standalone.
 Priority: P2
 Area: WinMM
 Type: Test
