@@ -55,7 +55,7 @@ typedef DWORD MCIERROR;
  * game. Any future real joystick implementation (TASK-0103) only needs to
  * populate the five fields listed above.
  *
- * @note Status: STUB
+ * @note Status: IMPLEMENTED
  */
 typedef struct tagJOYINFOEX {
     DWORD dwSize;

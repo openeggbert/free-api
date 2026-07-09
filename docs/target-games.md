@@ -18,10 +18,15 @@ usage audit.
 * Live frame-pump mechanism: `timeSetEvent`/`timeKillEvent` (a WinMM
   multimedia timer). Its `SetTimer`/`WM_TIMER` call sites are dead code
   (`MMTIMER` is hardcoded `TRUE`).
-* Joystick input (`joyGetPosEx`/`joyGetNumDevs`) is used, live, per-frame,
-  but only as an optional control scheme selectable in its options menu —
-  free-api's current safe-stub (0 devices reported) degrades gracefully to
-  keyboard/mouse.
+* Joystick input (`joyGetPosEx`/`joyGetNumDevs`) call sites exist
+  (`event.cpp:2069-2127`), but are gated behind `m_somethingJoystick`, which
+  is assigned `0` once in its constructor (`event.cpp:1770`) and never
+  reassigned anywhere else — the joystick code path is structurally
+  unreachable in the current shipped game. free-api's backend
+  (`src/winmm.cpp`) is a real, tested, SDL_Joystick-backed implementation
+  (not a stub), kept for link-time completeness. See
+  [`docs/out-of-scope.md`](out-of-scope.md) and
+  [`docs/supported-apis.md`](supported-apis.md) for detail.
 * Own docs: `../free-eggbert/README.md`, `../free-eggbert/TODO.md`.
 
 ## Planet Blupi

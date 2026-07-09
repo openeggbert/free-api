@@ -4427,7 +4427,7 @@ Out of scope:
 ## Joystick
 
 ### TASK-24H-1001: Correct docs/target-games.md's stale joystick description
-Status: TODO
+Status: DONE — rewrote docs/target-games.md's joystick bullet to state the confirmed dead-reach finding (m_somethingJoystick assigned 0 once in the constructor, never reassigned) and that free-api's backend is real, not a stub; cross-referenced docs/out-of-scope.md and docs/supported-apis.md instead of duplicating detail. Re-verified the m_somethingJoystick claim directly against event.cpp this session. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Joystick
 Type: Documentation
@@ -4455,7 +4455,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1002: Fix stale "Status: STUB" annotation on JOYINFOEX
-Status: TODO
+Status: DONE — changed @note Status: STUB to Status: IMPLEMENTED on JOYINFOEX's doc comment (include/mmsystem.h), matching joyGetPosEx/joyGetNumDevs' own accurate annotation. No other doc comment touched. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Joystick
 Type: Documentation
@@ -4483,7 +4483,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1003: Update supported-apis.md joystick row to reflect confirmed dead-reach status
-Status: TODO
+Status: DONE — changed the joystick row's "Required by free-eggbert" column from "Yes (optional)" to "dead", matching the table's own established vocabulary (SetTimer/CreateDirectoryA rows). "Current status" column left unchanged. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Joystick
 Type: Documentation
