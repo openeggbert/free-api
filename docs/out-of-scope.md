@@ -298,6 +298,8 @@ neither is mistaken for the other:
 | `GetStockBrush` | `windowsx.h` | Returns a valid non-null `HBRUSH`; the window is always fully covered by the game's own blit before becoming visible, so the real brush color is never seen. |
 | `MessageBoxA` | `winuser.h` | Only reached on fatal init failure in either game; a real message box isn't required for that path to behave correctly (the process still reports failure). |
 | `InvalidateRect` | `winuser.h` | A no-op; neither game's visible behavior depends on the repaint actually being scheduled (both redraw every frame regardless). |
+| `UnlockResource` | `winbase.h` | Always returns `FALSE`, gated by the same permanent `FindResourceA` safe-miss contract as `LoadResource`/`SizeofResource`/`LockResource`/`FreeResource` above — see "Resource subsystem" (TASK-24H-0807). |
+| `CloseHandle` | `handleapi.h` | **Vestigial, not test-infrastructure-only** (correcting `TASK-24H-0114`'s problem text, which listed it alongside `GetLastError`/`SetLastError`/`RemoveDirectoryA`/`SetEnvironmentVariableA` as if it were test-infrastructure-only too): proven zero call sites anywhere — not in either game, not in any `tests/*.cpp` file, and not in free-api's own `src/` beyond its own definition. Kept only for Win32 header-shape compatibility (TASK-24H-1228, found by the `TASK-24H-0115` public-surface audit). |
 
 **Resolved this session (TASK-0086):** `_findfirst`/`_findnext`/
 `_findclose` were previously a real gap (always failed) affecting

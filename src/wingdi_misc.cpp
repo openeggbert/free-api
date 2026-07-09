@@ -11,6 +11,10 @@ int WINAPI GetDeviceCaps(HDC hdc, int index)
     // branching (pixmap.cpp in each) depends on 0 meaning "not a palette
     // device", so a modern host must report 0 here, not a placeholder like
     // 256 (which used to force both games onto their legacy palette path).
+    // TASK-24H-0604: index is ignored entirely, so every other index also
+    // returns 0 -- an unintended side effect of this shape, not a
+    // deliberate per-index decision. Confirmed correct only for
+    // SIZEPALETTE (the one index either game queries).
     return 0;
 }
 

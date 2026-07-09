@@ -1646,7 +1646,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0114: Establish a formal test-infrastructure-only and free-direct-bridge exception policy in docs/scope.md
-Status: DONE — added a "test-infrastructure-only" named exception category to docs/scope.md's "The rule" section (criteria + GetTickCount/Sleep worked example cross-reference to docs/out-of-scope.md's Resources policy table). The free-direct-bridge category already existed (TASK-0011/0101/0102); added its "do not generalize" constraint inline for completeness. Verified 25/25 in all three build trees (docs-only).
+Status: DONE — added a "test-infrastructure-only" named exception category to docs/scope.md's "The rule" section (criteria + GetTickCount/Sleep worked example cross-reference to docs/out-of-scope.md's Resources policy table). The free-direct-bridge category already existed (TASK-0011/0101/0102); added its "do not generalize" constraint inline for completeness. Verified 25/25 in all three build trees (docs-only). CORRECTION (TASK-24H-1228): this task's own Problem text above listed `CloseHandle` alongside the real test-infrastructure-only symbols, but the TASK-24H-0115 public-surface audit found CloseHandle has zero call sites anywhere, including tests -- it's actually vestigial-but-harmless, not test-infrastructure-only. See docs/out-of-scope.md's Compile-only stubs table for the corrected classification.
 Priority: P2
 Area: Scope
 Type: Documentation
@@ -2352,7 +2352,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0307: Document why GetSystemMetrics' fixed return values are correct (confirmed non-issue)
-Status: TODO
+Status: DONE — extended include/winuser.h's GetSystemMetrics doc comment and docs/supported-apis.md's row with the fixed-value rationale. Implemented together with duplicate TASK-24H-1212. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -3250,7 +3250,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0604: Document GetDeviceCaps's index-blind implementation as scoped to SIZEPALETTE only
-Status: TODO
+Status: DONE — strengthened include/wingdi.h's @note comment to explicitly state index is ignored for every value, added a matching code comment in src/wingdi_misc.cpp, and updated docs/supported-apis.md's row (closing duplicate TASK-24H-1214). Verified 26/26 in all three build trees.
 Priority: P3
 Area: GDI
 Type: Documentation
@@ -4099,7 +4099,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0807: Add `UnlockResource` to `docs/out-of-scope.md`'s "Compile-only stubs" table row
-Status: TODO
+Status: DONE — added the row, gated by the same permanent FindResourceA safe-miss contract as its four siblings already in the table. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Resources
 Type: Documentation
@@ -5191,7 +5191,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1212: Document `GetSystemMetrics`'s fixed-value rationale explicitly
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0307; implemented once there (see that entry). Also aligned docs/supported-apis.md's status label with the header's PARTIAL tag.
 Priority: P3
 Area: Docs
 Type: Documentation
@@ -5216,7 +5216,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1213: Document `MoveWindow`'s confirmed-non-issue status (only call site is dead-reach)
-Status: TODO
+Status: DONE — extended include/winuser.h's MoveWindow doc comment to note the dead-reach call-site finding, cross-referencing docs/out-of-scope.md (TASK-24H-0309). Verified 26/26 in all three build trees.
 Priority: P3
 Area: Docs
 Type: Documentation
@@ -5241,7 +5241,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1214: Document `GetDeviceCaps`'s index-ignored scope in docs/supported-apis.md
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0604; implemented once there (see that entry), including the docs/supported-apis.md row update this task specifically asked for.
 Priority: P3
 Area: Docs
 Type: Documentation
@@ -5610,7 +5610,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1228: Classify and document CloseHandle (include/handleapi.h) as vestigial-but-harmless
-Status: TODO
+Status: DONE — added a row to docs/out-of-scope.md's Compile-only stubs table, and a correction note to TASK-24H-0114's own Status line. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Headers
 Type: Documentation

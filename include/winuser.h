@@ -368,7 +368,16 @@ BOOL WINAPI DestroyWindow(HWND hWnd);
 BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow);
 
 //#3135
-/** @brief Moves/resizes a window via SDL. Ignores repaint semantics. @note Status: PARTIAL */
+/**
+ * @brief Moves/resizes a window via SDL. Ignores repaint semantics.
+ *
+ * Never updates g_freeApiWindowStates's logical width/height -- confirmed
+ * a non-issue: the only evidenced call site in either game is inside the
+ * AVI-movie code path, which is itself dead-reach (the AVI probe always
+ * fails). See docs/out-of-scope.md (TASK-24H-0309/1213).
+ *
+ * @note Status: PARTIAL
+ */
 BOOL WINAPI MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint);
 
 //#4103
@@ -402,7 +411,17 @@ BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent);
 #define SM_CYCAPTION 4
 
 //#4703
-/** @brief Returns selected system metric value. @note Status: PARTIAL */
+/**
+ * @brief Returns selected system metric value.
+ *
+ * Only SM_CXSCREEN/SM_CYSCREEN/SM_CYCAPTION are handled, with fixed,
+ * confirmed-correct values (1024/768/24) -- both target games are
+ * confirmed to query only these three indices, exactly once, at startup.
+ * Any other index returns 0. Must not be made dynamic without a new
+ * evidenced call site (TASK-24H-0307/1212).
+ *
+ * @note Status: PARTIAL
+ */
 int WINAPI GetSystemMetrics(int nIndex);
 
 //#5530

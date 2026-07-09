@@ -113,10 +113,22 @@ BOOL WINAPI DeleteDC(HDC hdc);
 BOOL WINAPI DeleteObject(HGDIOBJ ho);
 
 //#2886
-/** @brief Always returns 0, matching real Win32's SIZEPALETTE contract on a
+/**
+ * @brief Always returns 0, matching real Win32's SIZEPALETTE contract on a
  * modern (non-palette) TrueColor host -- both games branch their
- * TrueColor-vs-palette rendering path on this. @note Status: IMPLEMENTED
- * (for the one index, SIZEPALETTE, either game queries) */
+ * TrueColor-vs-palette rendering path on this.
+ *
+ * The `index` parameter is ignored entirely -- this returns 0 for every
+ * index, not just SIZEPALETTE. Confirmed correct for SIZEPALETTE (the one
+ * index either game queries) only; the fact that every other index also
+ * happens to return 0 is an unintended side effect of the index-blind
+ * implementation shape, not a deliberate per-index decision, and is safe
+ * today only because neither game queries any other index. Do not read
+ * "0" as the correct value for any GetDeviceCaps index generally
+ * (TASK-24H-0604/1214).
+ *
+ * @note Status: IMPLEMENTED (for SIZEPALETTE only)
+ */
 int WINAPI GetDeviceCaps(HDC hdc, int index);
 
 //#2923

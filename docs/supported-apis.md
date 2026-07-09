@@ -24,7 +24,7 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `CreateWindowA` (windowed) | WinUser | Yes | Yes | IMPLEMENTED | `test_winuser_regressions.cpp` |
 | `AdjustWindowRect` | WinUser | Yes (live) | Yes (live) | IMPLEMENTED (deliberate identity transform — see doc comment in `include/winuser.h`) | `test_winuser_regressions.cpp` |
 | `ShowWindow`/`UpdateWindow`/`SetFocus` | WinUser | Yes | Yes | IMPLEMENTED | `test_winuser_regressions.cpp` |
-| `GetSystemMetrics` (`SM_CXSCREEN/CYSCREEN/CYCAPTION`) | WinUser | Yes | Yes | IMPLEMENTED | `test_winuser_regressions.cpp` |
+| `GetSystemMetrics` (`SM_CXSCREEN/CYSCREEN/CYCAPTION`) | WinUser | Yes | Yes | PARTIAL (fixed values for only these three indices, confirmed sufficient — both games query exactly these three, once, at startup; any other index returns 0) | `test_winuser_regressions.cpp` |
 | `PeekMessageA`/`GetMessageA`/`TranslateMessage`/`DispatchMessageA` | WinUser | Yes | Yes | IMPLEMENTED (`PeekMessageA`'s `hWnd`/filter args are intentionally ignored — unfiltered peek always, see `docs/out-of-scope.md`) | `test_input_pipeline.cpp`, `test_planetblupi_loop.cpp`, `test_eggbert_loop.cpp` |
 | `WaitMessage` | WinUser | Yes | Yes | IMPLEMENTED (polling-based: checks queue, sleeps ~1ms once if empty, then returns `TRUE` unconditionally — not a true blocking wait, see `docs/out-of-scope.md`) | `test_winuser_regressions.cpp` |
 | `PostQuitMessage`/`PostMessageA` | WinUser | Yes | Yes | IMPLEMENTED (cross-thread-safe; `PostMessageA` performs no `hWnd`/message validation — safe because both games only ever post to windows they themselves created, see `docs/out-of-scope.md`) | `test_timer_regressions.cpp` (stress test) |
@@ -44,7 +44,7 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `MK_*` flags in `WM_MOUSEMOVE.wParam` | WinUser/Input | No | Yes | IMPLEMENTED (`MK_LBUTTON`/`MK_RBUTTON` tested; `MK_SHIFT`/`MK_CONTROL` implemented but not automatable in this headless environment — the two drive **two distinct** planetblupi features, not one generic "modifier": `MK_SHIFT` drives drag-select multi-unit highlight (`event.cpp:3440,3472,3504`, `BlupiHiliDown/Move/Up`), `MK_CONTROL` drives a separate level-editor decor flood-fill (`event.cpp:3843,3877,3908`, `ArrangeFill`). See `TASK-24H-0401`/`0403` for the tracked human-playtest verification of each) | `test_winuser_regressions.cpp` |
 | `WM_MOUSEMOVE`/`WM_LBUTTONDOWN/UP`/`WM_RBUTTONDOWN/UP` | WinUser/Input | Yes | Yes | IMPLEMENTED (bit-exact `lParam` packing, demo-file compatible) | `test_input_pipeline.cpp` |
 | `CreateCompatibleDC`/`DeleteDC`/`SelectObject`/`DeleteObject`/`GetObjectA` | GDI | Yes | Yes | IMPLEMENTED | `test_gdi_regressions.cpp` |
-| `GetDeviceCaps`(`SIZEPALETTE`)/`GetSystemPaletteEntries` | GDI | Yes | Yes | IMPLEMENTED | `test_gdi_regressions.cpp` |
+| `GetDeviceCaps`(`SIZEPALETTE`)/`GetSystemPaletteEntries` | GDI | Yes | Yes | IMPLEMENTED (`index` is ignored entirely — returns 0 for every index, not just `SIZEPALETTE`; confirmed correct only for the one index either game queries) | `test_gdi_regressions.cpp` |
 | `LoadImageA` (`LR_LOADFROMFILE`, extension-agnostic) | GDI | Yes | Yes | IMPLEMENTED | `test_gdi_regressions.cpp`, `test_file_paths.cpp` |
 | `StretchBlt` (`SRCCOPY`) | GDI | Yes | Yes | IMPLEMENTED | `test_gdi_regressions.cpp` |
 | `GetPixel`/`SetPixel` | GDI | Yes | Yes | IMPLEMENTED (consistent with free-direct's `Lock()`-exposed backing memory) | `test_gdi_regressions.cpp` |
