@@ -1041,7 +1041,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0007: Fix or document the incomplete install()/export packaging
-Status: TODO
+Status: DONE — removed the dangling EXPORT free-api-targets clause (no matching install(EXPORT...) existed, so find_package() could never have worked; no evidenced consumer needs it, both games/free-direct use add_subdirectory()). Added install(DIRECTORY include_non_windows/...) gated the same way as the compile-time include path (if(NOT WIN32)). Verified via a real cmake --install into a scratch prefix, before/after: Windows.h/WinUser.h/sys/timeb.h are now installed, no stray EXPORT artifacts. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Build
 Type: Bugfix

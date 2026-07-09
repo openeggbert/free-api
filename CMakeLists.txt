@@ -626,8 +626,15 @@ if(FREE_API_BUILD_EXAMPLES)
     unset(_free_api_example)
 endif()
 
+# TASK-24H-0007: no `install(EXPORT free-api-targets ...)` call exists (and
+# none is added here) -- neither target game nor free-direct consumes
+# free-api via find_package(); both use add_subdirectory(). The EXPORT
+# clause below was previously a no-op (targets were tagged into an export
+# set that was never installed, so find_package(free-api CONFIG) could
+# never have worked); removed rather than completed, since a real
+# find_package()-consumable package (generated Config/ConfigVersion files)
+# has no evidenced consumer to justify the added surface.
 install(TARGETS free-api freeapi_compat_headers
-        EXPORT free-api-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -636,3 +643,13 @@ install(TARGETS free-api freeapi_compat_headers
 install(DIRECTORY include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+# TASK-24H-0007: include_non_windows/ is added to freeapi_compat_headers'
+# public include path whenever NOT WIN32 (see the target_include_directories
+# call above) -- an installed non-Windows copy needs these headers too, or
+# its own build (which depends on them) would fail.
+if(NOT WIN32)
+    install(DIRECTORY include_non_windows/
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()
