@@ -4123,7 +4123,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0808: Add a regression test for the `mciGetDeviceIDA`/`MCI_CLOSE` collision against a real open sequencer session
-Status: TODO
+Status: DONE — added TestMciGetDeviceIdaClosesARealOpenSequencerSessionAtCollidingId (tests/test_mci_sequences.cpp), run first in main() so it lands on device id 1 (nextId starts at 1). Opens a real sequencer session (asserts id==1), calls mciGetDeviceIDA("avivideo")+MCI_CLOSE matching termAVI()'s exact shape, asserts the close succeeds, confirms the session was genuinely erased (subsequent MCI_PLAY on that id returns MCIERR_INVALID_DEVICE_ID), and confirms a redundant second MCI_CLOSE is a harmless no-op. Verified 24/24 standalone.
 Priority: P2
 Area: Resources
 Type: Test

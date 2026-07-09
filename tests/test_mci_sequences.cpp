@@ -135,6 +135,65 @@ static bool WaitForMciNotifySuccessful(HWND hwnd, Uint64 durationMs)
     return false;
 }
 
+// TASK-24H-0808: mciGetDeviceIDA always hardcodes its return to 1
+// (src/winmm.cpp), and MidiMusic's device-id generator starts at 1
+// (src/MidiMusic.cpp: `MCIDEVICEID nextId = 1;`), so the very first-ever
+// MCI_OPEN in a process is assigned id 1 -- the exact id mciGetDeviceIDA
+// returns. This exercises the real collision: opens a genuine sequencer
+// session (which must be id 1, asserted below), then calls
+// mciGetDeviceIDA("avivideo") + MCI_CLOSE against it (matching both games'
+// termAVI(), always run from CMovie's destructor at shutdown regardless of
+// whether AVI ever actually opened), and confirms it actually closes the
+// real session (not a hollow no-op on an unrelated/unknown id) and that a
+// redundant second MCI_CLOSE on the now-closed id is a harmless no-op.
+//
+// MUST run before any other test in this file opens an MCI session --
+// MidiMusic's device-id counter is process-global and monotonic (never
+// reset), so this only reaches id 1 if it is the very first MCI_OPEN.
+static void TestMciGetDeviceIdaClosesARealOpenSequencerSessionAtCollidingId()
+{
+    HWND hwnd = MakeTestWindow("RegTest_MciDeviceIdCollision");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the device-id-collision test");
+    if (!hwnd) return;
+
+    const std::string path = "test_mci_device_id_collision_fixture.mid";
+    Check(WriteMinimalMidi(path), "MIDI fixture file is written for the device-id-collision test");
+
+    MCIDEVICEID id = 0;
+    MCIERROR openRc = OpenSequencer(path, &id);
+    Check(openRc == 0, "MCI_OPEN(\"sequencer\") succeeds for the device-id-collision fixture");
+    Check(id == 1, "the first-ever MCI_OPEN in this process is assigned device id 1 "
+                   "(precondition for the mciGetDeviceIDA collision -- this test must run first)");
+
+    if (openRc == 0 && id == 1) {
+        MCIDEVICEID collidingId = mciGetDeviceIDA("avivideo");
+        Check(collidingId == 1, "mciGetDeviceIDA(\"avivideo\") returns the hardcoded id 1, "
+                                "colliding with the genuinely open sequencer session");
+
+        MCI_GENERIC_PARMS genericParms{};
+        MCIERROR closeRc = mciSendCommandA(collidingId, MCI_CLOSE, 0, reinterpret_cast<DWORD_PTR>(&genericParms));
+        Check(closeRc == 0, "MCI_CLOSE against the colliding id succeeds (matches both games' termAVI() call shape)");
+
+        // Confirm the close was real (erased the session), not a hollow
+        // success on an id that was never actually open: MCI_PLAY on the
+        // same id must now report MCIERR_INVALID_DEVICE_ID.
+        MCI_PLAY_PARMS playParms{};
+        playParms.dwCallback = reinterpret_cast<DWORD_PTR>(hwnd);
+        MCIERROR playAfterCloseRc = mciSendCommandA(id, MCI_PLAY, MCI_NOTIFY, reinterpret_cast<DWORD_PTR>(&playParms));
+        Check(playAfterCloseRc == MCIERR_INVALID_DEVICE_ID,
+              "MCI_PLAY on the now-closed id fails with MCIERR_INVALID_DEVICE_ID, confirming the session was genuinely erased");
+
+        // A redundant second MCI_CLOSE on the already-closed id must be a
+        // harmless no-op (matches termAVI() potentially running more than
+        // once, or a stray duplicate close elsewhere).
+        MCIERROR redundantCloseRc = mciSendCommandA(collidingId, MCI_CLOSE, 0, reinterpret_cast<DWORD_PTR>(&genericParms));
+        Check(redundantCloseRc == 0, "a redundant MCI_CLOSE on the already-closed colliding id is accepted as a harmless no-op");
+    }
+
+    remove(path.c_str());
+    DestroyWindow(hwnd);
+}
+
 // TASK-0089: the exact sequencer open->play(MCI_NOTIFY)->close sequence
 // both games use for background music.
 static void TestSequencerOpenPlayNotifyCloseSequence()
@@ -400,6 +459,10 @@ int main()
         printf("[mci-sequences] SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
+
+    // Must run first: relies on being the very first MCI_OPEN in the
+    // process to land on device id 1 (see its own doc comment).
+    TestMciGetDeviceIdaClosesARealOpenSequencerSessionAtCollidingId();
 
     TestSequencerOpenPlayNotifyCloseSequence();
     TestMissingSoundFontStillSucceedsAndNotifiesPromptly();
