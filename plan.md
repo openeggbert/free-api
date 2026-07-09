@@ -3427,7 +3427,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0611: Add regression test coverage for GetPixel/SetPixel's Memory-DC-kind (selected-bitmap) path
-Status: TODO
+Status: DONE — added TestGetSetPixelRoundTripOnMemoryDcWithSelectedBitmap (tests/test_gdi_regressions.cpp): round-trip, untouched-pixel, and out-of-bounds safety on a Memory DC via CreateCompatibleDC+SelectObject. Verified 26/26 in all three build trees.
 Priority: P3
 Area: GDI
 Type: Test
@@ -3452,7 +3452,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0612: Add a safety regression test for CreateBitmap's unsupported-bit-depth fallback branch
-Status: TODO
+Status: DONE — added TestCreateBitmapUnsupportedBitDepthFallsBackToZeroedBuffer (tests/test_gdi_regressions.cpp): asserts a 24bpp call succeeds, reports correct dimensions, and produces a fully zeroed pixel buffer. Verified 26/26 in all three build trees.
 Priority: P3
 Area: GDI
 Type: Test
@@ -3501,7 +3501,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0614: Verify examples/04_gdi_minimap.cpp still behaves correctly after the StretchBlt and CreateBitmap GDI fixes
-Status: TODO
+Status: DONE (partial, headless-verifiable portion only) — rebuilt fresh under -DFREE_API_BUILD_EXAMPLES=ON, compiles cleanly with no warnings/errors. Ran it directly under SDL_VIDEODRIVER=dummy: it correctly prints GetDeviceCaps(SIZEPALETTE)=0 and the expected "modern TrueColor host" analysis, meaning CreateBitmap's 8-bit and 16-bit paths and both StretchBlt calls all executed successfully (no crash) before reaching its message loop. Confirmed via a background-process + /proc/status check that it then blocks in its own interactive while(g_running) loop exactly as designed (waiting for a real WM_CLOSE), not crashed or hung abnormally -- this matches examples/README.md's own "meant to be run with a real display, not headless" note. Full visual/pixel-level confirmation ("no obviously corrupted bitmap output") requires a real display and remains a human-verification item, not claimed here.
 Priority: P3
 Area: GDI
 Type: Verification
@@ -3552,7 +3552,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0616: Add rejection-path regression tests for GetObjectA's degenerate-argument guards
-Status: TODO
+Status: DONE — added TestGetObjectARejectsDegenerateArguments (tests/test_gdi_regressions.cpp): all three guards (NULL handle, NULL buffer, c<=0) exercised, plus a positive control proving the same handle succeeds with valid arguments. Verified 26/26 in all three build trees.
 Priority: P3
 Area: GDI
 Type: Test

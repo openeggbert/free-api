@@ -417,6 +417,42 @@ static void TestGetSetPixelRoundTripOnSurfaceDc()
     Check(dest.IsSentinelAt(0, 0), "SetPixel does not affect other pixels on the same surface");
 }
 
+// TASK-24H-0611: GetPixel/SetPixel handle two distinct DC kinds -- Surface
+// (tested above) and Memory-with-selected-bitmap. Both real target games'
+// only GetPixel/SetPixel call sites go through a DirectDraw surface's
+// GetDC() (Surface-DC-kind), so this is defensive-completeness coverage,
+// not a known-used-behavior gap.
+static void TestGetSetPixelRoundTripOnMemoryDcWithSelectedBitmap()
+{
+    const int w = 2, h = 2;
+    std::vector<uint8_t> zeroPixels(static_cast<size_t>(w) * h * 4, 0);
+    HBITMAP bitmap = MakeSourceBitmap(w, h, zeroPixels);
+    Check(bitmap != nullptr, "CreateBitmap succeeds for the memory-DC round-trip test");
+
+    HDC memDc = CreateCompatibleDC(nullptr);
+    Check(memDc != nullptr, "CreateCompatibleDC succeeds for the memory-DC round-trip test");
+    SelectObject(memDc, bitmap);
+
+    COLORREF written = RGB(0x11, 0x22, 0x33);
+    SetPixel(memDc, 1, 1, written);
+    COLORREF readBack = GetPixel(memDc, 1, 1);
+    Check(GetRValue(readBack) == GetRValue(written) &&
+          GetGValue(readBack) == GetGValue(written) &&
+          GetBValue(readBack) == GetBValue(written),
+          "SetPixel followed by GetPixel on a Memory DC with a selected bitmap round-trips the same RGB value");
+
+    COLORREF untouched = GetPixel(memDc, 0, 0);
+    Check(GetRValue(untouched) == 0 && GetGValue(untouched) == 0 && GetBValue(untouched) == 0,
+          "SetPixel does not affect other pixels on the same selected bitmap");
+
+    // Out-of-bounds safety, matching the Surface-DC-kind contract.
+    COLORREF oobRead = GetPixel(memDc, w, h);
+    Check(oobRead == 0, "GetPixel out-of-bounds on a Memory DC returns 0, not garbage/crash");
+    COLORREF oobWriteAttempt = RGB(0xAA, 0xBB, 0xCC);
+    COLORREF oobSetReturn = SetPixel(memDc, -1, -1, oobWriteAttempt);
+    Check(oobSetReturn == oobWriteAttempt, "SetPixel out-of-bounds on a Memory DC returns the passed color without crashing");
+}
+
 // TASK-0125 (plan.md): CreateBitmap's 8-bit-indexed and 16-bit RGB565
 // conversion paths (src/wingdi_bitmap.cpp) feed Planet Blupi's minimap
 // rebuild (decmap.cpp) but had no test coverage of the converted pixel
@@ -444,6 +480,35 @@ static void TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba()
         }
     }
     Check(allMatch, "CreateBitmap's 8-bit path expands each index to RGBA32 (R=G=B=index, A=255)");
+
+    DeleteObject(bmp);
+}
+
+// TASK-24H-0612: CreateBitmap's fallback branch for any nBitCount other
+// than 8/16/32 logs a warning and leaves the pixel buffer zero-filled
+// (already zeroed at allocation time) -- no evidenced call site in either
+// game passes an unsupported bit depth, but this locks in that the
+// fallback stays crash-safe and produces a fully zeroed buffer, not
+// garbage, if it's ever reached.
+static void TestCreateBitmapUnsupportedBitDepthFallsBackToZeroedBuffer()
+{
+    const int w = 2, h = 2;
+    const std::vector<uint8_t> garbageInput(static_cast<size_t>(w) * h * 3, 0xFF); // 24-bit-ish garbage
+
+    HBITMAP bmp = CreateBitmap(w, h, 1, 24, garbageInput.data());
+    Check(bmp != nullptr, "CreateBitmap succeeds (non-null HBITMAP) for an unsupported bit depth (24)");
+
+    BITMAP info{};
+    int written = GetObjectA(bmp, sizeof(info), &info);
+    Check(written == sizeof(BITMAP), "GetObjectA reports a full BITMAP struct for the unsupported-bit-depth bitmap");
+    Check(info.bmWidth == w && info.bmHeight == h, "GetObjectA reports correct dimensions for the unsupported-bit-depth bitmap");
+
+    const uint8_t* pixels = static_cast<const uint8_t*>(info.bmBits);
+    bool allZero = true;
+    for (size_t i = 0; i < static_cast<size_t>(w) * h * 4; ++i) {
+        if (pixels[i] != 0) { allZero = false; break; }
+    }
+    Check(allZero, "CreateBitmap's unsupported-bit-depth fallback produces a fully zeroed pixel buffer, not garbage");
 
     DeleteObject(bmp);
 }
@@ -624,6 +689,32 @@ static std::vector<uint8_t> MakeMinimalBmp(int width, int height)
 // bmWidth/bmHeight (free-eggbert ddutil.cpp:57,149; planetblupi
 // ddutil.cpp:47,104,208). Verifies both against a real, non-.bmp-named
 // fixture file.
+// TASK-24H-0616: GetObjectA has three degenerate-argument guards (h==NULL,
+// pv==NULL, c<=0) that all return 0 safely -- none exercised by any
+// existing test, since both games always call this with a valid,
+// just-created bitmap handle and a full-sized buffer. Defensive-
+// completeness coverage, not a known-used-behavior gap.
+static void TestGetObjectARejectsDegenerateArguments()
+{
+    const int w = 2, h = 2;
+    std::vector<uint8_t> pixels(static_cast<size_t>(w) * h * 4, 0);
+    HBITMAP bmp = CreateBitmap(w, h, 1, 32, pixels.data());
+    Check(bmp != nullptr, "CreateBitmap succeeds for the GetObjectA rejection-path test");
+
+    BITMAP info{};
+    Check(GetObjectA(nullptr, sizeof(info), &info) == 0, "GetObjectA(NULL handle, ...) returns 0, not a crash");
+    Check(GetObjectA(bmp, sizeof(info), nullptr) == 0, "GetObjectA(..., NULL output buffer) returns 0, not a crash");
+    Check(GetObjectA(bmp, 0, &info) == 0, "GetObjectA(..., c=0) returns 0");
+    Check(GetObjectA(bmp, -1, &info) == 0, "GetObjectA(..., c<0) returns 0");
+
+    // Positive control: the same handle succeeds with valid arguments,
+    // proving the guards above rejected specifically the bad arguments,
+    // not the handle itself.
+    Check(GetObjectA(bmp, sizeof(info), &info) == sizeof(BITMAP), "GetObjectA still succeeds for the same handle with valid arguments");
+
+    DeleteObject(bmp);
+}
+
 static void TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions()
 {
     const int width = 6, height = 4;
@@ -905,12 +996,15 @@ int main()
     TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX();
     TestStretchBltEarlyRejectionBranchesReturnFalseAndLeaveDestUntouched();
     TestGetSetPixelRoundTripOnSurfaceDc();
+    TestGetSetPixelRoundTripOnMemoryDcWithSelectedBitmap();
     TestCreateBitmap8BitIndexedExpandsToGreyscaleRgba();
+    TestCreateBitmapUnsupportedBitDepthFallsBackToZeroedBuffer();
     TestCreateBitmap16BitRgb565ConvertsToExpectedRgba32();
     TestCreateCompatibleDcRepeatedLifecycleDoesNotLeak();
     TestCreateBitmapRepeatedLifecycleDoesNotLeak();
     TestGetDeviceCapsSizePaletteReportsTrueColorHost();
     TestGetSystemPaletteEntriesFills256WellFormedEntries();
+    TestGetObjectARejectsDegenerateArguments();
     TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
     TestLoadImageASuccessPathIsQuietByDefault();
     TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd();
