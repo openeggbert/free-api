@@ -886,12 +886,20 @@ backlog above — it does not replace it. Every task below cites concrete
 * **P3** — pure docs cleanup, compile-only stub classification,
   nice-to-have verification.
 
-175 atomic tasks total (177 as of session 4, which added `TASK-24H-1221`/
+175 atomic tasks originally (177 as of session 4, which added `TASK-24H-1221`/
 `1222` for the previously-untracked MIDI-audio/rendering human sign-off
-gap), organized by area: Build/Integration (17), Scope/Headers (18),
-WinUser message-loop (17), Window/Cursor (16), Input (12), Timers (9), GDI
-(17), Files (14), Resources (8), WinMM/MIDI/MCI (11), Joystick (5),
-Diagnostics (13), Documentation (20).
+gap); the per-area breakdown below is a point-in-time snapshot from that
+point and has not been recomputed since — grep `plan.md` for
+`^### TASK-24H-` + `Status: TODO`/`DONE` for current, accurate counts.
+Session 5 closed the entire P2/P3 backlog that existed at that point (91
+tasks); a subsequent deep audit (`audit.md`, 2026-07-09) added 16 more
+tasks (`TASK-24H-1229`-`1244`, see "Deep Audit Follow-up" section) derived
+from 5 independent correctness/performance/memory/edge-case/risk reviews.
+199 tasks total as of that addition. Original per-area breakdown (stale,
+kept for historical context only): Build/Integration (17), Scope/Headers
+(18), WinUser message-loop (17), Window/Cursor (16), Input (12), Timers
+(9), GDI (17), Files (14), Resources (8), WinMM/MIDI/MCI (11), Joystick
+(5), Diagnostics (13), Documentation (20).
 
 ## Build and Integration
 
@@ -5632,3 +5640,413 @@ Acceptance criteria:
 Out of scope:
 - Do not remove `CloseHandle` from the header -- removal is a separate decision (see `docs/out-of-scope.md`'s "Removal/hiding policy for proven-unused symbols"), not automatic just because this task documents its true status.
 - Do not re-audit any other symbol as part of this task -- scoped to `CloseHandle` only.
+
+---
+
+## Deep Audit Follow-up (audit.md, 2026-07-09)
+
+The 16 tasks below (`TASK-24H-1229`-`1244`) formalize `audit.md`'s "Proposed Tasks" section (§9) into the standard backlog format. `audit.md` was produced by 5 independent parallel reviews (correctness, performance, memory safety, edge cases, architectural risk) against commit `fdc38bf`. Every task below cites the specific audit section/finding ID as evidence; re-verify the underlying claim against current source before implementing, since source may have moved since the audit was written. None of these are implemented yet -- `audit.md`'s own conclusion is explicit that no currently-live game behavior is broken; these are hardening/correctness/process improvements, prioritized by the audit's own severity assessment translated into this project's P0-P3 scale (P1 reserved for gaps in APIs both games actually use with a realistic trigger; P2/P3 for lower-likelihood or purely defensive items).
+
+### TASK-24H-1229: Clear the GDI handle "magic number" before delete to close a double-free path
+Status: TODO
+Priority: P1
+Area: GDI
+Type: Bugfix
+Evidence: src/wingdi_dc.cpp (`DeleteDC`, `FreeApiDestroySurfaceDC`); src/wingdi_bitmap.cpp (`DeleteObject`); src/internal/FreeApiGdi.cpp (`AsCompatDC`/`AsCompatBitmap` magic-number validation); audit.md §3 Finding C1 / §5 Finding M1 (independently found by both the correctness and memory-safety reviews)
+Depends on: None
+
+Problem:
+`AsCompatDC`/`AsCompatBitmap` validate a handle by dereferencing it and checking an in-struct magic number, but none of `DeleteDC`/`DeleteObject`/`FreeApiDestroySurfaceDC` clear that magic number before calling `delete`. Freed heap memory is not guaranteed to be overwritten immediately, so a double-delete of the same handle (`DeleteObject(bmp); DeleteObject(bmp);`) can pass the magic-number check a second time against already-freed memory, causing a genuine double-free (heap corruption), not a fail-safe rejection. No existing test exercises double-deletion of the same handle. This is a different, narrower case than the already-declined "garbage/never-valid pointer" fix in `docs/out-of-scope.md` (`FreeApiDestroySurfaceDC`'s documented "do not fix with a general handle-validation/table framework" decision) -- the fix here does not require that framework.
+
+Required work:
+- Set the `magic` field to zero (or a distinct tombstone value) immediately before `delete` in `DeleteDC`, `DeleteObject`, and `FreeApiDestroySurfaceDC`.
+- Add a regression test that calls each of the three delete functions twice on the same handle and asserts the second call is rejected safely (matching whatever return-value contract the function already documents for an invalid handle), not just "doesn't crash under the test's specific allocator behavior" -- consider running this test under `FREE_API_SANITIZE=address` specifically, since ASan reliably detects a double-free that a plain debug build might not visibly manifest.
+
+Acceptance criteria:
+- A double-delete of the same `HDC`/`HBITMAP`/surface-DC handle no longer risks a double-free; the second call is rejected the same way an already-invalid handle is.
+- New test passes under both the standalone build and `FREE_API_SANITIZE=address`.
+- Existing tests still pass in all three build trees.
+- No unrelated API is added; no change to the single-valid-delete behavior for any handle.
+
+Out of scope:
+- Do not build a general handle-table/generation-counter framework -- this task closes the double-free specifically, not the broader "garbage pointer" class already explicitly declined elsewhere.
+- Do not change `AsCompatDC`/`AsCompatBitmap`'s validation logic beyond what's needed to recognize a cleared/tombstoned magic value as invalid (it likely already does, if zero is not `kCompatDcMagic`/`kCompatBitmapMagic` -- verify first).
+
+---
+
+### TASK-24H-1230: Document wsprintfA's buffer-size hazard (1024-byte internal cap vs. real call sites' 256-byte buffers)
+Status: TODO
+Priority: P2
+Area: WinUser
+Type: Documentation
+Evidence: src/winuser_message.cpp (`wsprintfA`, `vsnprintf(lpOut, 1024, ...)`); ../free-eggbert/src/soundbass.cpp:142, sound.cpp:117 (`char holder[256]`); ../planetblupi/src/sound.cpp:99 (same shape); audit.md §3 Finding C4 / §5 Finding M3 / §6 Finding E1 (independently found by three of the five reviews)
+Depends on: None
+
+Problem:
+`wsprintfA` writes up to 1024 bytes via `vsnprintf`, matching real Win32 `wsprintfA`'s own historically-unsafe no-length-parameter contract. All three real call sites declare a 256-byte stack buffer -- 768 bytes smaller than what `wsprintfA` will write into if given the chance. Currently safe only because the fixed format string (`"Data1 : %d, dwdata: %d, pFile: %d"`) cannot realistically produce more than ~60 bytes of output. A future call site with a longer format string and a buffer under 1024 bytes would get a genuine, silent stack-buffer overflow, and there is no way to fix this in the implementation without breaking the deliberate real-Win32-compatible signature (no size parameter exists to bound against). Separately, both real call sites pass pointer arguments (`pData1`, `pFile`) where the format string expects `int` (`%d`) -- technically undefined behavior per the C standard, though confirmed harmless on this project's actual target ABI (SysV x86-64, where pointer and `int` share the same register class) -- inherited from the original 1998-era game source, not introduced by free-api.
+
+Required work:
+- Add a prominent doc comment on `wsprintfA`'s declaration (`include/winuser.h`) stating explicitly that it will write up to 1024 bytes into the caller's buffer regardless of that buffer's actual size, and that any new call site must keep its expected output well under its own actual buffer size, not just under 1024 bytes.
+- Add a matching note to `docs/supported-apis.md`'s `wsprintfA` row.
+- Note the pointer-as-%d inherited-UB detail as a one-line comment near the real call sites' analysis in `docs/supported-apis.md`, for future-maintainer context (not a fix -- inherited game source, out of free-api's control).
+
+Acceptance criteria:
+- The buffer-size hazard is documented in both the header and `docs/supported-apis.md`, discoverable by a future contributor before they add a new call site.
+- No behavior change; documentation only.
+- Existing tests still pass.
+
+Out of scope:
+- Do not change `wsprintfA`'s signature or add a size parameter -- would break the deliberate real-Win32-`wsprintfA`-compatible contract.
+- Do not add runtime truncation detection/assertions -- `vsnprintf`'s return value could be checked for truncation against the 1024-byte internal cap, but that does not protect a caller's smaller buffer and would add complexity for a case with no evidenced real trigger.
+
+---
+
+### TASK-24H-1231: Fix CreateBitmap's pitch computation to avoid signed-int overflow
+Status: TODO
+Priority: P2
+Area: GDI
+Type: Bugfix
+Evidence: src/wingdi_bitmap.cpp (`CreateBitmap`, `bitmap->pitch = nWidth * 4;` vs. the immediately-following `pixels.resize(static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight) * 4u, ...)`, which already casts correctly); audit.md §5 Finding M2 / §6 Finding E3 (independently found by both the memory-safety and edge-case reviews)
+Depends on: None
+
+Problem:
+`bitmap->pitch = nWidth * 4;` is a plain `int * int` multiplication with no overflow guard, inconsistent with the pixel-buffer size computation one line below, which correctly casts to `size_t` before multiplying. If `nWidth` exceeds roughly 536,870,911, this specific multiplication overflows (undefined behavior, typically wraps to a negative/garbage value) while the pixel buffer itself would still be sized "correctly" (or fail allocation) -- a corrupted `pitch` would then drive incorrect row-offset math in every downstream `GetPixel`/`SetPixel`/`StretchBlt` access through that bitmap. Not reachable by either game's real, fixed, small bitmap dimensions -- a purely defensive-hardening fix.
+
+Required work:
+- Cast to `size_t` (or `int64_t`) before the multiplication in the `pitch` assignment, matching the pattern already used for the pixel-buffer size on the next line.
+- Consider whether `pitch` should remain an `int` field at all given this change, or whether a wider type is warranted -- keep the field type as-is unless the cast alone doesn't resolve the class of bug (it should, for this specific computation).
+
+Acceptance criteria:
+- The `pitch` computation cannot silently produce an incorrect (overflowed) value for any `nWidth` that would still successfully allocate a pixel buffer.
+- Existing tests still pass; no behavior change for any current, in-bounds bitmap dimension.
+- No unrelated API is added.
+
+Out of scope:
+- Do not add a general "reject implausibly large dimensions" validation layer across all GDI functions -- scoped to this one specific overflow-prone computation.
+
+---
+
+### TASK-24H-1232: Investigate and fix (or explicitly document as accepted) the static destruction order dependency between the MIDI subsystem and the message queue
+Status: TODO
+Priority: P1
+Area: Concurrency
+Type: Bugfix
+Evidence: src/MidiMusic.cpp (`static MidiState g_midi;`, `MidiState::~MidiState()`'s stop-then-join sequence, `MixerThread`'s `PostMessageA` call while holding `g_midi.mtx`); src/internal/FreeApiMessageQueue.cpp (`g_messageQueue`/`g_messageQueueMutex`); audit.md §7 Finding R1 (rated HIGH severity -- the single highest-severity finding in the audit)
+Depends on: None
+
+Problem:
+`g_midi` and the message-queue globals are ordinary namespace-scope statics in different translation units. C++ does not guarantee cross-translation-unit static destruction order -- it depends on link order, left unspecified by the standard, which can silently change with a toolchain upgrade, an added source file, or a build-system refactor. The MIDI mixer thread holds `g_midi.mtx` while calling `PostMessageA` (which locks the message-queue mutex and touches the queue). `MidiState`'s destructor correctly stops and joins the mixer thread before releasing its own resources, so teardown is safe today only if `g_midi` happens to be destroyed before `g_messageQueue`. If link order ever reverses this, the mixer thread -- not yet told to stop -- could call into an already-destroyed mutex/deque during process teardown: an intermittent crash or hang at process exit, triggered by build configuration rather than runtime input, and very difficult to reproduce or bisect.
+
+Required work:
+- Convert `g_midi` (and, if needed for the same guarantee, the message-queue globals) to function-local statics (Meyer's singletons), whose destruction order C++ *does* guarantee (reverse of first-use order) -- verify the natural first-use order (message queue is used starting at window creation, before any `MCI_OPEN`) actually produces the required destruction order (MIDI destroyed, thread joined, *before* the message queue is destroyed) once converted.
+- Alternatively (if the singleton conversion is judged too invasive), add an explicit, ordered shutdown routine (e.g. registered via `std::atexit` at a well-defined point) that joins the mixer thread before any other global teardown can run, and document why this ordering is now guaranteed rather than incidental.
+- Add a test or a documented manual verification step confirming the fix actually changes destruction order in the expected direction (this is inherently hard to unit-test directly; at minimum, verify via a debugger or instrumented build that the mixer thread's `join()` completes before `g_messageQueue`'s destructor runs).
+
+Acceptance criteria:
+- The MIDI mixer thread is guaranteed (by language rule, not incidental link order) to be fully stopped before the message-queue globals it depends on are destroyed.
+- Existing tests still pass in all three build trees and both sanitizer builds.
+- The fix (or the reasoning for why it's accepted as low-enough-risk to leave as-is) is documented in `NEXT.md`'s "Do not do yet" section or `docs/out-of-scope.md`, whichever this session judges is a better fit, so a future session doesn't need to re-derive the analysis.
+
+Out of scope:
+- Do not restructure the broader threading model beyond fixing this specific destruction-order dependency.
+- Do not add a general "safe global shutdown" framework -- a targeted fix for this one dependency is sufficient.
+
+---
+
+### TASK-24H-1233: Move the MIDI mixer thread's PostMessageA call outside its mutex's lock scope
+Status: TODO
+Priority: P2
+Area: WinMM
+Type: Bugfix
+Evidence: src/MidiMusic.cpp (`MixerThread`'s notify-on-completion path, `PostMessageA` called while `g_midi.mtx` is held); audit.md §4 Finding P2 (performance) / §7 Finding R2 (latent lock-order risk) -- the same fix addresses both
+Depends on: None
+
+Problem:
+The lock scope guarding MIDI session lookup and audio rendering also wraps the `PostMessageA` call on song completion, which internally acquires a different mutex (the message-queue mutex) and does unrelated work (WM_MOUSEMOVE/WM_TIMER coalescing scan, diagnostics bookkeeping). This is not a deadlock today (verified no other code path acquires these two mutexes in the reverse order), but it is both an avoidably-widened critical section (making `MCI_OPEN`/`MCI_CLOSE` wait slightly longer than necessary) and a latent lock-order dependency with nothing structurally preventing a future change from introducing a real deadlock.
+
+Required work:
+- Capture the notify target (`HWND`) and session/notify data locally while still holding `g_midi.mtx`, release the lock, then call `PostMessageA` outside the lock scope.
+- Add a one-line comment documenting the required lock order (MIDI mutex must never be held while acquiring the message-queue mutex) next to `g_midi.mtx`'s declaration, so a future change doesn't reintroduce the same shape of dependency.
+
+Acceptance criteria:
+- `PostMessageA` is no longer called while `g_midi.mtx` is held.
+- Existing tests still pass, in particular `test_mci_sequences.cpp`'s notify-driven-loop and stress tests, and the sanitizer builds (this touches locking behavior directly).
+- No unrelated API is added; no change to notify delivery ordering/content from the caller's perspective.
+
+Out of scope:
+- Do not restructure `MidiMusicSendCommand`'s other locking beyond this one call site.
+
+---
+
+### TASK-24H-1234: Remove the dead, unsynchronized g_activeTimerIds set
+Status: TODO
+Priority: P2
+Area: WinMM
+Type: Cleanup
+Evidence: src/internal/FreeApiTimers.cpp (`g_activeTimerIds` definition); src/winmm.cpp (`timeSetEvent`'s `insert`, `timeKillEvent`'s `erase`); audit.md §6 Finding E2 (confirmed via exhaustive grep that it is never read anywhere -- the diagnostics snapshot's active-timer count is computed from the two properly-mutex-protected timer maps instead)
+Depends on: None
+
+Problem:
+`g_activeTimerIds` is a plain `std::unordered_set<UINT>` with no mutex, written to by `timeSetEvent`/`timeKillEvent` but never read by any code path. Concurrent unsynchronized `insert`/`erase` on an `unordered_set` is undefined behavior if ever triggered from two threads at once (theoretically possible if a timer callback ever reentrantly called `timeSetEvent`/`timeKillEvent`, though neither game's real callback does this today). Since the data is never consulted, the correct fix is deletion, not adding synchronization for state nothing uses.
+
+Required work:
+- Remove `g_activeTimerIds` and its `insert`/`erase` call sites entirely.
+- Grep to confirm (again, at implementation time) that nothing reads it before removing -- re-verify this audit finding still holds against current source.
+
+Acceptance criteria:
+- `g_activeTimerIds` no longer exists anywhere in the codebase.
+- Existing tests still pass, including under `FREE_API_SANITIZE=thread` (removing dead unsynchronized state should never introduce a new issue, but verify).
+- No unrelated API is added; no behavior change (the removed state was never observable).
+
+Out of scope:
+- Do not add synchronization to `g_activeTimerIds` as an alternative -- it is confirmed dead code; keeping and locking it would add cost for a set nothing consults.
+
+---
+
+### TASK-24H-1235: Fix _findfirst's directory iteration to not throw an uncaught exception on a real, live call path
+Status: TODO
+Priority: P1
+Area: Files
+Type: Bugfix
+Evidence: src/crt_io.cpp (the `std::filesystem::directory_iterator(dir, ec)` loop, whose range-based-for implicit `operator++()` uses the throwing increment form, not `ec`-reporting); ../free-eggbert/src/event.cpp:4741-4747 (the real, live call site: the design-mission file picker); audit.md §3 Finding C3 (the one finding in the correctness review reachable via a real, live call site under a realistic failure condition)
+Depends on: None
+
+Problem:
+The `(path, ec)` constructor overload only makes the directory-*open* step non-throwing; the loop's per-iteration `operator++()` still uses the throwing increment. A permission error, or a file removed/changed mid-iteration (e.g. by a concurrent process, or a symlink disappearing), throws `std::filesystem::filesystem_error` uncaught -- with no exception handling anywhere in this codebase, this would very likely reach `std::terminate()` and crash the entire game process, instead of `_findfirst` gracefully returning `-1` as its documented failure contract requires. This is reachable via free-eggbert's real design-mission file picker under a realistic (if uncommon) real-world condition.
+
+Required work:
+- Rewrite the loop to use the non-throwing increment form (`it.increment(ec)` in a manual loop), or wrap the loop body in try/catch and translate any thrown `filesystem_error` into `_findfirst`'s documented `-1`/`ENOENT`-style failure return.
+- Add a regression test that simulates a mid-iteration failure (e.g. a directory entry that's removed between `_findfirst` and `_findnext`, if that's feasible to construct in a test; otherwise, test the alternate failure mode directly reachable in this sandboxed environment, such as a permission-denied subdirectory) and confirms `_findfirst`/`_findnext` return their documented failure code rather than crashing the test process.
+
+Acceptance criteria:
+- A directory-iteration failure mid-scan (permission error, concurrent removal) no longer crashes the process; `_findfirst`/`_findnext` return their documented failure contract instead.
+- New test passes; existing tests (`test_file_paths.cpp` in particular) still pass in all three build trees.
+- No unrelated API is added; no change to the success-path behavior for any currently-passing scenario.
+
+Out of scope:
+- Do not change `_findfirst`/`_findnext`'s success-path semantics or wildcard-matching behavior -- scoped to the failure-mode fix only.
+
+---
+
+### TASK-24H-1236: Eliminate PeekMessageA's per-frame heap allocation in the WM_TIMER-generation path
+Status: TODO
+Priority: P2
+Area: WinUser
+Type: Performance
+Evidence: src/winuser_message.cpp (`PeekMessageA`'s `std::vector<MSG> pendingTimers`, freshly stack-declared on every call where the queue was empty); src/wingdi_blit.cpp (`StretchBlt`'s existing `thread_local std::vector<int> srcXTable` -- the pattern to copy); audit.md §4 Finding P1
+Depends on: None
+
+Problem:
+A `std::vector<MSG> pendingTimers` is freshly constructed on every `PeekMessageA` call where the internal queue was empty -- essentially every frame for planetblupi, whose live frame-pump is `SetTimer`/`WM_TIMER`. When the timer has elapsed (the common case), a `push_back` triggers one small heap allocation, freed a few lines later. Not unbounded, but avoidable: this exact class of problem is already solved elsewhere in this codebase (`StretchBlt`'s `thread_local` reusable vector).
+
+Required work:
+- Apply the same `thread_local` (or otherwise call-scope-persistent, reused-across-calls) reusable-vector pattern already established in `StretchBlt` to `PeekMessageA`'s `pendingTimers` vector.
+
+Acceptance criteria:
+- `PeekMessageA`'s WM_TIMER-generation path no longer allocates on the common (timer-elapsed) path after the first call.
+- Existing tests still pass, in particular `test_timer_regressions.cpp` and the two full-loop integration tests (`test_planetblupi_loop.cpp`, `test_eggbert_loop.cpp`).
+- No unrelated API is added; no behavior change to WM_TIMER delivery content/ordering.
+
+Out of scope:
+- Do not restructure `PeekMessageA`'s broader logic beyond this one allocation-avoidance change.
+
+---
+
+### TASK-24H-1237: Add a minimum-version floor to the SDL3/SDL3_image/SDL3_mixer find_package calls
+Status: TODO
+Priority: P3
+Area: Build
+Type: Cleanup
+Evidence: CMakeLists.txt (`find_package(SDL3/SDL3_image/SDL3_mixer REQUIRED)`, no version argument); audit.md §7 Finding R5
+Depends on: None
+
+Problem:
+free-api links against whatever SDL3/SDL3_image/SDL3_mixer version the consuming game or system provides, with no build-time compatibility guard (unlike the two vendored third-party libraries, TinySoundFont and TinyMidiLoader, which are directly committed source and therefore effectively pinned). A future SDL3 release changing an edge-case behavior this project's tests don't cover (e.g. timer-callback granularity, or a filesystem-function semantic like the one this session already found to be idempotent-vs-not depending on platform) could surface only on a machine with a different SDL3 version than was tested against, with no configure-time warning.
+
+Required work:
+- Determine the actual SDL3/SDL3_image/SDL3_mixer version(s) this project's testing has been validated against (check the currently-vendored/system-installed version in the active development environment).
+- Add that version as a floor to each `find_package` call (e.g. `find_package(SDL3 3.2 REQUIRED)`).
+
+Acceptance criteria:
+- All three `find_package` calls specify an explicit minimum version.
+- Existing builds (standalone, both target-game subdirectory builds) still configure and pass 26/26 with the currently-used SDL3 version.
+- No unrelated build-system change.
+
+Out of scope:
+- Do not vendor SDL3 itself -- this project's explicit policy is to never vendor SDL3 (see `docs/cmake-options.md`); this task only adds a version floor to the existing `find_package` calls.
+
+---
+
+### TASK-24H-1238: Add an automated guard against new, unlisted public declarations (scope-policy enforcement)
+Status: TODO
+Priority: P2
+Area: Build
+Type: Implementation
+Evidence: docs/scope.md ("The rule": every public API must cite a real usage site, enforced only by human/AI diligence today); cmake/CheckNoHardcodedPaths.cmake + cmake/CheckNoHardcodedPathsSelfTest.cmake (the pattern to follow -- a lightweight script-mode CTest with genuine self-test coverage, TASK-24H-0011); audit.md §7 Finding R3
+Depends on: None
+
+Problem:
+`docs/scope.md`'s citation rule is enforced entirely by human/AI diligence when writing `plan.md` entries -- there is no CI check, lint rule, or test verifying that a new public declaration in `include/*.h` has corresponding evidence. `test_header_compile.cpp` only proves headers compile, not that they're scoped. A future contributor (human or AI) could add a new public function "because it seemed useful," and nothing in the build or test suite would flag it, letting the project's core "stay minimal" value proposition erode silently over time.
+
+Required work:
+- Design and implement a lightweight script-mode CTest (matching `check_no_hardcoded_paths`'s established pattern: a `cmake -P` script + CTest entry, with genuine self-test coverage per `TASK-24H-0011`'s pattern, not just a "passes today" check) that extracts every public declaration currently in `include/*.h`/`include_non_windows/*.h` and diffs it against a maintained baseline file (e.g. `cmake/known-public-symbols.txt`), failing loudly with the new symbol's name if the current header set has grown beyond the baseline.
+- Seed the baseline from the current, already-audited symbol set (cross-reference `docs/public-surface-audit.md`, TASK-24H-0115's output, as the authoritative current list).
+- Document in the failure message (and in `docs/scope.md`) that a new symbol requires a `plan.md` task with real evidence before the baseline is updated to include it -- this is a deliberate speed bump, not a hard block.
+
+Acceptance criteria:
+- Adding a new, undocumented public declaration to any `include/*.h` file causes this new test to fail with a clear message naming the offending symbol.
+- The test passes against the current, already-scoped header set with zero false positives.
+- Existing tests still pass in all three build trees.
+- No unrelated API is added as a side effect of building this guard.
+
+Out of scope:
+- Do not attempt to also validate that the CITED evidence in `plan.md` is accurate (that remains a human/AI review responsibility) -- this task only catches "a new symbol appeared with no process followed at all."
+- Do not block the build on this check by default if that's judged too disruptive -- a CTest-level failure (not a build-time hard error) matches the existing `check_no_hardcoded_paths` precedent and is sufficient.
+
+---
+
+### TASK-24H-1239: Fix GetObjectA to return the actual number of bytes written, not always sizeof(BITMAP)
+Status: TODO
+Priority: P3
+Area: GDI
+Type: Bugfix
+Evidence: src/wingdi_bitmap.cpp (`GetObjectA`, the `memcpy` is correctly bounded to `min(c, sizeof(BITMAP))` but the return value is unconditionally `sizeof(BITMAP)`); audit.md §3 Finding C8
+Depends on: None
+
+Problem:
+`GetObjectA`'s `memcpy` is correctly bounded to the smaller of the caller's requested size and `sizeof(BITMAP)` -- no overflow. But the function always *returns* `sizeof(BITMAP)`, even when the caller passed a smaller `c` and fewer bytes were actually copied. Real Win32 `GetObjectA` returns the actual byte count written. A caller relying on the return value to know how much of the struct is valid would be misled. No evidence either game does this, but it's a real, easily-fixed deviation from the documented contract.
+
+Required work:
+- Change `GetObjectA` to return the actual number of bytes copied (`min(c, sizeof(BITMAP))`), not the unconditional `sizeof(BITMAP)`.
+- Add a regression test calling `GetObjectA` with `c` smaller than `sizeof(BITMAP)` and asserting the return value matches the smaller size, not the full struct size.
+
+Acceptance criteria:
+- `GetObjectA`'s return value always matches the actual number of bytes written for any `c`.
+- New test passes; existing `GetObjectA` tests (including `TASK-24H-0616`'s degenerate-argument tests) still pass.
+- No unrelated API is added.
+
+Out of scope:
+- Do not change `GetObjectA`'s behavior for object kinds other than bitmaps (no other kind is supported today, per `TASK-24H-0608`'s documented scope).
+
+---
+
+### TASK-24H-1240: Add a symmetric zero-guard to ClientToScreen's scaling division
+Status: TODO
+Priority: P3
+Area: WinUser
+Type: Bugfix
+Evidence: src/winuser_cursor.cpp (`ScreenToClient`'s explicit `pw > 0 && ph > 0` guard vs. `ClientToScreen`'s unguarded mirror-image division); audit.md §3 Finding C5
+Depends on: None
+
+Problem:
+`ScreenToClient` explicitly guards its coordinate-scaling division against the window's logical width/height being zero. `ClientToScreen`'s corresponding division has no equivalent guard. Currently unreachable (`CreateWindowExA` always populates a positive width/height, defaulting to 640x480 if given a non-positive value), but the two functions performing the same class of computation should have matching defensive postures, and this is a latent division-by-zero (SIGFPE) risk if that invariant is ever broken by a future change (e.g. an incomplete `MoveWindow` logical-size update, already documented elsewhere as a confirmed-harmless gap today).
+
+Required work:
+- Add the same zero-guard `ScreenToClient` already has to `ClientToScreen`'s division, with the same fallback behavior (match whatever `ScreenToClient` does when the guard trips).
+
+Acceptance criteria:
+- `ClientToScreen` and `ScreenToClient` have matching defensive behavior for a zero-width/zero-height window state.
+- Existing tests still pass; no behavior change for any currently-reachable (positive-dimension) case.
+- No unrelated API is added.
+
+Out of scope:
+- Do not investigate or fix `MoveWindow`'s stale logical-size tracking as part of this task -- that's a separate, already-documented, confirmed-harmless gap (`TASK-24H-0309`).
+
+---
+
+### TASK-24H-1241: Document SetTimer's globally-keyed (not per-window) timer-ID map as a confirmed-harmless simplification
+Status: TODO
+Priority: P3
+Area: Timers
+Type: Documentation
+Evidence: src/internal/FreeApiTimers.hpp, src/winuser_timer.cpp (`g_winTimers`, a single global map keyed by timer ID alone, not scoped per-window as real Win32 does); audit.md §3 Finding C6
+Depends on: None
+
+Problem:
+Real Win32 scopes a timer ID to the window that created it -- the same numeric ID can be reused by different windows without conflict. Here, `g_winTimers` is a single global map keyed by ID alone; a second `SetTimer` call with the same ID from a different window would silently overwrite the first window's timer entry. Confirmed harmless today only because this project's own established single-live-window design (documented in `docs/out-of-scope.md`) means two windows never coexist -- undocumented as a deliberate simplification anywhere.
+
+Required work:
+- Add a short note to `docs/out-of-scope.md`, alongside the existing single-window-assumption documentation, stating `SetTimer`'s timer-ID map is global (not per-window), why that's safe under the current single-window design, and that this must be revisited before any multi-window support is ever added.
+
+Acceptance criteria:
+- The simplification and its safety rationale are documented in a discoverable location, cross-referenced from the existing single-window-assumption note.
+- No behavior change; documentation only.
+- Existing tests still pass.
+
+Out of scope:
+- Do not scope `g_winTimers` per-window -- no evidenced need, and the project's single-window design makes it unnecessary.
+
+---
+
+### TASK-24H-1242: Document or unify StretchBlt's inconsistent out-of-range source-rect handling between its two internal paths
+Status: TODO
+Priority: P3
+Area: GDI
+Type: Documentation
+Evidence: src/wingdi_blit.cpp (the 1:1 fast path clips to a no-op for an out-of-range source rect; the scaled path instead clamps per-pixel coordinates to the nearest edge and draws a stretched/duplicated edge-pixel artifact for the same nominal input shape); audit.md §3 Finding C7
+Depends on: None
+
+Problem:
+For the same nominal "source rect far outside the source bitmap" input, `StretchBlt`'s two internal code paths (1:1 fast path vs. scaled path) produce different behavior: one draws nothing, the other draws a clamped-edge artifact. Both target games always pass in-bounds source rects derived from real bitmap dimensions, so this is not an active bug -- but the inconsistency between the two paths for the same edge-case class is currently unstated anywhere.
+
+Required work:
+- Either document the inconsistency explicitly (in `include/wingdi.h`'s `StretchBlt` doc comment and/or `docs/out-of-scope.md`) as an accepted, low-priority quirk given neither path is reachable with out-of-range input by either game, or unify the two paths' out-of-range behavior to match (contributor's choice, given neither game can currently observe the difference).
+
+Acceptance criteria:
+- The inconsistency (or its resolution, if unified) is documented or fixed, discoverable by a future maintainer without re-deriving it from source.
+- Existing tests still pass, including `TestStretchBlt1to1OutOfRangeSourceRectClipsSafely` and `TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX`, which already lock in each path's CURRENT individual behavior -- if unifying, both of those tests will need deliberate, reasoned updates, not just deletion.
+- No unrelated API is added.
+
+Out of scope:
+- Do not change `StretchBlt`'s in-bounds behavior under any circumstance.
+
+---
+
+### TASK-24H-1243: Consider relaxing g_debugInput's memory order from the default (seq_cst) to relaxed
+Status: TODO
+Priority: P3
+Area: Diagnostics
+Type: Performance
+Evidence: src/internal/FreeApiMessageQueue.cpp/.hpp (`std::atomic_bool g_debugInput`, read via implicit bool conversion -- defaults to `memory_order_seq_cst`); audit.md §4 Finding P3
+Depends on: None
+
+Problem:
+`g_debugInput`'s implicit `bool` conversions default to `memory_order_seq_cst`. On x86/x64 (the primary desktop target) a seq_cst *load* is free (compiles to a plain `MOV`), but on ARM/Android (which this codebase explicitly supports via `#if defined(__ANDROID__)` code paths) a seq_cst load requires a memory barrier -- checked multiple times per message. `g_debugInput` is a debug on/off flag, not synchronizing any other data, so `memory_order_relaxed` would be strictly sufficient and costs nothing to change.
+
+Required work:
+- Change `g_debugInput`'s reads to explicit `.load(std::memory_order_relaxed)` calls (the existing ThreadSanitizer-verified data-race fix for this variable, `TestGDebugInputSurvivesRaceUnderSanitizer`, tests for a genuine race, not a specific memory order -- confirm the relaxed change still passes that test, since relaxed ordering is still race-free for a single boolean flag with no dependent data).
+
+Acceptance criteria:
+- `g_debugInput` reads use `memory_order_relaxed`; writes may also be relaxed unless a stronger reason is found to keep them stricter.
+- `TestGDebugInputSurvivesRaceUnderSanitizer` still passes under `FREE_API_SANITIZE=thread`.
+- Existing tests still pass in all three build trees.
+- No unrelated API is added.
+
+Out of scope:
+- Do not change any other atomic variable's memory order as part of this task -- scoped to `g_debugInput` only; other atomics may have genuine ordering requirements that need separate, individual analysis.
+
+---
+
+### TASK-24H-1244: Verify (and fix if needed) CompatDC::selectedBitmap's dangling-pointer risk against both games' real delete ordering
+Status: TODO
+Priority: P2
+Area: GDI
+Type: Verification
+Evidence: src/wingdi_bitmap.cpp (`DeleteObject`, never scans live `CompatDC` instances to clear a `selectedBitmap` reference to the bitmap being deleted); src/wingdi_dc.cpp (`SelectObject`); audit.md §3 Finding C2
+Depends on: None
+
+Problem:
+`DeleteObject` never scans open `CompatDC`s to clear a `selectedBitmap` pointer referencing the bitmap being deleted. If a caller deletes a bitmap while it is still selected into a DC (rather than deselecting or deleting the DC first), that DC's `selectedBitmap` becomes a dangling pointer; a subsequent `GetPixel`/`SetPixel`/`StretchBlt`/`GetObjectA` call through that DC would read or write freed memory. This has not been confirmed as reachable by either target game's actual delete ordering -- the audit flagged it as "not confirmed reachable, but not confirmed safe either."
+
+Required work:
+- Trace both games' actual `DeleteObject`/`DeleteDC`/`SelectObject` call sequences (via `ddutil.cpp` and any other real call sites already cataloged in `docs/supported-apis.md`) and determine definitively whether either game ever deletes a bitmap while it remains selected into a live DC.
+- If confirmed unreachable: document the finding (with the exact call-order evidence) in `docs/out-of-scope.md`, matching this project's established "confirmed harmless, not a TODO" pattern.
+- If confirmed reachable, or if the call order can't be proven safe with confidence: fix `DeleteObject` to clear any `CompatDC::selectedBitmap` pointers referencing the bitmap being deleted (requires a way to find affected DCs -- consider whether this needs a reverse index, or whether the number of live DCs is always small enough that a linear scan over some existing DC-tracking structure is acceptable; check what tracking already exists before designing a new one).
+
+Acceptance criteria:
+- Either a documented, evidenced "confirmed harmless" finding exists in `docs/out-of-scope.md`, or the dangling-pointer path is fixed and a regression test locks in the fix.
+- Existing tests still pass in all three build trees.
+- No unrelated API is added.
+
+Out of scope:
+- Do not build a general reference-counting/dependency-tracking framework across all GDI objects unless the verification step above proves it's actually needed -- prefer the documentation outcome if the call-order trace confirms safety, consistent with this project's default policy of not building generalized safety infrastructure without evidenced need.
