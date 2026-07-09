@@ -76,12 +76,37 @@ intptr_t _findfirst(const char* filespec, struct _finddata_t* fileinfo)
 
     FindSession session;
     std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        if (ec) break;
-        if (!entry.is_regular_file()) continue;
-        const std::string name = entry.path().filename().string();
-        if (MatchesSimpleWildcard(name, pattern)) {
-            session.matches.push_back(name);
+    // TASK-24H-1235: the (path, ec) constructor only makes the initial
+    // directory *open* non-throwing -- a range-based for's implicit
+    // operator++() and directory_entry::is_regular_file() (no ec) are both
+    // still the throwing overloads. A permission error, or a file
+    // removed/replaced-with-a-broken-symlink between the directory listing
+    // and a per-entry status query, would previously throw
+    // std::filesystem::filesystem_error uncaught here -- with no exception
+    // handling anywhere in this codebase, that reaches std::terminate() and
+    // crashes the whole process instead of _findfirst returning its
+    // documented -1 failure. Use the ec-overloads of both increment() and
+    // is_regular_file() so any such failure degrades gracefully instead:
+    // a single entry's status-query failure just skips that entry (matches
+    // a real filesystem's "file vanished while listing" behavior), and a
+    // directory-read failure mid-scan stops the scan but keeps whatever
+    // matched so far.
+    std::filesystem::directory_iterator it(dir, ec);
+    if (!ec) {
+        const std::filesystem::directory_iterator end;
+        while (it != end) {
+            const std::filesystem::directory_entry& entry = *it;
+
+            std::error_code statusEc;
+            if (entry.is_regular_file(statusEc) && !statusEc) {
+                const std::string name = entry.path().filename().string();
+                if (MatchesSimpleWildcard(name, pattern)) {
+                    session.matches.push_back(name);
+                }
+            }
+
+            it.increment(ec);
+            if (ec) break;
         }
     }
 

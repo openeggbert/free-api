@@ -372,6 +372,72 @@ static void TestFindFirstFindNextRepeatedDrainWithoutCloseDoesNotLeakSession()
     rmdir(root.c_str());
 }
 
+// TASK-24H-1235: audit.md Finding C3 -- the directory_iterator(dir, ec)
+// constructor only makes the initial directory *open* non-throwing; the
+// per-entry advance/status queries used to be the throwing overloads, so a
+// filesystem error mid-scan (not just "file not found", which
+// is_regular_file() already treats as a non-error) would throw
+// std::filesystem::filesystem_error uncaught -- with no exception handling
+// anywhere in this codebase, that reaches std::terminate() and crashes the
+// whole process. A self-referential symlink (name -> itself) reproduces
+// this deterministically and without root: resolving it to determine
+// is_regular_file() hits ELOOP (too many levels of symbolic links), a real
+// stat() error distinct from "not found". Exercises the exact call path
+// free-eggbert's design-mission file picker (event.cpp:4741-4747) uses.
+#if !defined(_WIN32)
+static void TestFindFirstSkipsUnresolvableSymlinkInsteadOfCrashing()
+{
+    std::string root = MakeTempRoot("findfirst_eloop");
+    Check(!root.empty(), "temp root created for the _findfirst ELOOP-regression test");
+    if (root.empty()) return;
+
+    const std::string subdir = root + "/User";
+    Check(::mkdir(subdir.c_str(), 0755) == 0, "User/ subdirectory created for ELOOP-regression test");
+
+    FILE* f = fopen((subdir + "/save1.xch").c_str(), "wb");
+    Check(f != nullptr, "real fixture file created alongside the broken symlink");
+    if (f) { fputs("x", f); fclose(f); }
+
+    // A symlink that points to itself: resolving its target (as
+    // is_regular_file() must, to know what it points to) hits ELOOP.
+    Check(symlink("loop.xch", (subdir + "/loop.xch").c_str()) == 0,
+          "self-referential loop.xch symlink created");
+
+    char oldCwd[4096];
+    getcwd(oldCwd, sizeof(oldCwd));
+    Check(chdir(root.c_str()) == 0, "chdir into temp root succeeded for ELOOP-regression test");
+
+    struct _finddata_t fileinfo{};
+    intptr_t handle = _findfirst("\\User\\*.xch", &fileinfo);
+    Check(handle != -1,
+          "_findfirst does not crash and still finds the real match when the directory also "
+          "contains an unresolvable (self-referential) symlink");
+
+    int count = 0;
+    bool sawSave1 = false, sawLoop = false;
+    if (handle != -1) {
+        do {
+            ++count;
+            std::string name(fileinfo.name);
+            if (name == "save1.xch") sawSave1 = true;
+            if (name == "loop.xch") sawLoop = true;
+        } while (_findnext(handle, &fileinfo) == 0);
+        _findclose(handle);
+    }
+
+    Check(count == 1 && sawSave1 && !sawLoop,
+          "the unresolvable symlink is silently skipped (not a match, not a crash); "
+          "only the real regular file is reported");
+
+    chdir(oldCwd);
+
+    remove((subdir + "/loop.xch").c_str());
+    remove((subdir + "/save1.xch").c_str());
+    rmdir(subdir.c_str());
+    rmdir(root.c_str());
+}
+#endif
+
 // TASK-24H-0703: parity/characterization test pinning down
 // NormalizeFilesystemPath's exact current input/output behavior directly,
 // as a before/after equivalence check for any future consolidation
@@ -485,6 +551,9 @@ int main()
     TestFindFirstWithUserXchPathShapeReturnsMinusOneForMissingDirectory();
     TestFindFirstFindNextEnumerateRealMatchingFiles();
     TestFindFirstFindNextRepeatedDrainWithoutCloseDoesNotLeakSession();
+#if !defined(_WIN32)
+    TestFindFirstSkipsUnresolvableSymlinkInsteadOfCrashing();
+#endif
 
     if (g_failures > 0) {
         printf("[file-paths] %d FAILURE(S)\n", g_failures);
