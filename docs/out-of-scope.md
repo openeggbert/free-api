@@ -85,6 +85,25 @@ fails, so `movie.cpp`'s body, including its `MoveWindow` calls, never
 executes in either game). Do not add logical-state-update handling to
 `MoveWindow` without new evidence a real, reachable call site needs it.
 
+## No `SDL_WINDOW_RESIZABLE` on any `CreateWindowExA` window (TASK-24H-0316)
+
+**Deliberate, load-bearing — do not add without re-verifying first.**
+`CreateWindowExA` (`src/winuser_window.cpp`) never sets `SDL_WINDOW_RESIZABLE`
+on the SDL window it creates, regardless of `dwStyle`. This is a workaround,
+not an oversight: on some Wayland/X11 compositors, a resizable popup window
+immediately receives a spurious `WM_CLOSE` from the compositor itself,
+killing the game on startup before any real user interaction. Planet Blupi's
+own window style (`WS_POPUPWINDOW|WS_CAPTION`) is a fixed-size popup with a
+title bar — it never needs to be resizable for either target game's real
+usage.
+
+Locked in by `TestCreateWindowExANeverSetsResizableFlag`
+(`tests/test_winuser_regressions.cpp`), which asserts
+`(SDL_GetWindowFlags(window) & SDL_WINDOW_RESIZABLE) == 0`. Do not add real
+resizable-window support, or any per-game opt-in for it, without first
+re-verifying on an affected compositor that this workaround is no longer
+needed — there is no evidenced need for resizability in either game.
+
 ## `CreateDirectoryA`'s already-exists return value (TASK-24H-0709)
 
 **Confirmed harmless, not a TODO.** Real Win32 `CreateDirectoryA` returns

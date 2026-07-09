@@ -2582,7 +2582,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0316: Document and regression-lock the non-resizable-window compositor WM_CLOSE workaround
-Status: TODO
+Status: DONE — added TestCreateWindowExANeverSetsResizableFlag (tests/test_winuser_regressions.cpp): asserts (SDL_GetWindowFlags(window) & SDL_WINDOW_RESIZABLE) == 0. Added docs/out-of-scope.md entry ("No SDL_WINDOW_RESIZABLE on any CreateWindowExA window") citing the source comment and the compositor WM_CLOSE quirk. Verified 24/24 standalone.
 Priority: P2
 Area: WinUser
 Type: Test

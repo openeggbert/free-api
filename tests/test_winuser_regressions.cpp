@@ -205,6 +205,38 @@ static void TestCreateWindowExAFullscreenPath()
     DrainMessages();
 }
 
+// TASK-24H-0316: CreateWindowExA deliberately never sets SDL_WINDOW_RESIZABLE
+// -- on some Wayland/X11 compositors a resizable popup window immediately
+// receives a spurious WM_CLOSE from the compositor. This is a load-bearing
+// decision (src/winuser_window.cpp) that previously had zero test coverage;
+// silently reintroducing SDL_WINDOW_RESIZABLE would reintroduce a
+// startup-killing bug on affected compositors without any test failing.
+static void TestCreateWindowExANeverSetsResizableFlag()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_NonResizable";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_NonResizable", "Test",
+                                 WS_POPUPWINDOW | WS_CAPTION,
+                                 0, 0, 640, 480,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the window creation call shape used by this test");
+    if (!hwnd) return;
+
+    DrainMessages();
+
+    auto* sdlWin = reinterpret_cast<SDL_Window*>(hwnd);
+    SDL_WindowFlags flags = SDL_GetWindowFlags(sdlWin);
+    Check((flags & SDL_WINDOW_RESIZABLE) == 0,
+          "CreateWindowExA never sets SDL_WINDOW_RESIZABLE (compositor WM_CLOSE workaround, see docs/out-of-scope.md)");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
 // TASK-24H-0308: GetSystemMetrics only ever implements three real indices
 // (SM_CXSCREEN/SM_CYSCREEN/SM_CYCAPTION); everything else falls through to
 // a hardcoded 0 return. SM_CYCAPTION itself previously had zero direct
@@ -1384,6 +1416,7 @@ int main()
     TestAdjustWindowRectPreservesClientSize();
     TestRegisterClassAWithFullFieldSet();
     TestCreateWindowExAFullscreenPath();
+    TestCreateWindowExANeverSetsResizableFlag();
     TestGetSystemMetricsCyCaptionAndUnqueriedIndexFallback();
     TestDefWindowProcHandlesWmClose();
     TestDestroyWindowDispatchesWmDestroySynchronously();
