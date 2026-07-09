@@ -12,7 +12,11 @@
  * - A single background mixing thread advances MIDI time, renders PCM via TinySoundFont, and
  *   feeds SDL_PutAudioStreamData.
  * - midiOutSetVolume() adjusts a global gain applied during rendering.
- * - Looping is not supported (TODO); playback stops at end-of-song.
+ * - Native MCI-level looping is intentionally unimplemented: both target
+ *   games' own MM_MCINOTIFY handlers re-issue playback themselves
+ *   (MCI_CLOSE then MCI_OPEN+MCI_PLAY) whenever a song ends, so music
+ *   genuinely loops end-to-end during real gameplay -- this is a
+ *   deliberate scope decision, not a missing feature (TASK-24H-0901).
  * - CD audio (lpstrDeviceType="cdaudio") is gracefully declined.
  * - MCI_NOTIFY: when the song ends, MM_MCINOTIFY is posted to the callback HWND.
  *
@@ -74,19 +78,6 @@ static const SDL_AudioSpec kMixSpec = {SDL_AUDIO_F32, 2, 44100};
 
 /** Size of each render block in frames. */
 static constexpr int kBlockFrames = 512;
-
-/* MCI error codes (not in the project mmsystem.h subset). */
-// MCIERR_* constants are now defined in mmsystem.h
-// Keep local aliases for backward compatibility within this file.
-#ifndef MCIERR_UNSUPPORTED_FUNCTION
-static constexpr MCIERROR MCIERR_UNSUPPORTED_FUNCTION = 268;
-#endif
-#ifndef MCIERR_INVALID_DEVICE_ID
-static constexpr MCIERROR MCIERR_INVALID_DEVICE_ID    = 259;
-#endif
-#ifndef MCIERR_INTERNAL
-static constexpr MCIERROR MCIERR_INTERNAL              = 305;
-#endif
 
 /* -------------------------------------------------------------------------- */
 /*  SoundFont loader                                                           */
@@ -536,11 +527,17 @@ MMRESULT MidiMusicOutClose()
 /**
  * @brief Handles mciSendCommand for MIDI sequencer / CD-audio / generic MCI.
  *
- * Supported commands: MCI_OPEN, MCI_PLAY, MCI_STOP (same as MCI_CLOSE here), MCI_CLOSE, MCI_SET.
+ * Supported commands: MCI_OPEN, MCI_PLAY, MCI_CLOSE, MCI_SET. MCI_STOP is
+ * neither defined in include/ nor handled here -- no evidenced call site in
+ * either target game; an MCI_STOP call would fall through to the unhandled-
+ * message branch below and return MCIERR_UNSUPPORTED_FUNCTION (TASK-24H-0908).
  * "cdaudio" device type is gracefully declined with MCIERR_UNSUPPORTED_FUNCTION.
  *
  * @note Status: PARTIAL
- *   - MCI_PLAY looping: TODO
+ *   - Native MCI-level looping (MCI_PLAY with a loop flag) is intentionally
+ *     unimplemented: both target games' MM_MCINOTIFY handlers re-issue
+ *     playback themselves on song-end, so looping works end-to-end during
+ *     real gameplay without it (TASK-24H-0901).
  *   - MCI_SET: accepted, no-op (CD audio time-format; not relevant for MIDI)
  */
 MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,

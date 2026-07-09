@@ -4074,7 +4074,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0806: Document `mciGetDeviceIDA`'s fixed-return-value stub behavior and its confirmed-harmless device-ID collision at teardown
-Status: TODO
+Status: DONE — added a docs/out-of-scope.md note to the existing MCI AVI section citing the exact collision mechanism and its confirmed-harmless teardown-only reachability, cross-referencing TASK-24H-0808's direct test. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Resources
 Type: Documentation
@@ -4148,7 +4148,7 @@ Out of scope:
 ## WinMM / MIDI / MCI
 
 ### TASK-24H-0901: Sharpen the stale MIDI-looping "TODO" comments in MidiMusic.cpp
-Status: TODO
+Status: DONE — rewrote both the file docstring line and MidiMusicSendCommand's doc-comment bullet to state native MCI-level looping is intentionally unimplemented (both games' MM_MCINOTIFY handlers re-issue playback themselves), removing the bare "TODO" wording. README.md's identical stale framing already fixed separately (TASK-24H-1202). Comment-only; verified 26/26 in all three build trees.
 Priority: P3
 Area: WinMM
 Type: Cleanup
@@ -4316,7 +4316,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0907: Correct docs/supported-apis.md's cdaudio row to reflect confirmed dead/absent status in both games
-Status: TODO
+Status: DONE — RE-SCOPED: this task's own premise was wrong for free-eggbert. Re-verified this session: free-eggbert has TWO alternate sound backend files (sound.cpp guarded `#if !_BASS || _LEGACY`; soundbass.cpp guarded `#if _BASS && !_LEGACY`) -- with `_BASS`/`_LEGACY` both undefined (0) in this build, sound.cpp is the LIVE one (not soundbass.cpp, which is dead), and sound.cpp's own cdaudio reference (PlayMusic -> PlayCDAudio) is reachable, gated behind a real config option (`CDAudio=` line, read into g_bCDAudio in blupi.cpp, passed via SetCDAudio) -- not dead code at all. planetblupi genuinely has zero cdaudio references (that half of the original claim held). Updated the row to "Yes (live, config-gated)" / "No (zero references anywhere in source)" instead of the originally-planned "dead"/"No". Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinMM
 Type: Documentation
@@ -4343,7 +4343,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0908: Fix inaccurate "MCI_STOP" claim in MidiMusicSendCommand's doc comment
-Status: TODO
+Status: DONE — confirmed via grep that MCI_STOP is not defined anywhere in include/ and there is no if(uMsg==MCI_STOP) branch. Rewrote the doc comment's "Supported commands" line to remove the false claim and state MCI_STOP falls through to MCIERR_UNSUPPORTED_FUNCTION. Comment-only; verified 26/26 in all three build trees.
 Priority: P3
 Area: WinMM
 Type: Cleanup
@@ -4371,7 +4371,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0909: Fold this session's MCI AVI feasibility conclusion into docs/out-of-scope.md
-Status: TODO
+Status: DONE — added a paragraph to docs/out-of-scope.md's existing MCI AVI section citing the Cinepak+MS Video 1 codec dependency and the permanent-decline recommendation, cross-referencing docs/audit-24h-free-api.md §1/§5/§6 as the prior-session source. Implemented together with duplicate TASK-24H-1207. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinMM
 Type: Documentation
@@ -4399,7 +4399,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0910: Remove dead, mmsystem.h-shadowed local MCIERR_* constant duplicates in MidiMusic.cpp
-Status: TODO
+Status: DONE — removed the three dead #ifndef-guarded local static constexpr MCIERROR fallbacks and the stale "backward compatibility" comment. Confirmed dead by inspection (mmsystem.h is included before the guards run, so all three #ifndef checks were always false) and by successful rebuild with zero errors (proves nothing referenced the removed local definitions). Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinMM
 Type: Cleanup
@@ -5064,7 +5064,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1207: Cross-reference the new 24-hour audit's AVI feasibility research from docs/out-of-scope.md
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0909; implemented once there (see that entry).
 Priority: P3
 Area: Docs
 Type: Documentation

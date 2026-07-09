@@ -60,7 +60,7 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `MM_MCINOTIFY`/`MCI_NOTIFY_SUCCESSFUL` | WinMM | Yes | Yes | IMPLEMENTED | `test_mci_sequences.cpp` |
 | `midiOutGetNumDevs`/`Open`/`SetVolume`/`Close` | WinMM | Yes | Yes | IMPLEMENTED | `test_mci_sequences.cpp` |
 | `mciSendCommandA` `"avivideo"`/`MCI_DGV_*` (movies) | WinMM | Yes | Yes | STUB (permanently declined — see `docs/out-of-scope.md`) | `test_mci_avivideo_regressions.cpp` |
-| `"cdaudio"` graceful decline | WinMM | Yes | Yes | IMPLEMENTED | `test_mci_sequences.cpp` |
+| `"cdaudio"` graceful decline | WinMM | Yes (live, config-gated) | No (zero references anywhere in source) | IMPLEMENTED | `test_mci_sequences.cpp` |
 | `joyGetPosEx`/`joyGetNumDevs` | WinMM/Joystick | dead | No | IMPLEMENTED (real `SDL_Joystick`-backed: 2 axes + first 4 buttons; TASK-0103) | `test_joystick_regressions.cpp` (SDL virtual joystick) |
 | `GlobalMemoryStatus` | WinBase | Yes | No | PARTIAL (plausible `dwTotalPhys` only) | none |
 | `fopen`/`fread`/`fwrite`/`fclose` (via wrapper) | File | Yes | Yes | IMPLEMENTED (backslash-normalizing, case-insensitive-fallback wrapper) | `test_file_regressions.cpp`, `test_file_paths.cpp` |

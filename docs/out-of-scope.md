@@ -69,6 +69,30 @@ video playback — there is no evidence either game's actual player-visible
 behavior needs it, and doing so would require a video codec dependency this
 project has no other reason to take on.
 
+**mciGetDeviceIDA's fixed-return-value collision at teardown (TASK-24H-0806).**
+`mciGetDeviceIDA` (`src/winmm.cpp`) is a permanent stub that always returns
+the fixed value `1`, regardless of the requested device-type string. free-api's
+MIDI sequencer path also numbers its own device IDs starting at 1
+(`src/MidiMusic.cpp`), so this hardcoded `1` can coincide with a real,
+currently-open MIDI session's actual device ID. In free-eggbert this is
+reachable exactly once, at final process teardown: `FinishObjects()`
+(`blupi.cpp`) deletes `g_pMovie` — triggering `termAVI()` → `mciGetDeviceIDA`
+→ `MCI_CLOSE` on device `1` — *before* it calls `g_pSound->StopMusic()`'s own
+explicit close. Confirmed harmless: `MidiMusicSendCommand`'s `MCI_CLOSE`
+handler treats an already-closed/unknown ID as non-fatal, and it's the last
+teardown step before process exit regardless. Locked in by
+`tests/test_mci_sequences.cpp`'s `TestMciGetDeviceIdaClosesARealOpenSequencerSessionAtCollidingId`
+(`TASK-24H-0808`).
+
+**Independent feasibility re-confirmation (TASK-24H-0909/1207, cross-references
+`docs/audit-24h-free-api.md` §1/§5/§6).** Per `docs/audit-24h-free-api.md`
+§1/§5/§6 (a prior session's audit record): the user had explicitly approved
+re-opening this decision for a feasibility-only audit (no implementation) in
+that session. That audit confirmed the concrete codec dependency real
+playback would require: Cinepak and MS Video 1, identified directly from
+planetblupi's real shipped `.avi` assets. Recommendation, independently
+re-confirmed rather than merely inherited unchanged: decline permanently.
+
 ## `MoveWindow`'s stale logical-size tracking (TASK-24H-0309)
 
 **Confirmed harmless, not a TODO.** `MoveWindow` (`src/winuser_window.cpp`)
