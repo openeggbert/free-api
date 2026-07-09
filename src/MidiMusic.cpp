@@ -39,6 +39,7 @@
 
 #include "mmsystem.h"
 #include "windows.h"
+#include "internal/FreeApiPath.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -238,6 +239,20 @@ static MidiState& GetMidiState()
  * while the actual files on disk may be UPPERCASE. We try the path as-is first,
  * then retry uppercase variants for progressively larger path suffixes.
  *
+ * TASK-24H-0706: step 1 now calls the shared FreeApi::Internal::NormalizeFilesystemPath
+ * (src/internal/FreeApiPath.cpp) directly, matching TASK-24H-0705's precedent for
+ * free_api_fopen, instead of a hand-rolled backslash-only loop. This does more than
+ * the old loop did -- it also strips a leading drive-letter prefix ("X:", never
+ * produced by either game's MIDI-path construction, a safe no-op here) and strips
+ * leading slashes (relevant only if a caller ever passes an ABSOLUTE path). Verified
+ * safe: both games' real MCI_OPEN element-name construction (CSound::PlayMusic,
+ * GetCurrentDir()+strcat()) always produces a path relative to _pgmptr's directory,
+ * and this project's own documented invocation (docs/target-game-verification.md)
+ * runs both games via a relative path ("./bin/..."), so _pgmptr (argv[0] on the
+ * non-Windows path both games actually run on) is relative and this never strips a
+ * real leading slash in the documented, tested usage -- the same assumption
+ * TASK-24H-0705 already made (and has run safely under) for free_api_fopen.
+ *
  * @note Status: IMPLEMENTED
  */
 static std::string NormalizeMidiPath(const char* raw)
@@ -249,11 +264,8 @@ static std::string NormalizeMidiPath(const char* raw)
         return std::filesystem::exists(path, ec);
     };
 
-    /* Step 1 – convert backslashes. */
-    std::string s(raw);
-    for (char& c : s) {
-        if (c == '\\') c = '/';
-    }
+    /* Step 1 – shared prefix normalization (see doc comment above). */
+    std::string s = FreeApi::Internal::NormalizeFilesystemPath(raw);
 
     /* Step 2 – try the path as-is (handles already-correct paths). */
     if (fileExists(s)) {
