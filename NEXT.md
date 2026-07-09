@@ -2,11 +2,12 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `157b2d7` (2026-07-08, `develop` branch, 6 commits
+state as of commit `7fc9ae6` (2026-07-09, `develop` branch, 15 commits
 ahead of `origin/develop`, **not yet pushed**; working tree clean; the
-prior 32 commits were pushed earlier this session). See [`plan.md`](plan.md)
-for the full task backlog (12 original tasks + 181-task
-`TASK-24H-0001`–`1226` backlog, grew by 4 this session) and
+prior 6a523da and earlier commits were pushed earlier this session — see
+git log for the exact boundary). See [`plan.md`](plan.md) for the full
+task backlog (12 original tasks + 182-task `TASK-24H-0001`–`1227` backlog,
+grew by 1 this session) and
 [`docs/audit-24h-free-api.md`](docs/audit-24h-free-api.md) for the full
 24-hour deep audit that backlog was derived from.
 
@@ -54,11 +55,34 @@ had real bugs found and fixed during verification (a stack-lifetime
 use-after-free in the `FreeApiRunWinMain` test, and two distinct bugs — a
 `fopen`-macro path-normalization surprise and a stdio-buffering-vs-`dup2`
 ordering bug — in the `OutputDebugStringA` test); see §3/§6 for detail.
-**87 of 181 new tasks are now DONE**, 1 marked OBSOLETE (superseded by
-another this session) — all verified, tested, and committed; **0 P0, 0
-AI-doable P1 tasks remain** (3 P1 left — `TASK-24H-0401`/`1221`/`1222` —
-all human-only, all with acceptance criteria and one consolidated
-checklist doc). 44 P2 and 46 P3 tasks remain — see section 8.
+**Session 5 (this pass)** worked straight through the remaining P2
+backlog, closing 33 more tasks (a mix of Test/Verification/Documentation/
+Bugfix) across 15 commits, all re-verified against current source (not
+copy-pasted from stale task text) and tested 25/25 across all three build
+trees per commit. Highlights: added direct test coverage for 5 previously-
+untested WinUser/WinMM/GDI/Resource behaviors (`GetSystemMetrics`
+fallback, the non-resizable-window compositor workaround, `WM_CHAR`
+ASCII-only forwarding, the 5 resource-stub contracts, the
+`mciGetDeviceIDA`/`MCI_CLOSE` id-collision, and an end-to-end
+notify-driven MIDI-loop test); added `tests/test_sdl_log_gating.cpp`
+(`TASK-24H-1113`), a new source-scan CTest guard against future ungated
+`SDL_Log` additions; and closed out the diagnostics-logging, WinMM-timer,
+and stale-documentation (README/Documentation.md/joystick) task clusters.
+**Found and fixed 3 more real, previously-unknown gaps while verifying
+task premises** (not just implementing what tasks assumed):
+`CreateDirectoryA`'s already-exists branch is dead code (`SDL_CreateDirectory`
+itself is idempotent) — the *test* task's original premise was wrong, not
+just untested; `EnsureVideoSubsystem`'s and `timeSetEvent`'s success-path
+logs were both completely unconditional despite `TASK-24H-1101/1102`
+supposedly having swept this area (closed as new `TASK-24H-1227` plus a
+`TASK-24H-1113`-adjacent fix); and `TASK-24H-1110`'s premise that
+`CreateDirectoryA`'s only call sites are dead code was only true for
+free-eggbert — planetblupi's `AddUserPath` call site is genuinely live.
+**120 of 182 new tasks are now DONE**, 1 marked OBSOLETE — all verified,
+tested, and committed; **0 P0, 0 AI-doable P1 tasks remain** (3 P1 left —
+`TASK-24H-0401`/`1221`/`1222` — all human-only, all with acceptance
+criteria and one consolidated checklist doc). 12 P2 and 46 P3 tasks
+remain — see section 8.
 
 **Important architectural decisions (unchanged across all sessions):**
 
@@ -91,25 +115,24 @@ checklist doc). 44 P2 and 46 P3 tasks remain — see section 8.
 
 **Build status — all confirmed working after every change this session:**
 * Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): configures, builds,
-  **24/24** tests pass.
+  **25/25** tests pass.
 * As a subdirectory of `../free-eggbert` (Ninja), including the
   `free-api`+`free-direct` diamond dependency (`FREEDIRECT` backend):
-  24/24.
-* As a subdirectory of `../planetblupi` (Make): 24/24.
+  25/25.
+* As a subdirectory of `../planetblupi` (Make): 25/25.
 * `../free-direct` standalone: configures, builds, links `FREE_DIRECT`
   cleanly against `include/free_api_bridge.h`.
-* The same 24-test suite also passes cleanly (0 sanitizer reports) under
+* The same 25-test suite also passes cleanly (0 sanitizer reports) under
   both `-DFREE_API_SANITIZE=thread` and `=address`, via plain `ctest`
   (no manual env vars beyond `SDL_VIDEODRIVER`/`SDL_AUDIODRIVER`).
 
-**Test status:** 24 test binaries/CTest entries (started session 4 at 22),
-24/24 passing in all three build modes and both sanitizer builds. Session 4
-added 2 new binaries (`test_midi_backend_failure`, `test_winmain_bridge`)
-plus many new test functions across `test_timer_regressions.cpp`,
-`test_gdi_regressions.cpp`, `test_winuser_regressions.cpp`, and
-`test_file_paths.cpp` — see §3 below for the latest batch
-(`FreeApiRunWinMain`/`wsprintfA`/`OutputDebugStringA`/`SetWindowTextA`
-coverage) and git log for the full list.
+**Test status:** 25 test binaries/CTest entries (started session 4 at 22),
+25/25 passing in all three build modes and both sanitizer builds. Session 4
+added 2 new binaries (`test_midi_backend_failure`, `test_winmain_bridge`);
+session 5 added a 3rd (`test_sdl_log_gating`, TASK-24H-1113) plus many new
+test functions across `test_winuser_regressions.cpp`, `test_gdi_regressions.cpp`,
+`test_input_pipeline.cpp`, `test_mci_sequences.cpp`, `test_resources.cpp`,
+and `test_file_regressions.cpp` — see §3 below and git log for the full list.
 
 **What does NOT work / known gaps:** unchanged except for items closed in
 section 3 below. MCI digital-video remains intentionally unimplemented.
@@ -121,7 +144,52 @@ checklist covering all of them:
 [`docs/target-game-verification.md`](docs/target-game-verification.md)
 (`TASK-24H-1209`). See section 8.
 
-## 3. Recent changes (session 4, this pass, most recent first)
+## 3. Recent changes (session 5 first, then session 4, most recent first within each)
+
+**Session 5** closed 33 P2 tasks across 15 commits (`git log` has full
+detail per-commit; summary here, not a per-task repeat of `plan.md`):
+* New test coverage: `GetSystemMetrics(SM_CYCAPTION)`/fallback,
+  `CreateWindowExA` never sets `SDL_WINDOW_RESIZABLE` (compositor `WM_CLOSE`
+  workaround), `WM_CHAR` ASCII-only forwarding (`test_input_pipeline.cpp`),
+  the 5 resource-subsystem stub contracts (`LoadResource`/`SizeofResource`/
+  `LockResource`/`UnlockResource`/`FreeResource`), the `mciGetDeviceIDA`/
+  `MCI_CLOSE` device-id collision against a genuinely-open session, and an
+  end-to-end notify-driven MIDI-loop test (as opposed to the pre-existing
+  stress test, which only proved no-crash).
+* **New `tests/test_sdl_log_gating.cpp`** (`TASK-24H-1113`): a source-scan
+  CTest guard recognizing this codebase's 4 SDL_Log gating shapes (same-line
+  if-gate, block if-gate, early-return-if-not-gate, `#if defined(__ANDROID__)`)
+  plus a short file:line allowlist for confirmed-intentional unconditional
+  logs. Verified with a genuine negative control. **Caught 2 real,
+  previously-uncaught ungated logs while being built**: `EnsureVideoSubsystem`'s
+  and `timeSetEvent`'s success-path logs — both fixed (`TASK-24H-1227` and a
+  `winmm.cpp` fix folded into `TASK-24H-1113`'s own commit).
+* **Real bug found while executing `TASK-24H-0709`** (not just documented):
+  `CreateDirectoryA`'s "already exists → FALSE/ERROR_ALREADY_EXISTS" branch
+  is dead code — `SDL_CreateDirectory` itself reports success for an
+  already-existing path, so the branch is unreachable. Test re-scoped to
+  lock in the real (idempotent-`TRUE`) behavior instead; documented in
+  `docs/out-of-scope.md`.
+* **`TASK-24H-1110`'s own premise corrected while verifying it**: it claimed
+  both games' `CreateDirectoryA` call sites (`AddUserPath`) are dead code —
+  true for free-eggbert (`#if _CD || _LEGACY`, never defined) but **false**
+  for planetblupi, whose `AddUserPath` has no such guard and is live,
+  called from `decio.cpp`'s save/load paths.
+* Closed the diagnostics-logging cluster (`TASK-24H-1106`-`1111`), the
+  WinMM/WinUser timer design-decision cluster (`TASK-24H-0501`/`0502`/
+  `0503`/`0507`/`0509`), the WinUser message-pump cluster (`TASK-24H-0207`/
+  `0208`/`0212`/`0304`), stale joystick docs (`TASK-24H-1001`-`1003`),
+  stale README/Documentation.md claims (`TASK-24H-1201`/`1202`/`1204`), and
+  the VK_*/MK_* documentation tasks (`TASK-24H-0409`/`0410`) — all re-verified
+  against current source, not copy-pasted from the task text.
+* A dispatched investigation fork (documentation/verification batch) did
+  not land any usable commits — its final report was inconclusive and
+  `git log` showed nothing from it. No harm done (clean repo state
+  throughout); the same ground was covered directly instead. Lesson: avoid
+  running a fork concurrently with direct main-thread edits to the same
+  repo — it seems to get confused seeing changes it didn't make.
+
+**Session 4:**
 
 * **Closed all 4 gaps found by the strict test-coverage audit fork**
   (`TASK-24H-1223`-`1226`, plus companions `TASK-24H-0313`/`0309`):
@@ -235,7 +303,7 @@ checklist covering all of them:
 
 ## 4. Current blocker / main problem
 
-**No blocker.** All build configurations work, 24/24 tests pass everywhere
+**No blocker.** All build configurations work, 25/25 tests pass everywhere
 (default and both sanitizer builds). **26 commits are sitting locally on
 `develop`, not yet pushed to `origin/develop`** — push only if/when the
 user explicitly asks.
@@ -341,7 +409,7 @@ No lint/formatter is configured in this repository.
 ## 8. Next smallest tasks
 
 **0 P0, 0 AI-doable P1 tasks remain TODO.** 3 P1 (`TASK-24H-0401`,
-`1221`, `1222` — all human-only) and 44 P2 + 46 P3 tasks remain (1 P2,
+`1221`, `1222` — all human-only) and 12 P2 + 46 P3 tasks remain (1 P2,
 `TASK-24H-0704`, is marked OBSOLETE rather than TODO/DONE — see section 3).
 Concrete starting points:
 
@@ -351,20 +419,21 @@ Concrete starting points:
    covers `MK_SHIFT`/`MK_CONTROL` (`TASK-24H-0401`/`0403`), MIDI audio
    sign-off (`TASK-24H-1221`), and rendering sign-off (`TASK-24H-1222`).
    Needs an actual human with a real display/audio backend.
-2. **One deliberately-deferred consolidation task remains**:
-   `TASK-24H-0706` (migrate `NormalizeMidiPath`'s backslash-conversion step
-   to call `NormalizeFilesystemPath` directly, same pattern `TASK-24H-0705`
-   used for `free_api_fopen`) — left `TODO` on purpose since it touches
-   file-local MIDI-subsystem code with a more involved fallback than
-   `0705`'s case; verify carefully in its own pass. The rest of that
-   cluster (`TASK-24H-0703`/`0704`/`0705`) and the duplicate-declaration
-   cluster (`TASK-24H-0103`/`0104`/`0105`/`0713`/`0905`) plus
-   `TASK-24H-0014` are all `DONE`/`OBSOLETE` now — see §3.
-3. **Remaining P2 test-coverage tasks** — grep `plan.md` for
-   `Priority: P2` + `Type: Test` + `Status: TODO`.
-4. **Remaining P2/P3 documentation tasks** — many reference "duplicates
-   TASK-24H-XXXX — implement once, close both"; check for a paired ID
-   before starting one.
+2. **12 P2 tasks remain TODO** (session 5 closed the rest): `0003`/`0004`
+   (FREE_API_TARGET_GAME override confirmation), `0007` (install/export
+   packaging), `0010` (CTest LABELS), `0011` (CheckNoHardcodedPaths.cmake
+   self-test), `0012`/`0013` (re-confirm/script both games' build paths),
+   `0114` (formal scope.md exception policy), `0115` (definitive header
+   cross-check), `0305` (verify `dwExStyle` is stored/logged only), `0706`
+   (deliberately-deferred `NormalizeMidiPath` migration — see below).
+3. **`TASK-24H-0706`** (migrate `NormalizeMidiPath`'s backslash-conversion
+   step to call `NormalizeFilesystemPath` directly, same pattern
+   `TASK-24H-0705` used for `free_api_fopen`) — left `TODO` on purpose
+   since it touches file-local MIDI-subsystem code with a more involved
+   fallback than `0705`'s case; verify carefully in its own pass.
+4. **46 P3 tasks remain** — grep `plan.md` for `Priority: P3` +
+   `Status: TODO`. Many reference "duplicates TASK-24H-XXXX — implement
+   once, close both"; check for a paired ID before starting one.
 
 ## 9. Do not do yet
 
@@ -420,12 +489,25 @@ Unchanged from prior sessions' list, plus:
   earlier point) — any prior unflushed buffered output (e.g. from a
   `Check()` call) will otherwise land in the captured file ahead of the
   real target content once the eventual `fflush()` runs.
+* Do not dispatch a fork/subagent to do file-editing work on this repo
+  while continuing to make direct edits yourself in parallel — session 5
+  tried this (a fork for a documentation batch while the main thread did
+  test-writing) and the fork's final report was inconclusive with nothing
+  usable landed in git, seemingly confused by seeing concurrent changes it
+  didn't make. Either do the work directly, or dispatch one fork and wait
+  for it before making further edits yourself.
+* When editing a `.cpp` file with SDL_Log calls covered by
+  `tests/test_sdl_log_gating.cpp`'s allowlist, remember the allowlist is
+  **file:line-precise, not content-hash-based** — any edit that adds/removes
+  lines above an allowlisted `SDL_Log` site will shift its line number and
+  the test will fail until the allowlist entry is updated to match (this is
+  a known, accepted tradeoff, not a test bug — see `TASK-24H-1113`).
 
 ## 10. Resume prompt
 
 ```
 Read NEXT.md first, then skim docs/audit-24h-free-api.md's Executive
-Verdict (§1) for full context. plan.md has 181 new TASK-24H-* tasks; 87
+Verdict (§1) for full context. plan.md has 182 new TASK-24H-* tasks; 120
 are DONE, 1 is OBSOLETE (grep "Status: DONE" near "TASK-24H" to see
 which), 0 P0 and 0 AI-doable P1 remain TODO (3 P1 left, TASK-24H-0401/
 1221/1222, are all human-only -- see docs/target-game-verification.md).
@@ -434,7 +516,7 @@ tasks per section 8's "Next smallest tasks" list -- many explicitly
 duplicate another task ID ("implement once, close both"), check plan.md
 for that note before starting. Make small, verified improvements; batch
 closely-related tasks together. Run the exact verification commands each
-task specifies -- at minimum the standalone build's ctest (24/24), ideally
+task specifies -- at minimum the standalone build's ctest (25/25), ideally
 also both target games' ctest, and for anything touching src/winmm.cpp,
 src/MidiMusic.cpp, or cross-thread code also the sanitizer builds (§6/§7
 -- now just a plain `ctest`, no manual LD_PRELOAD). Do not touch anything
