@@ -895,7 +895,11 @@ Session 5 closed the entire P2/P3 backlog that existed at that point (91
 tasks); a subsequent deep audit (`audit.md`, 2026-07-09) added 16 more
 tasks (`TASK-24H-1229`-`1244`, see "Deep Audit Follow-up" section) derived
 from 5 independent correctness/performance/memory/edge-case/risk reviews.
-199 tasks total as of that addition. Original per-area breakdown (stale,
+All 16 (plus the pre-existing `TASK-24H-0706`) were implemented and pushed;
+a second, ground-up re-audit against the resulting source (`audit.md`,
+2026-07-09, same date but a full rewrite of the file, not an update) then
+added 6 more tasks (`TASK-24H-1245`-`1250`, see "Deep Audit Follow-up #2"
+section). 205 tasks total as of that addition. Original per-area breakdown (stale,
 kept for historical context only): Build/Integration (17), Scope/Headers
 (18), WinUser message-loop (17), Window/Cursor (16), Input (12), Timers
 (9), GDI (17), Files (14), Resources (8), WinMM/MIDI/MCI (11), Joystick
@@ -6050,3 +6054,160 @@ Acceptance criteria:
 
 Out of scope:
 - Do not build a general reference-counting/dependency-tracking framework across all GDI objects unless the verification step above proves it's actually needed -- prefer the documentation outcome if the call-order trace confirms safety, consistent with this project's default policy of not building generalized safety infrastructure without evidenced need.
+
+---
+
+## Deep Audit Follow-up #2 (audit.md, 2026-07-09 re-audit)
+
+The 6 tasks below (`TASK-24H-1245`-`1250`) formalize the second `audit.md`'s "Proposed Tasks" section (§ "Proposed Tasks"), produced by a fresh, ground-up re-audit performed after every finding from the first audit (`TASK-24H-1229`-`1244`, plus `TASK-24H-0706`) was implemented and pushed. `audit.md` was produced by 5 independent parallel reviews (correctness, performance, memory safety, edge cases, architectural risk) against commit `cdcc119`, each explicitly instructed to re-derive findings fresh rather than reuse the prior audit's conclusions. Two findings were independently reproduced by two reviews each (see `audit.md`'s "Cross-Validated Findings" table) -- both are the same lesson: a fix that closed one instance of a pattern didn't grep for sibling instances of the same pattern. Re-verify the underlying claim against current source before implementing, since source may have moved since the audit was written. `audit.md`'s own conclusion is explicit that no currently-live game behavior is broken by any finding.
+
+### TASK-24H-1245: Apply the PostMessageA-outside-mutex fix to MCI_PLAY's no-SoundFont branch (second call site TASK-24H-1233 left untouched)
+Status: TODO
+Priority: P2
+Area: WinMM
+Type: Bugfix
+Evidence: src/MidiMusic.cpp:696 (`MidiMusicSendCommand`'s `MCI_PLAY` handler, `PostMessageA` called while `GetMidiState().mtx` -- acquired at line 667 -- is held); TASK-24H-1233 (fixed the identical pattern in `MixerThread`, explicitly scoped out this second site); audit.md Finding C2 / R1 (independently found by both the correctness and architectural-risk reviews)
+Depends on: None
+
+Problem:
+`TASK-24H-1233` moved `MixerThread`'s `PostMessageA` call outside its `GetMidiState().mtx` lock scope, established a `needsNotify`/`notifyTarget`/`notifyId` capture-then-post-after-release pattern, and added a lock-order comment on `MidiState::mtx` -- but its own "Out of scope" note explicitly left `MidiMusicSendCommand`'s `MCI_PLAY` handler untouched. That handler's no-SoundFont branch (`src/MidiMusic.cpp` around line 690-702) still calls `PostMessageA(s.notifyHwnd, MM_MCINOTIFY, ...)` while holding the same mutex, for the same class of reason (widened critical section; latent lock-order dependency with nothing structurally preventing a future change from introducing a real deadlock). This branch is real and test-exercised: `test_mci_sequences.cpp` has a dedicated no-SoundFont test that calls `MCI_PLAY` down exactly this path.
+
+Required work:
+- Apply the same capture-under-lock/post-after-release pattern `MixerThread` already uses: capture `s.notifyHwnd` and `s.id` into local variables while still holding the lock, let the `std::lock_guard` scope end, then call `PostMessageA` afterward.
+- Re-read the lock-order comment already on `MidiState::mtx`'s declaration to confirm this new call site's fix matches the documented rule; update the comment if it needs to reference this second site too.
+
+Acceptance criteria:
+- `PostMessageA` is no longer called while `GetMidiState().mtx` is held, at either of the two call sites in `MidiMusic.cpp`.
+- Existing tests still pass, in particular `test_mci_sequences.cpp`'s no-SoundFont test and the sanitizer builds (this touches locking behavior directly).
+- No unrelated API is added; no change to notify delivery ordering/content from the caller's perspective.
+
+Out of scope:
+- Do not restructure `MidiMusicSendCommand`'s other locking beyond this one call site.
+
+---
+
+### TASK-24H-1246: Fix ResolveJoystick's bounds check to compare the same value it uses to index
+Status: TODO
+Priority: P2
+Area: WinMM
+Type: Bugfix
+Evidence: src/winmm.cpp:53-54 (`ResolveJoystick`, `if (static_cast<int>(uJoyID) < count) { joystick = SDL_OpenJoystick(ids[uJoyID]); }`); ../free-eggbert/src/event.cpp:2071 (the only real call site, passing `m_joyID`); audit.md Finding E2
+Depends on: None
+
+Problem:
+The bounds check casts `uJoyID` (a `UINT`) to `int` and compares against `count`, but the array index (`ids[uJoyID]`) uses the original, uncast `uJoyID`. Any `uJoyID` with the high bit set (>= `0x80000000`) casts to a negative `int`, which is `< count` for any `count > 0` -- the check passes, then `ids[uJoyID]` indexes far out of bounds into the `SDL_JoystickID` array `SDL_GetJoysticks` returned, reading garbage memory and passing it to `SDL_OpenJoystick`. This is a genuine defect in the validation logic itself (the check and the indexed value are simply different expressions), not just a theoretical hardening gap -- but free-eggbert's only call site passes `m_joyID`, a small device-index member never plausibly set to an extreme value, so it is not reachable by real gameplay today.
+
+Required work:
+- Change the bounds check to compare the same value used for indexing -- e.g. `if (uJoyID < static_cast<UINT>(count))`, guarding against `count` itself ever being negative (it shouldn't be, per `SDL_GetJoysticks`'s contract, but confirm).
+- Add a regression test calling the public joystick API (whichever entry point reaches `ResolveJoystick`) with a `uJoyID` value that has the high bit set, asserting it's safely rejected (no crash, no out-of-bounds read) rather than passing the old broken check.
+
+Acceptance criteria:
+- `ResolveJoystick`'s bounds check rejects any `uJoyID >= count` using a comparison that can't be defeated by integer-cast sign flipping.
+- New test passes; existing joystick tests (`test_joystick_regressions.cpp`) still pass in all three build trees.
+- No unrelated API is added; no behavior change for any currently-valid `uJoyID`.
+
+Out of scope:
+- Do not add general integer-overflow guards elsewhere in winmm.cpp as part of this task -- scoped to this one specific bounds-check defect.
+
+---
+
+### TASK-24H-1247: Add a scoped LeakSanitizer suppressions file for SDL3, replacing the blanket ASAN_OPTIONS=detect_leaks=0
+Status: TODO
+Priority: P2
+Area: Build
+Type: Implementation
+Evidence: CMakeLists.txt:651-656 (`ASAN_OPTIONS=detect_leaks=0` applied via CTest's `ENVIRONMENT` property to every test when `FREE_API_SANITIZE=address`); docs/cmake-options.md:96-108 (documents the rationale: SDL3's own long-lived global allocations read as false-positive leaks); audit.md Finding R2 -- cites this session's own earlier discovery that a real, genuine resource leak in `TestGetSetPixelRoundTripOnMemoryDcWithSelectedBitmap` went undetected through every `ctest`-based ASan pass across multiple sessions, only found by manually running the test binary directly (bypassing the `ENVIRONMENT` property)
+Depends on: None
+
+Problem:
+The blanket `detect_leaks=0` disables LeakSanitizer for the ENTIRE `ctest` suite, not just for SDL3's own known allocations -- meaning running the documented, standard workflow (`ctest` in a `FREE_API_SANITIZE=address` build tree) can never catch a real leak in free-api's own code via the normal, documented path. This is not hypothetical: it already happened once this session, and was only caught by an off-workflow manual step.
+
+Required work:
+- Determine SDL3's actual leaking (or leak-look-alike) allocation call stacks in this project's environment (run with `detect_leaks=1` and `LSAN_OPTIONS=verbosity=1:log_threads=1` or similar to capture real stack traces, or consult SDL3's own known-leak documentation if it exists).
+- Write an LSAN suppressions file (e.g. `cmake/lsan-suppressions.txt`) naming SDL3's specific allocation patterns (`leak:SDL_*` or narrower, whichever is precise enough to not also suppress free-api's own leaks).
+- Replace `ASAN_OPTIONS=detect_leaks=0` with `ASAN_OPTIONS=detect_leaks=1` plus `LSAN_OPTIONS=suppressions=<path-to-file>` in the CTest `ENVIRONMENT` wiring (CMakeLists.txt).
+- Re-verify: intentionally reintroduce the already-fixed test leak (or a new deliberate one in a throwaway branch/local check) to confirm the new suppressions setup still catches a real free-api leak through the normal `ctest` workflow, then confirm it's clean again with the leak fixed. Do not skip this verification step -- the whole point of this task is restoring real detection, and an unverified suppressions file could just as easily suppress everything as intended.
+
+Acceptance criteria:
+- `ctest` in a `FREE_API_SANITIZE=address` build tree detects a real, deliberately-reintroduced free-api leak (verified during implementation, not just asserted).
+- `ctest` in the same build tree passes cleanly against the current, leak-free codebase, with SDL3's own allocations suppressed.
+- Existing tests still pass in all three build trees.
+- No unrelated API is added.
+
+Out of scope:
+- Do not attempt to also enable leak detection under ThreadSanitizer builds -- TSan and LSan are not normally combined in the same build; this task is scoped to the `FREE_API_SANITIZE=address` configuration only.
+- Do not broaden the suppressions file beyond SDL3's own allocations -- a suppression entry that's too broad defeats this task's purpose.
+
+---
+
+### TASK-24H-1248: Apply the pitch-overflow-cast fix to CreateCompatBitmapFromSurface and ScaleCompatBitmap
+Status: TODO
+Priority: P3
+Area: GDI
+Type: Bugfix
+Evidence: src/internal/FreeApiGdi.cpp:52 (`CreateCompatBitmapFromSurface`, `bitmap->pitch = bitmap->width * 4;`) and :99 (`ScaleCompatBitmap`, `bitmap.pitch = targetWidth * 4;`); TASK-24H-1231 (already fixed the identical pattern in `src/wingdi_bitmap.cpp`'s `CreateBitmap`); audit.md Finding C1 / E1 (independently found by both the correctness and edge-case reviews)
+Depends on: None
+
+Problem:
+`TASK-24H-1231` fixed `CreateBitmap`'s `pitch = nWidth * 4` signed-overflow-prone computation by casting to `int64_t` before multiplying, but its scope covered only that one function -- two sibling functions in `src/internal/FreeApiGdi.cpp` (the backing code for `LoadImageA`) compute the exact same quantity the exact same unsafe way. `CreateCompatBitmapFromSurface`'s width comes from `SDL_ConvertSurface`'s output on a loaded, real, shipped `.bmp` asset; `ScaleCompatBitmap`'s `targetWidth` comes from `LoadImageA`'s `cx` parameter, which both games' real `DDLoadBitmap` call sites always pass as small, fixed sprite dimensions (most calls pass 0, skipping this function entirely). Not reachable by either game's real assets -- same profile as the original finding.
+
+Required work:
+- Apply the identical `static_cast<int>(static_cast<int64_t>(width) * 4)` pattern already used in `src/wingdi_bitmap.cpp`'s `CreateBitmap` to both `CreateCompatBitmapFromSurface` (line 52) and `ScaleCompatBitmap` (line 99) in `src/internal/FreeApiGdi.cpp`.
+- Grep the rest of the codebase for any other `* 4` (or similar bpp-multiply) pitch computation this same pattern might apply to, to confirm these are the only two remaining sites -- do not assume the grep from this task's evidence is exhaustive without re-checking.
+
+Acceptance criteria:
+- All three pitch computations across the codebase (`CreateBitmap`, `CreateCompatBitmapFromSurface`, `ScaleCompatBitmap`) use the same overflow-safe cast pattern.
+- Existing tests still pass; no behavior change for any current, in-bounds bitmap dimension.
+- No unrelated API is added.
+
+Out of scope:
+- Do not add a general "reject implausibly large dimensions" validation layer across all GDI functions -- scoped to these two specific overflow-prone computations, matching TASK-24H-1231's own scope decision.
+
+---
+
+### TASK-24H-1249: Document or narrow PushMessage's coalescing-scan lock scope
+Status: TODO
+Priority: P3
+Area: WinUser
+Type: Documentation
+Evidence: src/internal/FreeApiMessageQueue.cpp:81-109 (`PushMessage`'s WM_MOUSEMOVE/WM_TIMER coalescing scans, both linear scans of `g_messageQueue` performed while `g_messageQueueMutex` is held); audit.md Finding P1
+Depends on: None
+
+Problem:
+Every `WM_MOUSEMOVE`/`WM_TIMER` message triggers a reverse linear scan of `g_messageQueue` while the queue mutex is held, on the single hottest call path in the message system (mouse-move fires at OS event rate). This is self-limiting in practice -- coalescing keeps at most one `WM_MOUSEMOVE` entry per hwnd, so the scan usually terminates within a few hops -- and there's no evidence of an actual observed slowdown (`g_diagQueueHighWater` gives no indication the queue ever grows large), but the assumption that keeps this safe (queue stays short because coalescing is effective) is currently unstated.
+
+Required work:
+- Either add an explicit comment above the coalescing scans stating the self-limiting assumption (queue depth stays low because coalescing prevents unbounded accumulation of the same message type) and why it's believed safe without a more targeted data structure, or -- if profiling under a realistic worst-case (many non-coalescible messages queued ahead of a mouse-move burst) shows a real cost -- consider a more targeted lookup (e.g. tracking the last WM_MOUSEMOVE/WM_TIMER-per-hwnd index outside the deque) to avoid the linear scan.
+- Prefer documentation unless profiling shows an actual measurable cost -- no evidenced real slowdown exists today.
+
+Acceptance criteria:
+- Either the self-limiting assumption is documented at the scan site, or the scan is narrowed with evidence (a profiling result) justifying the added complexity.
+- Existing tests still pass, in particular `test_timer_regressions.cpp`'s stress tests and the two full-loop integration tests.
+- No unrelated API is added; no behavior change to message coalescing content/ordering.
+
+Out of scope:
+- Do not restructure `PushMessage`'s broader logic beyond this one scan's documentation/narrowing.
+
+---
+
+### TASK-24H-1250: Change g_nextTimerId's fetch_add to memory_order_relaxed
+Status: TODO
+Priority: P3
+Area: Timers
+Type: Performance
+Evidence: src/winuser_timer.cpp:16 (`g_nextTimerId.fetch_add(1)`, implicit default seq_cst); src/internal/FreeApiTimers.cpp:11 (`std::atomic<UINT> g_nextTimerId{1};`); TASK-24H-1243 (the precedent: `g_debugInput`'s reads/writes were already converted to explicit `memory_order_relaxed`); audit.md Finding P2
+Depends on: None
+
+Problem:
+Every other counter/diagnostic atomic in the codebase explicitly uses `std::memory_order_relaxed` (confirmed via a full grep of every `.fetch_add`/`.fetch_sub` call site) except `g_nextTimerId`, which still uses the implicit-conversion default (seq_cst). `SetTimer` is not a per-frame hot path, so the real-world performance cost is negligible -- this is a consistency gap with the rest of the codebase's established convention, not a measured performance problem.
+
+Required work:
+- Change `g_nextTimerId.fetch_add(1)` to `g_nextTimerId.fetch_add(1, std::memory_order_relaxed)`, matching the convention already used by every other counter atomic in the codebase (`g_diagCompatDcs`, `g_diagMessagesPosted`, etc., and now `g_debugInput` per TASK-24H-1243).
+
+Acceptance criteria:
+- `g_nextTimerId`'s increment uses `memory_order_relaxed`.
+- Existing tests still pass in all three build trees and both sanitizer builds (this touches an atomic shared across the WinUser/WinMM timer-ID-uniqueness coupling documented in `src/internal/FreeApiTimers.hpp`).
+- No unrelated API is added; no behavior change to timer ID uniqueness/allocation order.
+
+Out of scope:
+- Do not change any other atomic variable's memory order as part of this task -- scoped to `g_nextTimerId` only.
