@@ -4289,7 +4289,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0906: Add missing `@note Status:` annotations to mciapi.h
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0108; implemented once there (see that entry).
 Priority: P3
 Area: WinMM
 Type: Documentation
@@ -5312,7 +5312,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1217: Add missing `@note Status:` doc-comment tags to basestd.h, mciapi.h, and winerror.h
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0108; implemented once there (see that entry), which also covers minwindef.h and the 3 include_non_windows/ files this task didn't mention.
 Priority: P3
 Area: Docs
 Type: Cleanup
