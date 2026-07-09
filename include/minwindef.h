@@ -6,6 +6,8 @@
  * It is not a full copy of the Windows SDK minwindef.h.
  *
  * See docs/minwindef.md for detailed documentation.
+ *
+ * @note Status: HEADER_ONLY
  */
 
 #pragma once

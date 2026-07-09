@@ -1,6 +1,10 @@
 #pragma once
 // free-api compatibility header: sys/timeb.h
 // Provides struct timeb and ftime() for platforms where sys/timeb.h is missing or incomplete.
+// Real behavior (not a pure forwarder like Windows.h/WinUser.h in this same
+// directory) -- used by free-eggbert (blupi.cpp, pixmap.cpp) for timing.
+//
+// @note Status: IMPLEMENTED
 
 #ifndef FREE_API_SYS_TIMEB_H
 #define FREE_API_SYS_TIMEB_H

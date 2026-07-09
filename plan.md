@@ -1490,7 +1490,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0108: Add missing @note Status: annotations to the 7 unannotated headers
-Status: TODO
+Status: DONE — added top-of-file @note Status: HEADER_ONLY doc blocks to basestd.h/mciapi.h/minwindef.h/winerror.h (pure typedef/constant/forwarder headers, no per-declaration annotations needed), and to the 3 include_non_windows/ files (Windows.h/WinUser.h marked HEADER_ONLY as case-insensitive-filesystem forwarders; sys/timeb.h marked IMPLEMENTED since it has real ftime() behavior, not just a forward). No declarations changed. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Headers
 Type: Documentation

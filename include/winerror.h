@@ -2,6 +2,14 @@
 // Created by robertvokac on 5/6/26.
 //
 
+/**
+ * @file winerror.h
+ * @brief HRESULT/Win32 error-code constants: E_FAIL, ERROR_ALREADY_EXISTS,
+ * ERROR_INVALID_PARAMETER.
+ *
+ * @note Status: HEADER_ONLY
+ */
+
 #ifndef FREE_API_WINDOWS_WINERROR_H
 #define FREE_API_WINDOWS_WINERROR_H
 

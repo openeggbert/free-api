@@ -2,6 +2,16 @@
 // Created by robertvokac on 5/3/26.
 //
 
+/**
+ * @file mciapi.h
+ * @brief MCIDEVICEID typedef, kept standalone-compilable for real Win32
+ * header compatibility. Not included by either target game -- mmsystem.h
+ * (actually included by both) is the canonical definition site; see the
+ * guard comment below.
+ *
+ * @note Status: HEADER_ONLY
+ */
+
 #ifndef FREE_API_WINDOWS_MCIAPI_H
 #define FREE_API_WINDOWS_MCIAPI_H
 #include <minwindef.h>
