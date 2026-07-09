@@ -4707,7 +4707,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1106: Verify EnsureVideoSubsystem's init log is genuinely once-per-process for both target games
-Status: TODO
+Status: DONE — SUPERSEDED by TASK-24H-1227 (this session): while building TASK-24H-1104's quiet-by-default test, discovered this log actually WAS refiring more than once per process (every create/destroy/recreate-all-windows cycle test tooling exercises, exactly the scenario this task's own Problem section flagged as the theoretical risk) and gated it behind FreeApiDiagnosticsEnabled() rather than merely documenting the informal "today it doesn't happen in real gameplay" assumption this task originally scoped. This is a strictly stronger outcome than the comment-only fix originally planned: the log is now genuinely quiet by default regardless of window-lifecycle usage, not just quiet under a currently-true but unenforced assumption about both games' call patterns. See src/internal/FreeApiSdlVideo.cpp and TASK-24H-1227 for detail.
 Priority: P2
 Area: Diagnostics
 Type: Verification
@@ -4733,7 +4733,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1107: Document FreeApiGdi.cpp's SDL_ConvertSurface failure log as compliant, intentional error-path logging
-Status: TODO
+Status: DONE — added a comment above the log call (src/internal/FreeApiGdi.cpp) stating it's an intentional, permanent unconditional error log per project policy. No behavior change. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Diagnostics
 Type: Documentation
@@ -4758,7 +4758,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1108: Verify winmm.cpp's timeSetEvent/timeKillEvent logs stay bounded to startup/failure frequency
-Status: TODO
+Status: DONE — confirmed via grep that planetblupi has zero timeSetEvent/timeKillEvent call sites (uses SetTimer/WM_TIMER instead) and free-eggbert has exactly one each (blupi.cpp:891,628). Added a doc comment above timeSetEvent (src/winmm.cpp) citing this. NOTE: timeSetEvent's success log is now gated (TASK-24H-1227/1113), stronger than this task's original "document as-is" scope; the remaining unconditional logs (invalid-args, SDL_INIT_EVENTS-failed, SDL_AddTimer-failed, timeKillEvent's unknown-id warning) are failure paths, confirmed to fire at most once per process per the call-site count above. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Diagnostics
 Type: Verification
@@ -4812,7 +4812,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1110: Document _lopen/CreateDirectoryA failure-log call-frequency bounds
-Status: TODO
+Status: DONE — added comments above both logs (src/winbase_file.cpp). _lopen: confirmed each game has exactly one call site (ddutil.cpp), a single non-looping bitmap-open, so its failure log cannot fire more than once per bitmap-load attempt -- matches this task's original premise. CreateDirectoryA: this task's own premise was PARTLY WRONG -- re-verified this session and found planetblupi's AddUserPath (misc.cpp) call site is NOT compiled out (only free-eggbert's is, behind "#if _CD || _LEGACY", never defined); planetblupi's is live, called from decio.cpp's save/load paths. Corrected the comment to state the real, verified finding instead of repeating the task's stale "never fires today" claim. Still an acceptable unconditional failure log either way (real filesystem failures are rare by nature). Verified 25/25 in all three build trees.
 Priority: P2
 Area: Diagnostics
 Type: Verification
@@ -4838,7 +4838,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1111: Document mciSendCommandA's AVI-decline log as a confirmed once-per-process startup log
-Status: TODO
+Status: DONE — added a comment above the log (src/winmm.cpp) citing the confirmed call graph: CMovie::Create() has a single call site in each game (blupi.cpp), calls initAVI() exactly once, and permanently latches m_bEnable=FALSE on failure so later playback attempts never reach mciSendCommandA again. Re-verified this session directly against planetblupi's movie.cpp/blupi.cpp source. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Diagnostics
 Type: Verification

@@ -46,6 +46,12 @@ int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite)
     FILE* file = fopen(path.c_str(), "rb");
 
     if (!file) {
+        // TASK-24H-1110: intentionally unconditional (failure path only).
+        // Confirmed this session: each game has exactly one _lopen call
+        // site (../free-eggbert/src/ddutil.cpp, ../planetblupi/src/ddutil.cpp
+        // -- both a single, non-looping bitmap-open call), not a
+        // multi-candidate probe loop, so this cannot fire more than once
+        // per bitmap-load attempt.
         SDL_Log("free-api _lopen: failed to open '%s' (orig: '%s')",
                 path.c_str(), lpPathName);
         return -1;
@@ -122,6 +128,17 @@ BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurity
         }
     }
 
+    // TASK-24H-1110: intentionally unconditional (failure path only).
+    // Both games' only CreateDirectoryA call sites are inside their own
+    // AddUserPath() (misc.cpp) -- confirmed this session that this is NOT
+    // uniformly dead code: free-eggbert's AddUserPath body is gated behind
+    // "#if _CD || _LEGACY" (neither macro is ever defined in its build, so
+    // it's dead there), but planetblupi's AddUserPath has no such guard --
+    // it's live, called from decio.cpp's save/load paths. So this log can
+    // genuinely fire for planetblupi if directory creation ever fails for a
+    // real reason (permissions, disk full, etc.); it does not fire "never"
+    // as free-eggbert's does, but a real filesystem failure is rare by
+    // nature, so this stays an acceptable unconditional failure log either way.
     SDL_Log("free-api CreateDirectoryA: failed to create '%s' (orig: '%s'): %s",
             path.c_str(), lpPathName, SDL_GetError());
 

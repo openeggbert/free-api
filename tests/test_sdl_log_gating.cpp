@@ -52,13 +52,13 @@ static void Check(bool condition, const char* what)
 // unconditional -- not silenced behind a diagnostics flag -- because it
 // signals a real problem or fires at most once per process.
 static const std::set<std::pair<std::string, int>> kAllowlist = {
-    {"winmm.cpp", 129},           // timeSetEvent: invalid args (failure)
-    {"winmm.cpp", 145},           // timeSetEvent: SDL_INIT_EVENTS failed (failure)
-    {"winmm.cpp", 164},           // timeSetEvent: SDL_AddTimer failed (failure)
-    {"winmm.cpp", 198},           // timeKillEvent: unknown timer id (warning, not fatal)
-    {"winmm.cpp", 325},           // mciSendCommandA: avivideo decline (documented, TASK-24H-1111)
-    {"winbase_file.cpp", 49},     // _lopen: failed to open (failure)
-    {"winbase_file.cpp", 125},    // CreateDirectoryA: failed to create (failure)
+    {"winmm.cpp", 138},           // timeSetEvent: invalid args (failure)
+    {"winmm.cpp", 154},           // timeSetEvent: SDL_INIT_EVENTS failed (failure)
+    {"winmm.cpp", 173},           // timeSetEvent: SDL_AddTimer failed (failure)
+    {"winmm.cpp", 207},           // timeKillEvent: unknown timer id (warning, not fatal)
+    {"winmm.cpp", 343},           // mciSendCommandA: avivideo decline (documented, TASK-24H-1111)
+    {"winbase_file.cpp", 55},     // _lopen: failed to open (failure)
+    {"winbase_file.cpp", 142},    // CreateDirectoryA: failed to create (failure)
     {"MidiMusic.cpp", 119},       // No SoundFont found (always-visible startup warning)
     {"MidiMusic.cpp", 437},       // SDL_InitSubSystem(AUDIO) failed (once-per-process via backendInitFailed latch, TASK-24H-1109)
     {"MidiMusic.cpp", 447},       // SDL_OpenAudioDeviceStream failed (same latch)
@@ -67,7 +67,7 @@ static const std::set<std::pair<std::string, int>> kAllowlist = {
     {"wingdi_bitmap.cpp", 22},    // LoadImageA: resource bitmap loading not implemented (unsupported-input)
     {"wingdi_bitmap.cpp", 35},    // LoadImageA: SDL_LoadBMP failed (failure)
     {"wingdi_bitmap.cpp", 180},   // CreateBitmap: unsupported bpp, pixels zeroed (fallback warning)
-    {"internal/FreeApiGdi.cpp", 35}, // CreateCompatBitmapFromSurface: SDL_ConvertSurface failed (failure)
+    {"internal/FreeApiGdi.cpp", 40}, // CreateCompatBitmapFromSurface: SDL_ConvertSurface failed (failure)
 };
 
 static std::string Trim(const std::string& s)

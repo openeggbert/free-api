@@ -32,6 +32,11 @@ CompatBitmap* CreateCompatBitmapFromSurface(SDL_Surface* surface)
 
     SDL_Surface* rgbaSurface = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
     if (!rgbaSurface) {
+        // TASK-24H-1107: intentional, permanent unconditional error log --
+        // this is a genuine failure path only (never the success path), and
+        // project policy keeps error logs visible by default, unlike
+        // success/startup logs which are gated behind FreeApiDiagnosticsEnabled()
+        // et al. Do not gate this.
         SDL_Log("free-api LoadImageA: SDL_ConvertSurface failed: %s", SDL_GetError());
         return nullptr;
     }

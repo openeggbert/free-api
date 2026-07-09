@@ -115,6 +115,15 @@ extern "C" {
  * parameter is honored only for TIME_PERIODIC; one-shot is treated as periodic.
  *
  * @note Status: IMPLEMENTED
+ *
+ * TASK-24H-1108: this function's success log is gated (TASK-24H-1227); its
+ * invalid-args/SDL_INIT_EVENTS-failed/SDL_AddTimer-failed logs, and
+ * timeKillEvent's unknown-id warning below, are intentionally left
+ * unconditional (failure paths). Confirmed this session: free-eggbert calls
+ * timeSetEvent exactly once (blupi.cpp:891, at init) and timeKillEvent
+ * exactly once (blupi.cpp:628, at shutdown); planetblupi has zero call
+ * sites for either (it uses SetTimer/WM_TIMER instead) -- so on the failure
+ * path these logs fire at most once per process for either game.
  */
 MMRESULT WINAPI timeSetEvent(UINT uDelay,
                              UINT uResolution,
@@ -320,6 +329,15 @@ MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwComma
     // IMPORTANT: Planet Blupi truncates the struct pointer to DWORD when passing
     // it to this function, which makes the pointer invalid on 64-bit Linux.
     // We must NOT dereference dwParam here when only MCI_OPEN_TYPE is set.
+    //
+    // TASK-24H-1111: the log below is intentionally unconditional -- it is
+    // confirmed once-per-process for both games, not once per movie/level.
+    // CMovie::Create() (movie.cpp) is itself called exactly once per process
+    // (single call site: blupi.cpp), calls initAVI() (this MCI_OPEN) exactly
+    // once, and permanently latches m_bEnable=FALSE on failure; every later
+    // playback attempt short-circuits on that flag ("if (!m_bEnable) return")
+    // before ever reaching mciSendCommandA again. Stays visible by design
+    // (informational about a permanent, deliberate decision) -- do not gate.
 
     if (uMsg == MCI_OPEN && (fdwCommand & MCI_OPEN_TYPE) && !(fdwCommand & MCI_OPEN_ELEMENT)) {
         SDL_Log("free-api mciSendCommandA: MCI_OPEN device-type-only (avivideo) — "
