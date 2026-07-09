@@ -175,6 +175,23 @@ cd build && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failur
 Confirmed: `known-ID verification passed for 'planetblupi'`, `all 257
 unique used string ID(s) ... verified present`, clean build, 25/25 pass.
 
+**Stricter boundary case (`TASK-24H-0016`): sibling game directory absent
+entirely**, not just unconfigured — a fully isolated free-api checkout with
+no `../free-eggbert`/`../planetblupi` at all. Confirmed this session (copied
+free-api into an otherwise-empty parent directory):
+```bash
+cmake -S . -B build -DFREE_API_USE_SYSTEM_SDL3=ON -DFREE_API_TARGET_GAME=free-eggbert
+```
+fails configure immediately with a clear, correctly-attributed error:
+```
+CMake Error at cmake/ExtractStringTable.cmake:67 (message):
+  ExtractStringTable.cmake: required .rc file not found for target game
+  'free-eggbert': <path>/../free-eggbert/resource/Eggbert2.rc
+CMake Error at CMakeLists.txt:217 (message):
+  free-api: ExtractStringTable.cmake failed (result=1) ...
+```
+Confirmed correct, intended fail-loud behavior — do not weaken it.
+
 ## The `../free-direct` bridge build
 
 `../free-direct` (a sibling project implementing the DirectDraw/

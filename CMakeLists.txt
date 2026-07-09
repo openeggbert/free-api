@@ -650,11 +650,7 @@ endif()
 # window and expect a real display/audio backend, so they are opt-in and not
 # built by default when free-api is consumed as a sibling library by either
 # target game.
-if(EMSCRIPTEN)
-    option(FREE_API_BUILD_EXAMPLES "Build free-api examples" OFF)
-else()
-    option(FREE_API_BUILD_EXAMPLES "Build free-api examples" OFF)
-endif()
+option(FREE_API_BUILD_EXAMPLES "Build free-api examples" OFF)
 
 if(FREE_API_BUILD_EXAMPLES)
     foreach(_free_api_example IN ITEMS

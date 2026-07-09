@@ -1237,7 +1237,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0015: Re-verify FREE_API_BUILD_EXAMPLES=ON builds cleanly and correct NEXT.md's stale staleness note
-Status: TODO
+Status: DONE — re-verified fresh in a scratch build dir: all 5 examples + all 26 tests build cleanly, 26/26 pass. NEXT.md's stale "not touched or re-verified recently" note no longer exists in the file (already removed in an earlier session pass) -- nothing left to correct.
 Priority: P3
 Area: Build
 Type: Verification
@@ -1260,7 +1260,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0016: Verify FREE_API_TARGET_GAME override still fails loudly with no sibling game directory present at all
-Status: TODO
+Status: DONE — re-ran in a genuinely isolated checkout (rsync'd free-api into an otherwise-empty scratch directory, no ../free-eggbert/../planetblupi present at all) and confirmed the exact fail-loud error still fires (ExtractStringTable.cmake "required .rc file not found" -> CMakeLists.txt FATAL_ERROR). Documented the confirmed error text in docs/cmake-options.md alongside TASK-24H-0003/0004. No code change.
 Priority: P3
 Area: Build
 Type: Verification
@@ -1283,7 +1283,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0017: Remove the dead EMSCRIPTEN/non-EMSCRIPTEN branch for FREE_API_BUILD_EXAMPLES's default
-Status: TODO
+Status: DONE — replaced the dead if(EMSCRIPTEN)/else()/endif() with a single option() call, identical effective behavior (always OFF by default). Re-ran TASK-24H-0015's verification (examples build cleanly under -DFREE_API_BUILD_EXAMPLES=ON). Verified 26/26 in all three build trees.
 Priority: P3
 Area: Build
 Type: Cleanup
@@ -1440,7 +1440,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0106: Consolidate duplicate byte macro guard between rpcndr.h and wtypes.h
-Status: TODO
+Status: DONE — kept rpcndr.h as canonical (confirmed via windows.h's own #include <rpcndr.h>, and wtypes.h's own #include <windows.h> at its top, that byte is always already defined by the time wtypes.h's copy would run — a guaranteed no-op in every real usage). Removed wtypes.h's own copy, replaced with a doc-comment cross-reference. Verified test_header_compile.cpp and both real games (SPEEDY_BLUPI_WINDOWS/PLANET_BLUPI_WINDOWS) rebuild cleanly; 26/26 in all three build trees.
 Priority: P3
 Area: Headers
 Type: Refactor
@@ -2148,7 +2148,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0216: Add missing docs/supported-apis.md rows for pass-through, non-input WM_* message IDs
-Status: TODO
+Status: DONE — added a grouped row for the 8 pass-through WM_* constants. Verified 26/26 in all three build trees (docs-only).
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -2172,7 +2172,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0217: Correct docs/supported-apis.md's test-coverage column for the message-pump row
-Status: TODO
+Status: DONE — added test_winuser_regressions.cpp and test_timer_regressions.cpp to the PeekMessageA/GetMessageA row's test-coverage column. Spot-checked nearby rows (WaitMessage/PostMessageA/wsprintfA); already accurate, no other fixes needed. Verified 26/26 in all three build trees (docs-only).
 Priority: P3
 Area: WinUser
 Type: Documentation

@@ -7,7 +7,11 @@
  * - SCODE (COM status code, equivalent to HRESULT)
  * - DATE (OLE date/time as double)
  * - CLIPFORMAT (clipboard format identifier)
- * - byte alias macro (expected by some Win32 CRT headers)
+ *
+ * The legacy `byte` alias macro some old Win32 CRT headers expect is
+ * declared once, canonically, in `rpcndr.h` (TASK-24H-0106) -- this header's
+ * own `#include <windows.h>` above already pulls that in, so `byte` is
+ * guaranteed defined by the time any code using this header runs.
  *
  * These types are declared to compile but are not functionally used at runtime;
  * OLE/COM is not implemented in this compatibility layer.
@@ -33,10 +37,5 @@ typedef long SCODE;
 typedef double DATE;
 /** @brief Clipboard format identifier. @note Status: STUB */
 typedef WORD CLIPFORMAT;
-
-/** @brief Legacy Win32 `byte` alias expected by some old game source files. @note Status: STUB */
-#ifndef byte
-#define byte BYTE
-#endif
 
 #endif // FREE_API_WTYPES_H
