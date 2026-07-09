@@ -205,6 +205,22 @@ static void TestCreateWindowExAFullscreenPath()
     DrainMessages();
 }
 
+// TASK-24H-0308: GetSystemMetrics only ever implements three real indices
+// (SM_CXSCREEN/SM_CYSCREEN/SM_CYCAPTION); everything else falls through to
+// a hardcoded 0 return. SM_CYCAPTION itself previously had zero direct
+// assertions anywhere in the suite, and the fallback branch was untested.
+static void TestGetSystemMetricsCyCaptionAndUnqueriedIndexFallback()
+{
+    Check(GetSystemMetrics(SM_CYCAPTION) == 24,
+          "GetSystemMetrics(SM_CYCAPTION) returns the documented fixed value 24");
+
+    // 12345 is not SM_CXSCREEN/SM_CYSCREEN/SM_CYCAPTION and not a real
+    // Win32 SM_* value free-api implements -- exercises the "any other
+    // index" fallback branch (src/winuser_misc.cpp).
+    Check(GetSystemMetrics(12345) == 0,
+          "GetSystemMetrics returns 0 for an index none of the three implemented constants match");
+}
+
 // TASK-24H-0210: the original version of this test only observed the
 // downstream WM_QUIT, a correct but indirect proxy -- a regression that
 // broke the WM_CLOSE->DestroyWindow call specifically (while some other
@@ -1368,6 +1384,7 @@ int main()
     TestAdjustWindowRectPreservesClientSize();
     TestRegisterClassAWithFullFieldSet();
     TestCreateWindowExAFullscreenPath();
+    TestGetSystemMetricsCyCaptionAndUnqueriedIndexFallback();
     TestDefWindowProcHandlesWmClose();
     TestDestroyWindowDispatchesWmDestroySynchronously();
     TestRegisterClassADiscardsNonWndprocFields();

@@ -70,11 +70,20 @@ static void TestCreateDirectoryACreatesRealDirectory()
     Check(created == TRUE, "CreateDirectoryA reports success for a fresh directory");
     Check(DirExists(target), "CreateDirectoryA's target directory actually exists on disk");
 
-    // Calling it again on an already-existing directory must still be
-    // treated as an acceptable/idempotent outcome (matches ERROR_ALREADY_EXISTS
-    // semantics), not crash.
+    // TASK-24H-0709 (re-scoped): SDL_CreateDirectory itself reports success
+    // for an already-existing path ("This reports success if `path` already
+    // exists as a directory", SDL_filesystem.h) -- so CreateDirectoryA's own
+    // ERROR_ALREADY_EXISTS branch (src/winbase_file.cpp) is unreachable in
+    // practice; the real, current behavior is idempotent TRUE, not the
+    // FALSE/ERROR_ALREADY_EXISTS a real Win32 CreateDirectoryA would return.
+    // Confirmed harmless: neither game ever checks CreateDirectoryA's return
+    // value (both call it fire-and-forget, see free-eggbert/src/misc.cpp:184
+    // and planetblupi/src/misc.cpp:220). This test locks in the actual,
+    // current idempotent-success behavior rather than the incorrect
+    // already-exists semantics this task originally assumed.
+    SetLastError(0);
     BOOL createdAgain = CreateDirectoryA(target.c_str(), nullptr);
-    (void)createdAgain;
+    Check(createdAgain == TRUE, "CreateDirectoryA returns TRUE (idempotent success) for an already-existing directory -- matches SDL_CreateDirectory's own contract, not real Win32's FALSE/ERROR_ALREADY_EXISTS");
     Check(DirExists(target), "directory still exists after calling CreateDirectoryA on it twice");
 
     rmdir(target.c_str());

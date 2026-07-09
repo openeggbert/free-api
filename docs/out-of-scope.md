@@ -85,6 +85,28 @@ fails, so `movie.cpp`'s body, including its `MoveWindow` calls, never
 executes in either game). Do not add logical-state-update handling to
 `MoveWindow` without new evidence a real, reachable call site needs it.
 
+## `CreateDirectoryA`'s already-exists return value (TASK-24H-0709)
+
+**Confirmed harmless, not a TODO.** Real Win32 `CreateDirectoryA` returns
+`FALSE` and sets `ERROR_ALREADY_EXISTS` when the target directory already
+exists. `src/winbase_file.cpp`'s implementation has code for that exact
+case (an `std::filesystem::exists` check that sets `ERROR_ALREADY_EXISTS`
+and returns `FALSE`) — but it is unreachable in practice, because
+`SDL_CreateDirectory` (called first) already reports success for an
+already-existing path ("This reports success if `path` already exists as
+a directory", `SDL_filesystem.h`), so the function returns `TRUE` before
+ever reaching that branch.
+
+This is a real, confirmed deviation from Win32 semantics — `CreateDirectoryA`
+here is idempotent (`mkdir -p`-style), not already-exists-detecting. It's
+harmless because neither game ever checks `CreateDirectoryA`'s return
+value: both call it fire-and-forget for a fixed save-directory path
+(`../free-eggbert/src/misc.cpp:184`, `../planetblupi/src/misc.cpp:220`).
+Do not "fix" this by reordering the checks without new evidence a real
+call site depends on the `FALSE`/`ERROR_ALREADY_EXISTS` distinction —
+`tests/test_file_regressions.cpp`'s `TestCreateDirectoryACreatesRealDirectory`
+locks in the actual (idempotent-`TRUE`) behavior.
+
 ## Resource subsystem: `FindResourceA` miss → file-based fallback
 
 **This is the actual, currently-working behavior, not a hypothetical or a

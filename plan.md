@@ -2377,7 +2377,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0308: Add regression test coverage for GetSystemMetrics(SM_CYCAPTION) and the unqueried-index fallback
-Status: TODO
+Status: DONE — added TestGetSystemMetricsCyCaptionAndUnqueriedIndexFallback (tests/test_winuser_regressions.cpp): asserts GetSystemMetrics(SM_CYCAPTION) == 24 and GetSystemMetrics(12345) == 0 (fallback branch, 12345 chosen as a value distinct from all three implemented constants). Verified 24/24 standalone.
 Priority: P2
 Area: WinUser
 Type: Test
@@ -3791,7 +3791,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0709: Strengthen `CreateDirectoryA`'s already-exists test to assert `FALSE`/`ERROR_ALREADY_EXISTS`
-Status: TODO
+Status: DONE — RE-SCOPED: this task's premise was wrong. SDL_CreateDirectory itself reports success for an already-existing path (SDL_filesystem.h), so CreateDirectoryA's own ERROR_ALREADY_EXISTS branch (src/winbase_file.cpp) is unreachable in practice; actual current behavior is idempotent TRUE, not FALSE/ERROR_ALREADY_EXISTS. Confirmed via direct test run (the originally-planned assertions failed against real behavior). Confirmed harmless: neither game checks CreateDirectoryA's return value (both call it fire-and-forget: free-eggbert/src/misc.cpp:184, planetblupi/src/misc.cpp:220). Strengthened TestCreateDirectoryACreatesRealDirectory (tests/test_file_regressions.cpp) to assert the actual idempotent-TRUE behavior instead, and documented the Win32-semantics deviation in docs/out-of-scope.md ("CreateDirectoryA's already-exists return value"). Did not change CreateDirectoryA's implementation, per this task's own out-of-scope clause. Verified 24/24 standalone.
 Priority: P2
 Area: Files
 Type: Test
