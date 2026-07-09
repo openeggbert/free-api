@@ -85,6 +85,21 @@ fails, so `movie.cpp`'s body, including its `MoveWindow` calls, never
 executes in either game). Do not add logical-state-update handling to
 `MoveWindow` without new evidence a real, reachable call site needs it.
 
+## `CreateWindowExA`'s `dwExStyle` is stored/logged only (TASK-24H-0305)
+
+**Confirmed harmless, not a TODO.** `CreateWindowExA`'s `Uint32 flags`
+computation (`src/winuser_window.cpp`) only inspects `dwStyle`
+(`WS_VISIBLE`/`WS_POPUP`/`WS_CAPTION`); `dwExStyle` is used only for
+diagnostics logging and to populate `CREATESTRUCTA::dwExStyle` — it never
+maps to a real SDL window flag (e.g. `SDL_WINDOW_ALWAYS_ON_TOP` for
+`WS_EX_TOPMOST`). Both target games pass `WS_EX_TOPMOST`
+(`../free-eggbert/src/blupi.cpp:735`, `../planetblupi/src/blupi.cpp:627`)
+but neither reads `dwExStyle` back or otherwise depends on real OS-level
+always-on-top enforcement — both run one exclusive fullscreen/popup window
+for their entire session, so there's nothing else for a topmost window to
+compete with. Do not implement real `WS_EX_TOPMOST`/other extended-style
+SDL behavior without a new evidenced call site that requires it.
+
 ## No `SDL_WINDOW_RESIZABLE` on any `CreateWindowExA` window (TASK-24H-0316)
 
 **Deliberate, load-bearing — do not add without re-verifying first.**

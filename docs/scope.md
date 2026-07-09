@@ -29,7 +29,17 @@ The only exceptions are:
   real caller is `free-direct`, acting as the rendering/execution bridge
   *for* one of the two target games, may cite that `free-direct` call site
   instead of a `../free-eggbert`/`../planetblupi` one — see "Boundary with
-  `free-direct`" below for the exact, currently-named symbol list.
+  `free-direct`" below for the exact, currently-named symbol list. Do not
+  broaden this into a general "any sibling project's usage counts" rule —
+  it stays scoped to `free-direct` specifically.
+* **Test-infrastructure-only** (`TASK-24H-0114`): a symbol called only by
+  `tests/`, never by either target game, may be kept if it's cheap and used
+  by Free API's own verification — e.g. `GetTickCount`/`Sleep`, kept
+  because `tests/basic_test.cpp` calls them directly (see
+  `docs/out-of-scope.md`'s "Resources policy" table for that worked
+  example). This does not license adding new test-only symbols freely —
+  it only means an existing symbol's test-only usage is a legitimate,
+  documented reason to keep it rather than remove it.
 
 Symbols proven unused by both target games are legitimate candidates for
 removal, hiding behind an opt-in macro, or being left as a documented stub —

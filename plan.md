@@ -1646,7 +1646,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0114: Establish a formal test-infrastructure-only and free-direct-bridge exception policy in docs/scope.md
-Status: TODO
+Status: DONE — added a "test-infrastructure-only" named exception category to docs/scope.md's "The rule" section (criteria + GetTickCount/Sleep worked example cross-reference to docs/out-of-scope.md's Resources policy table). The free-direct-bridge category already existed (TASK-0011/0101/0102); added its "do not generalize" constraint inline for completeness. Verified 25/25 in all three build trees (docs-only).
 Priority: P2
 Area: Scope
 Type: Documentation
@@ -2300,7 +2300,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0305: Verify and document that CreateWindowExA's dwExStyle is stored/logged only, never translated into real SDL window behavior
-Status: TODO
+Status: DONE — confirmed via grep that neither game reads dwExStyle back after passing WS_EX_TOPMOST; both run one exclusive fullscreen/popup window for their whole session. Added a docs/out-of-scope.md entry. Verified 25/25 in all three build trees (docs-only, no rebuild needed).
 Priority: P2
 Area: WinUser
 Type: Verification
