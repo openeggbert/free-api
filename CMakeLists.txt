@@ -375,6 +375,16 @@ if(FREE_API_BUILD_TESTS)
     add_test(NAME check_no_hardcoded_paths
              COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoHardcodedPaths.cmake")
 
+    # TASK-24H-0011: proves the checker's own pattern-matching logic still
+    # actually fires on genuinely bad input (and doesn't false-positive on
+    # clean input) -- the test above only ever exercises the "nothing
+    # found" branch against the current, already-clean repo.
+    add_test(NAME check_no_hardcoded_paths_self_test
+             COMMAND ${CMAKE_COMMAND}
+                     -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-fixtures-out
+                     -DCHECKER_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoHardcodedPaths.cmake
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoHardcodedPathsSelfTest.cmake")
+
     # TASK-24H-0801/0802: negative-path tests proving ExtractStringTable.cmake's
     # fail-loud gates (REQUIRE_STRINGS, VERIFY_ID/VERIFY_TEXT, USED_IDS_FILE's
     # missing-ID and duplicate-ID checks) actually fire on broken input,
@@ -566,6 +576,7 @@ if(FREE_API_BUILD_TESTS)
     set_tests_properties(test_planetblupi_loop test_eggbert_loop
         PROPERTIES LABELS "integration")
     set_tests_properties(basic_test check_no_hardcoded_paths
+        check_no_hardcoded_paths_self_test
         test_header_compile test_sdl_log_gating test_winmain_bridge
         PROPERTIES LABELS "hygiene")
     if(NOT WIN32)

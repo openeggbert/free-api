@@ -1138,7 +1138,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0011: Add self-test coverage for cmake/CheckNoHardcodedPaths.cmake's own detection logic
-Status: TODO
+Status: DONE — refactored CheckNoHardcodedPaths.cmake's detection loop into a reusable free_api_check_no_hardcoded_paths() function (guarded so the real repo-wide check still only runs when invoked directly via cmake -P, not when include()d), added cmake/CheckNoHardcodedPathsSelfTest.cmake which includes the real script and exercises the real function against a known-bad temp fixture (asserts flagged) and a clean temp fixture (asserts not flagged), registered as check_no_hardcoded_paths_self_test. Verified the self-test genuinely catches breakage: temporarily removed "/home/" from the real pattern list, confirmed the self-test failed with a clear message, reverted, confirmed passing again. Verified 26/26 in all three build trees.
 Priority: P2
 Area: Build
 Type: Test
