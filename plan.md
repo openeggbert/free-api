@@ -5853,7 +5853,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1237: Add a minimum-version floor to the SDL3/SDL3_image/SDL3_mixer find_package calls
-Status: TODO
+Status: DONE -- determined the actual installed versions in this project's active development environment via each package's `*ConfigVersion.cmake` (`SDL3_DIR`/`SDL3_image_DIR`/`SDL3_mixer_DIR`'s resolved `PACKAGE_VERSION`, cross-checked against `pkg-config --modversion`): SDL3 3.4.0, SDL3_image 3.4.0, SDL3_mixer 3.2.0. Added these as floors to the three `find_package` calls (CMakeLists.txt, only reached when `FREE_API_USE_SYSTEM_SDL3=ON`). Verified: standalone `build/` (the only tree with `FREE_API_USE_SYSTEM_SDL3=ON`) reconfigures and builds cleanly with the floors in place; both target-game trees use their own vendored/FetchContent SDL3 acquisition path (`FREE_API_USE_SYSTEM_SDL3=OFF`), so this `find_package` call isn't reached there at all -- unaffected by this change, confirmed by their own successful reconfigure+build+28/28 test runs during this batch's verification.
 Priority: P3
 Area: Build
 Type: Cleanup
@@ -5906,7 +5906,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1239: Fix GetObjectA to return the actual number of bytes written, not always sizeof(BITMAP)
-Status: TODO
+Status: DONE -- `GetObjectA` (src/wingdi_bitmap.cpp) now returns `copySize` (the actual `min(c, sizeof(BITMAP))` byte count already used for the `memcpy`) instead of unconditionally `sizeof(BITMAP)`. New regression test `TestGetObjectAReturnsActualBytesCopiedNotAlwaysFullSize` (tests/test_gdi_regressions.cpp) calls `GetObjectA` with `c` smaller than `sizeof(BITMAP)` and asserts the return value matches that smaller size, plus a positive control confirming `c >= sizeof(BITMAP)` still returns the full struct size. Verified 28/28 passing in standalone build/, build-tsan/, build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make) -- including the pre-existing `TASK-24H-0616` degenerate-argument tests, unaffected.
 Priority: P3
 Area: GDI
 Type: Bugfix
@@ -5931,7 +5931,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1240: Add a symmetric zero-guard to ClientToScreen's scaling division
-Status: TODO
+Status: DONE -- root-cause analysis found the asymmetry was subtler than "ClientToScreen has no guard": it already had a `pw > 0 && ph > 0` check, but that guards the PHYSICAL dimensions, which are `ScreenToClient`'s divisor, not `ClientToScreen`'s -- `ClientToScreen`'s actual divisor is the LOGICAL width/height (`it->second.width`/`height`), left completely unguarded. Added `it->second.width > 0 && it->second.height > 0` to the existing condition (src/winuser_cursor.cpp), so both the window-state lookup's dimensions AND the physical `SDL_GetWindowSize` result are checked before dividing by either. Fallback matches `ScreenToClient`'s: skip the scaling step (leave the point unscaled), still return TRUE. Currently unreachable (CreateWindowExA always populates a positive logical width/height); no new test added per the task's own scope (defensive-only, matching TASK-24H-1231's precedent for an unreachable condition). Verified 28/28 passing in standalone build/, build-tsan/, build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make), no behavior change for any currently-reachable case.
 Priority: P3
 Area: WinUser
 Type: Bugfix
@@ -5955,7 +5955,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1241: Document SetTimer's globally-keyed (not per-window) timer-ID map as a confirmed-harmless simplification
-Status: TODO
+Status: DONE -- added a new "`SetTimer`'s globally-keyed (not per-window) timer-ID map" section to `docs/out-of-scope.md`, immediately after the existing "Single live window assumption" section, explaining `g_winTimers`'s global (ID-only) keying, why it's safe under the current single-window design, and that it must be revisited before any multi-window support. Added a cross-reference pointer from the existing single-window-assumption section back to this new one, per the acceptance criteria. Documentation only, no behavior change. Verified standalone build/ still compiles and 28/28 tests pass.
 Priority: P3
 Area: Timers
 Type: Documentation
@@ -5979,7 +5979,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1242: Document or unify StretchBlt's inconsistent out-of-range source-rect handling between its two internal paths
-Status: TODO
+Status: DONE -- chose to document rather than unify (task's own "contributor's choice" allowance): unifying would require deliberately rewriting `TestStretchBlt1to1OutOfRangeSourceRectClipsSafely` and `TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX` (which correctly lock in each path's current behavior) for no functional benefit, since neither target game ever reaches either path with out-of-range input. Added a detailed explanation to `include/wingdi.h`'s `StretchBlt` doc comment (naming both tests that would need updating if ever unified) and a matching, more detailed section to `docs/out-of-scope.md`. No behavior/test change. Verified standalone build/ still compiles and 28/28 tests pass, including both of the referenced tests, unaffected.
 Priority: P3
 Area: GDI
 Type: Documentation
@@ -6003,7 +6003,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1243: Consider relaxing g_debugInput's memory order from the default (seq_cst) to relaxed
-Status: TODO
+Status: DONE -- all four `g_debugInput` access sites converted from implicit `bool` conversion (seq_cst) to explicit `.load(std::memory_order_relaxed)`/`.store(..., std::memory_order_relaxed)`: the one write (src/internal/FreeApiSdlVideo.cpp's `EnsureVideoSubsystem`) and three reads (src/internal/FreeApiMessageQueue.cpp's `InputLog` early-return, and two `if (g_debugInput...)` checks in `PumpSdlEvents`). `tests/test_sdl_log_gating.cpp`'s gate-recognition regex (`kGatePattern`) broadened to also recognize the new `g_debugInput.load(...)` shape alongside the plain implicit-conversion form, since its early-return-gate regex no longer matched the literal `if (!g_debugInput) return;` text after this change (a real, caught-by-running-the-suite regression in the test's own pattern-matching, not a gating gap in the source). Verified `TestGDebugInputSurvivesRaceUnderSanitizer` (tests/test_timer_regressions.cpp) still passes under `FREE_API_SANITIZE=thread` -- relaxed ordering remains race-free for this single boolean debug flag with no dependent data, confirming the task's own prediction. Verified 28/28 passing in standalone build/, build-tsan/, build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make).
 Priority: P3
 Area: Diagnostics
 Type: Performance

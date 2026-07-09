@@ -78,7 +78,11 @@ int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv)
 
     const int copySize = c < static_cast<int>(sizeof(BITMAP)) ? c : static_cast<int>(sizeof(BITMAP));
     memcpy(pv, &info, static_cast<size_t>(copySize));
-    return static_cast<int>(sizeof(BITMAP));
+    // TASK-24H-1239: return the actual number of bytes copied, matching
+    // real Win32 GetObjectA's documented contract -- not unconditionally
+    // sizeof(BITMAP) even when the caller passed a smaller c and fewer
+    // bytes were actually written.
+    return copySize;
 }
 
 BOOL WINAPI DeleteObject(HGDIOBJ ho)

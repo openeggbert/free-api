@@ -165,6 +165,19 @@ COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color);
  * is implemented. Uses nearest-neighbor scaling. In the scaled path, an
  * out-of-range source coordinate is clamped to the nearest edge pixel on
  * both the X and Y axes (consistent edge-clamp policy on both axes).
+ *
+ * TASK-24H-1242: the 1:1 (unscaled) fast path and the scaled path handle a
+ * source rect that's entirely out-of-range DIFFERENTLY from each other: the
+ * 1:1 path clips to a no-op (draws nothing), while the scaled path clamps
+ * per-pixel source coordinates to the nearest edge and draws a stretched/
+ * duplicated edge-pixel artifact. Neither target game ever passes an
+ * out-of-range source rect (both always derive it from real bitmap
+ * dimensions), so this inconsistency is confirmed unreachable, not an
+ * active bug -- see docs/out-of-scope.md for the full writeup. Do not
+ * "fix" one path to match the other without also updating
+ * test_gdi_regressions.cpp's TestStretchBlt1to1OutOfRangeSourceRectClipsSafely
+ * and TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX, which lock
+ * in each path's current, individual behavior.
  * @note Status: PARTIAL
  */
 BOOL WINAPI StretchBlt(HDC hdcDest,

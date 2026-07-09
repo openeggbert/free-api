@@ -30,9 +30,13 @@ bool EnsureVideoSubsystem()
     const char* dbgInput = SDL_getenv("FREE_API_DEBUG_INPUT");
     const char* dbgMouse = SDL_getenv("FREE_API_DEBUG_MOUSE");
     const char* dbgReal  = SDL_getenv("FREE_API_DEBUG_REAL_INPUT");
-    g_debugInput = (dbgInput && dbgInput[0] == '1')
+    // TASK-24H-1243: relaxed, not the implicit-conversion default
+    // (seq_cst) -- g_debugInput is a debug on/off flag that synchronizes no
+    // other data, so relaxed is sufficient and free on ARM/Android (which
+    // this codebase explicitly supports), unlike a seq_cst store/load pair.
+    g_debugInput.store((dbgInput && dbgInput[0] == '1')
         || (dbgMouse && dbgMouse[0] == '1')
-        || (dbgReal  && dbgReal[0]  == '1');
+        || (dbgReal  && dbgReal[0]  == '1'), std::memory_order_relaxed);
     return true;
 }
 

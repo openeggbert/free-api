@@ -13,8 +13,9 @@
  *                       same function
  *   - compile-time:    #if defined(__ANDROID__) ... SDL_Log(...) ... #endif
  * "GATE" is one of: FreeApiDiagnosticsEnabled(), FreeApiDiagnosticsFastEnabled(),
- * FreeApiGdiDebugEnabled(), midiDebugEnabled(), g_debugInput, or the local
- * `diag` variable (src/wingdi_dc.cpp).
+ * FreeApiGdiDebugEnabled(), midiDebugEnabled(), g_debugInput (either its
+ * implicit-bool-conversion form or an explicit g_debugInput.load(...) call,
+ * TASK-24H-1243), or the local `diag` variable (src/wingdi_dc.cpp).
  *
  * A short, explicit, file:line allowlist below covers the confirmed-
  * intentional unconditional failure/startup/warning-path logs (the same
@@ -66,7 +67,7 @@ static const std::set<std::pair<std::string, int>> kAllowlist = {
     {"internal/FreeApiSdlVideo.cpp", 21}, // EnsureVideoSubsystem: SDL_INIT_VIDEO failed (failure)
     {"wingdi_bitmap.cpp", 22},    // LoadImageA: resource bitmap loading not implemented (unsupported-input)
     {"wingdi_bitmap.cpp", 35},    // LoadImageA: SDL_LoadBMP failed (failure)
-    {"wingdi_bitmap.cpp", 189},   // CreateBitmap: unsupported bpp, pixels zeroed (fallback warning)
+    {"wingdi_bitmap.cpp", 193},   // CreateBitmap: unsupported bpp, pixels zeroed (fallback warning)
     {"internal/FreeApiGdi.cpp", 40}, // CreateCompatBitmapFromSurface: SDL_ConvertSurface failed (failure)
 };
 
@@ -86,9 +87,16 @@ static size_t LeadingWhitespace(const std::string& s)
 }
 
 // One of the recognized gate tokens/calls, as a regex alternation.
+//
+// TASK-24H-1243: g_debugInput's reads became explicit
+// `.load(std::memory_order_relaxed)` calls (relaxed, not the
+// implicit-bool-conversion default of seq_cst) -- the optional
+// "(\.load\(...\))?" suffix below tolerates that shape alongside the
+// plain `g_debugInput` implicit-conversion form still used elsewhere.
 static const std::string kGatePattern =
     "(FreeApiDiagnosticsEnabled\\(\\)|FreeApiDiagnosticsFastEnabled\\(\\)|"
-    "FreeApiGdiDebugEnabled\\(\\)|midiDebugEnabled\\(\\)|g_debugInput|\\bdiag\\b)";
+    "FreeApiGdiDebugEnabled\\(\\)|midiDebugEnabled\\(\\)|"
+    "g_debugInput(\\.load\\([^)]*\\))?|\\bdiag\\b)";
 
 static bool IsGatedLine(const std::vector<std::string>& lines, size_t targetIdx)
 {

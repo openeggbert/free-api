@@ -720,6 +720,33 @@ static void TestGetObjectARejectsDegenerateArguments()
     DeleteObject(bmp);
 }
 
+// TASK-24H-1239: GetObjectA's memcpy was always correctly bounded to
+// min(c, sizeof(BITMAP)), but the function unconditionally *returned*
+// sizeof(BITMAP) even when c was smaller and fewer bytes were actually
+// copied -- a real deviation from real Win32 GetObjectA's documented
+// "returns the number of bytes copied" contract. No evidence either game
+// ever passes a c smaller than sizeof(BITMAP); defensive-completeness
+// coverage, not a known-used-behavior gap.
+static void TestGetObjectAReturnsActualBytesCopiedNotAlwaysFullSize()
+{
+    const int w = 2, h = 2;
+    std::vector<uint8_t> pixels(static_cast<size_t>(w) * h * 4, 0);
+    HBITMAP bmp = CreateBitmap(w, h, 1, 32, pixels.data());
+    Check(bmp != nullptr, "CreateBitmap succeeds for the GetObjectA partial-size test");
+
+    BITMAP info{};
+    const int smallSize = 4; // smaller than sizeof(BITMAP), still > 0
+    int written = GetObjectA(bmp, smallSize, &info);
+    Check(written == smallSize,
+          "GetObjectA(c smaller than sizeof(BITMAP)) returns the actual (smaller) byte count copied, not the full struct size");
+
+    int writtenFull = GetObjectA(bmp, sizeof(info), &info);
+    Check(writtenFull == sizeof(BITMAP),
+          "GetObjectA(c >= sizeof(BITMAP)) still returns the full struct size when that's what was actually copied");
+
+    DeleteObject(bmp);
+}
+
 static void TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions()
 {
     const int width = 6, height = 4;
@@ -1061,6 +1088,7 @@ int main()
     TestGetDeviceCapsSizePaletteReportsTrueColorHost();
     TestGetSystemPaletteEntriesFills256WellFormedEntries();
     TestGetObjectARejectsDegenerateArguments();
+    TestGetObjectAReturnsActualBytesCopiedNotAlwaysFullSize();
     TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
     TestLoadImageASuccessPathIsQuietByDefault();
     TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd();

@@ -29,9 +29,20 @@ option(FREE_API_USE_SYSTEM_SDL3
         OFF)
 
 if(NOT TARGET SDL3::SDL3 AND FREE_API_USE_SYSTEM_SDL3)
-    find_package(SDL3 REQUIRED)
-    find_package(SDL3_image REQUIRED)
-    find_package(SDL3_mixer REQUIRED)
+    # TASK-24H-1237: version floors matching what this project's testing has
+    # actually been validated against in its active development environment
+    # (SDL3/SDL3_image 3.4.0, SDL3_mixer 3.2.0, confirmed via each package's
+    # installed *ConfigVersion.cmake). free-api links against whatever
+    # SDL3-family version the consuming game or system provides, with no
+    # other build-time compatibility guard (unlike TinySoundFont/
+    # TinyMidiLoader, which are vendored source and therefore effectively
+    # pinned) -- these floors catch an accidentally-much-older SDL3 install
+    # at configure time instead of surfacing as an obscure runtime/link
+    # failure. Raise the floor if a newer version is validated; do not lower
+    # it without re-validating against the older version first.
+    find_package(SDL3 3.4.0 REQUIRED)
+    find_package(SDL3_image 3.4.0 REQUIRED)
+    find_package(SDL3_mixer 3.2.0 REQUIRED)
 endif()
 
 if(NOT TARGET SDL3::SDL3 OR NOT TARGET SDL3_image::SDL3_image OR NOT TARGET SDL3_mixer::SDL3_mixer)

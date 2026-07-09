@@ -96,9 +96,20 @@ BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint)
     const LONG inX = lpPoint->x;
     const LONG inY = lpPoint->y;
 
-    // Scale from logical client coordinates to physical client coordinates
+    // Scale from logical client coordinates to physical client coordinates.
+    // TASK-24H-1240: this division's actual denominator is the LOGICAL
+    // width/height (it->second.width/height), unlike ScreenToClient's
+    // mirror-image division above, whose denominator is the physical
+    // pw/ph -- so the pw > 0 && ph > 0 guard alone (kept for the
+    // SDL_GetWindowSize() success check) does not protect THIS division
+    // against a zero logical width/height. Add that guard too, matching
+    // ScreenToClient's fallback: skip the scaling step (leave the point
+    // unscaled) rather than divide by zero, still returning TRUE below.
+    // Currently unreachable -- CreateWindowExA always populates a positive
+    // logical width/height -- but a latent SIGFPE risk if that invariant
+    // is ever broken by a future change.
     const auto it = g_freeApiWindowStates.find(hWnd);
-    if (it != g_freeApiWindowStates.end()) {
+    if (it != g_freeApiWindowStates.end() && it->second.width > 0 && it->second.height > 0) {
         int pw, ph;
         if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hWnd), &pw, &ph) && pw > 0 && ph > 0) {
             lpPoint->x = lpPoint->x * pw / it->second.width;

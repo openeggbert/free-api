@@ -252,6 +252,56 @@ multi-window support. Do not add multi-window support, or generalize this
 fallback, without first revisiting it — no evidenced need exists in either
 target game today.
 
+See also "`SetTimer`'s globally-keyed (not per-window) timer-ID map" below —
+another piece of state that relies on this same single-window assumption and
+must be revisited alongside it.
+
+## `SetTimer`'s globally-keyed (not per-window) timer-ID map (TASK-24H-1241)
+
+**Confirmed harmless under the single-live-window assumption above, not a
+TODO.** Real Win32 scopes a timer ID to the window that created it — the
+same numeric ID can be reused by different windows without conflict. Here,
+`g_winTimers` (`src/internal/FreeApiTimers.hpp`, `src/winuser_timer.cpp`) is
+a single `std::unordered_map<UINT_PTR, WinTimer>` keyed by timer ID alone,
+not scoped per-window (the `HWND` is stored *inside* each `WinTimer` entry,
+not part of the map's key). A second `SetTimer` call with the same ID from a
+*different* window would silently overwrite the first window's timer entry
+instead of coexisting alongside it.
+
+Safe today only because of this project's own established single-live-window
+design (see "Single live window assumption" above) — two windows never
+coexist, so two windows can never independently register colliding timer
+IDs in practice. This must be revisited before any multi-window support is
+ever added, at the same time as the rest of that section's callers. Do not
+scope `g_winTimers` per-window without an evidenced need — no such need
+exists in either target game today.
+
+## `StretchBlt`'s inconsistent out-of-range source-rect handling between its two internal paths (TASK-24H-1242)
+
+**Confirmed harmless, not a TODO.** For the same nominal "source rect far
+outside the source bitmap" input, `StretchBlt`'s (`src/wingdi_blit.cpp`) two
+internal code paths produce different behavior:
+
+* The 1:1 (unscaled) fast path clips the copy region to the overlap between
+  source and destination, which becomes empty for a fully out-of-range
+  source rect — the call is a safe no-op, drawing nothing.
+* The scaled path instead clamps each per-pixel source coordinate to the
+  nearest in-bounds edge pixel (`srcXTable`'s clamp, and the equivalent Y
+  clamp), so an out-of-range source rect draws a stretched/duplicated
+  edge-pixel artifact rather than nothing.
+
+Both target games always pass in-bounds source rects derived from real
+bitmap dimensions (`GetObjectA`'s reported width/height) — neither path is
+ever reached with genuinely out-of-range input in real gameplay, so this is
+not an active bug, just an unstated inconsistency between two code paths for
+the same edge-case class. `tests/test_gdi_regressions.cpp`'s
+`TestStretchBlt1to1OutOfRangeSourceRectClipsSafely` and
+`TestStretchBltScaledOutOfRangeSourceYClampsToEdgeRowLikeX` each lock in one
+path's current, individual behavior. Do not unify the two paths' out-of-range
+behavior without deliberately updating both of those tests to match — and
+without new evidence a real call site needs one specific behavior over the
+other.
+
 ## Resource subsystem: `FindResourceA` miss → file-based fallback
 
 **This is the actual, currently-working behavior, not a hypothetical or a

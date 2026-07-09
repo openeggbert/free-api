@@ -16,7 +16,9 @@ std::atomic_bool g_debugInput{false};
 
 void InputLog(const char* fmt, ...)
 {
-    if (!g_debugInput) return;
+    // TASK-24H-1243: relaxed, see the store site's comment
+    // (FreeApiSdlVideo.cpp) for why.
+    if (!g_debugInput.load(std::memory_order_relaxed)) return;
     char buf[256];
     va_list ap;
     va_start(ap, fmt);
@@ -242,7 +244,7 @@ void PumpSdlEvents()
             // FREE_DIRECT_INPUT diagnostic for first 20 events. Gated behind
             // g_debugInput (FREE_API_DEBUG_INPUT=1) so normal gameplay does
             // not log on every mouse/touch event.
-            if (g_debugInput && inputDiagCount < 20) {
+            if (g_debugInput.load(std::memory_order_relaxed) && inputDiagCount < 20) {
                 float mappedX = 0, mappedY = 0;
                 if (event.type == SDL_EVENT_MOUSE_MOTION) { mappedX = event.motion.x; mappedY = event.motion.y; }
                 else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) { mappedX = event.button.x; mappedY = event.button.y; }
@@ -413,7 +415,7 @@ void PumpSdlEvents()
                 break;
             }
             default:
-                if (g_debugInput) {
+                if (g_debugInput.load(std::memory_order_relaxed)) {
                     InputLog("SDL_EVENT type=0x%X (unhandled)", event.type);
                 }
                 break;
