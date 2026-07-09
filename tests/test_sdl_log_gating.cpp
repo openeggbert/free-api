@@ -66,7 +66,7 @@ static const std::set<std::pair<std::string, int>> kAllowlist = {
     {"internal/FreeApiSdlVideo.cpp", 21}, // EnsureVideoSubsystem: SDL_INIT_VIDEO failed (failure)
     {"wingdi_bitmap.cpp", 22},    // LoadImageA: resource bitmap loading not implemented (unsupported-input)
     {"wingdi_bitmap.cpp", 35},    // LoadImageA: SDL_LoadBMP failed (failure)
-    {"wingdi_bitmap.cpp", 180},   // CreateBitmap: unsupported bpp, pixels zeroed (fallback warning)
+    {"wingdi_bitmap.cpp", 184},   // CreateBitmap: unsupported bpp, pixels zeroed (fallback warning)
     {"internal/FreeApiGdi.cpp", 40}, // CreateCompatBitmapFromSurface: SDL_ConvertSurface failed (failure)
 };
 

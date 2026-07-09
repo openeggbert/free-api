@@ -451,6 +451,11 @@ static void TestGetSetPixelRoundTripOnMemoryDcWithSelectedBitmap()
     COLORREF oobWriteAttempt = RGB(0xAA, 0xBB, 0xCC);
     COLORREF oobSetReturn = SetPixel(memDc, -1, -1, oobWriteAttempt);
     Check(oobSetReturn == oobWriteAttempt, "SetPixel out-of-bounds on a Memory DC returns the passed color without crashing");
+
+    // Found by AddressSanitizer's LeakSanitizer while verifying TASK-24H-1229:
+    // this test never cleaned up its bitmap/DC, a genuine resource leak.
+    DeleteDC(memDc);
+    DeleteObject(bitmap);
 }
 
 // TASK-0125 (plan.md): CreateBitmap's 8-bit-indexed and 16-bit RGB565
@@ -985,6 +990,57 @@ static void TestBridgeGdiHelpersRejectionAndEdgeCases()
     Check(true, "FreeApiSetWindowFullscreen(NULL, ...) does not crash for either fullscreen value (early-return guard)");
 }
 
+// TASK-24H-1229: DeleteDC/DeleteObject/FreeApiDestroySurfaceDC previously
+// left a freed handle's magic-number tag intact, so a double-delete of the
+// same handle could pass AsCompatDC/AsCompatBitmap's validation a second
+// time against already-freed memory (a genuine double-free, not a
+// fail-safe rejection). All three now clear the tag before delete; this
+// locks in that the SECOND delete call on the same handle is rejected
+// (matching the existing "already invalid handle" contract), not repeated.
+//
+// NOT run under AddressSanitizer or ThreadSanitizer (see main()): clearing
+// the magic tag prevents the actual double-free (delete is never called a
+// second time), but AsCompatDC/AsCompatBitmap's validation still has to
+// *read* the (now-cleared) tag from freed memory to know that -- and both
+// ASan and TSan flag any read of freed memory as a use-after-free by
+// design, regardless of whether the value read is safe/deterministic.
+// This is an inherent limitation of this handle scheme (a raw pointer
+// with an in-struct tag, not an indirect handle table), not something the
+// magic-clear fix alone can close; a full handle-table/generation-counter
+// redesign would be needed to also satisfy the sanitizers here, and that
+// is explicitly out of scope for TASK-24H-1229 (see its "Out of scope"
+// section).
+static void TestDoubleDeleteIsRejectedNotDoubleFreed()
+{
+    HBITMAP bmp = CreateBitmap(2, 2, 1, 32, nullptr);
+    Check(bmp != nullptr, "CreateBitmap succeeds for the DeleteObject double-delete test");
+    if (bmp) {
+        BOOL first = DeleteObject(bmp);
+        Check(first == TRUE, "DeleteObject succeeds on the first call");
+        BOOL second = DeleteObject(bmp);
+        Check(second == FALSE, "DeleteObject on an already-deleted handle is rejected (FALSE), not double-freed");
+    }
+
+    HDC memDc = CreateCompatibleDC(nullptr);
+    Check(memDc != nullptr, "CreateCompatibleDC succeeds for the DeleteDC double-delete test");
+    if (memDc) {
+        BOOL first = DeleteDC(memDc);
+        Check(first == TRUE, "DeleteDC succeeds on the first call");
+        BOOL second = DeleteDC(memDc);
+        Check(second == FALSE, "DeleteDC on an already-deleted handle is rejected (FALSE), not double-freed");
+    }
+
+    std::vector<uint8_t> pixels(4 * 4 * 4, 0);
+    HDC surfaceDc = FreeApiCreateSurfaceDC(pixels.data(), 4, 4, 16, 32);
+    Check(surfaceDc != nullptr, "FreeApiCreateSurfaceDC succeeds for the double-delete test");
+    if (surfaceDc) {
+        BOOL first = FreeApiDestroySurfaceDC(surfaceDc);
+        Check(first == TRUE, "FreeApiDestroySurfaceDC succeeds on the first call");
+        BOOL second = FreeApiDestroySurfaceDC(surfaceDc);
+        Check(second == FALSE, "FreeApiDestroySurfaceDC on an already-destroyed handle is rejected (FALSE), not double-freed");
+    }
+}
+
 int main()
 {
     printf("[gdi-regressions] Starting\n");
@@ -1011,6 +1067,12 @@ int main()
     TestSelectObjectDeleteObjectBitmapIntoDcLifecycle();
     TestFullLoadSelectBlitColorMatchDeleteSequence();
     TestBridgeGdiHelpersRejectionAndEdgeCases();
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer)) || \
+    defined(__SANITIZE_THREAD__) || (defined(__has_feature) && __has_feature(thread_sanitizer))
+    printf("[gdi-regressions] SKIP: TestDoubleDeleteIsRejectedNotDoubleFreed (sanitizer build -- see its own doc comment for why this test is inherently incompatible with ASan's/TSan's use-after-free detection)\n");
+#else
+    TestDoubleDeleteIsRejectedNotDoubleFreed();
+#endif
 
     if (g_failures > 0) {
         printf("[gdi-regressions] %d FAILURE(S)\n", g_failures);

@@ -91,6 +91,10 @@ BOOL WINAPI DeleteObject(HGDIOBJ ho)
     AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
                         g_diagCompatBitmapPixelCapacityHighWaterBytes,
                         -static_cast<int64_t>(bitmap->pixels.capacity()));
+    // TASK-24H-1229: clear the magic tag before delete so a double-delete
+    // of the same (now-freed) handle fails AsCompatBitmap's validation
+    // instead of risking a double-free against stale-but-still-tagged memory.
+    bitmap->magic = 0;
     delete bitmap;
     g_diagCompatBitmaps.fetch_sub(1, std::memory_order_relaxed);
     g_diagCompatBitmapsDestroyed.fetch_add(1, std::memory_order_relaxed);

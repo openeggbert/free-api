@@ -35,6 +35,10 @@ BOOL FreeApiDestroySurfaceDC(HDC hdc)
         return FALSE;
     }
 
+    // TASK-24H-1229: clear the magic tag before delete so a double-delete
+    // of the same (now-freed) handle fails AsCompatDC's validation instead
+    // of risking a double-free against stale-but-still-tagged memory.
+    dc->magic = 0;
     delete dc;
     g_diagCompatDcs.fetch_sub(1, std::memory_order_relaxed);
     g_diagCompatDcsDestroyed.fetch_add(1, std::memory_order_relaxed);
@@ -103,6 +107,8 @@ BOOL WINAPI DeleteDC(HDC hdc)
         return FALSE;
     }
 
+    // TASK-24H-1229: see FreeApiDestroySurfaceDC's matching comment above.
+    dc->magic = 0;
     delete dc;
     g_diagCompatDcs.fetch_sub(1, std::memory_order_relaxed);
     g_diagCompatDcsDestroyed.fetch_add(1, std::memory_order_relaxed);
