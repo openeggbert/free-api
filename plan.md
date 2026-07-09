@@ -945,7 +945,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0003: Confirm and record FREE_API_TARGET_GAME=free-eggbert override without the full free-eggbert build tree
-Status: TODO
+Status: DONE — re-ran the exact command sequence in a scratch build dir (free-eggbert's own CMake project never configured): known-ID verification passed, all 308 used string IDs verified present, clean build, 25/25 pass. Documented as a worked example in docs/cmake-options.md.
 Priority: P2
 Area: Build
 Type: Verification
@@ -969,7 +969,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0004: Confirm and record FREE_API_TARGET_GAME=planetblupi override without the full planetblupi build tree
-Status: TODO
+Status: DONE — re-ran the exact command sequence in a scratch build dir (planetblupi's own CMake project never configured): known-ID verification passed, all 257 used string IDs verified present, clean build, 25/25 pass. Documented as a worked example in docs/cmake-options.md.
 Priority: P2
 Area: Build
 Type: Verification
@@ -1163,7 +1163,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0012: Re-confirm and script the ../free-eggbert (Ninja) 17/17 build path
-Status: TODO
+Status: DONE — re-ran the exact sequence fresh (cmake . && ninja, then ctest under FREE_API/): 25/25 pass (was 17/17 when this task was written; suite has grown). Documented as a canonical, copy-pasteable entry in docs/cmake-options.md.
 Priority: P2
 Area: Build
 Type: Verification
@@ -1187,7 +1187,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0013: Re-confirm and script the ../planetblupi (Make) 17/17 build path
-Status: TODO
+Status: DONE — re-ran the exact sequence fresh (cmake . && make, then ctest under FREE_API/): 25/25 pass (was 17/17 when this task was written; suite has grown). Documented as a canonical, copy-pasteable entry in docs/cmake-options.md.
 Priority: P2
 Area: Build
 Type: Verification

@@ -16,6 +16,22 @@ cmake -B build
 cmake --build build
 ```
 
+**The two real target-game build paths (`TASK-24H-0012`/`0013`), re-confirmed
+this session:**
+
+```bash
+cd ../free-eggbert/cmake-build-debug && cmake . && ninja -j"$(nproc)"
+cd FREE_API && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
+```
+Passes 25/25 as written. Also exercises the `free-api`+`free-direct`
+diamond dependency (the `FREEDIRECT` backend, `TASK-24H-0006`).
+
+```bash
+cd ../planetblupi/build && cmake . && make -j"$(nproc)"
+cd FREE_API && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
+```
+Passes 25/25 as written.
+
 ## 2. System SDL3
 
 ```bash
@@ -136,6 +152,28 @@ cmake -B build -DFREE_API_TARGET_GAME=planetblupi
 
 Passing an unrecognized value fails configure immediately with a clear
 error listing the four allowed values.
+
+**Worked examples (`TASK-24H-0003`/`0004`), run from free-api's own
+directory with neither game's own CMake project ever configured — the
+sibling-path fallback described above does the work:**
+
+```bash
+cmake -S . -B build -DFREE_API_USE_SYSTEM_SDL3=ON \
+  -DFREE_API_TARGET_GAME=free-eggbert -DFREE_API_BUILD_TESTS=ON
+cmake --build build -j"$(nproc)"
+cd build && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
+```
+Confirmed: `known-ID verification passed for 'free-eggbert'`, `all 308
+unique used string ID(s) ... verified present`, clean build, 25/25 pass.
+
+```bash
+cmake -S . -B build -DFREE_API_USE_SYSTEM_SDL3=ON \
+  -DFREE_API_TARGET_GAME=planetblupi -DFREE_API_BUILD_TESTS=ON
+cmake --build build -j"$(nproc)"
+cd build && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-failure
+```
+Confirmed: `known-ID verification passed for 'planetblupi'`, `all 257
+unique used string ID(s) ... verified present`, clean build, 25/25 pass.
 
 ## The `../free-direct` bridge build
 
