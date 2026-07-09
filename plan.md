@@ -1928,7 +1928,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0207: Document GetMessageA's poll-based (SDL_Delay(1)) implementation
-Status: TODO
+Status: DONE — updated include/winuser.h's GetMessageA doc comment to state it's a PeekMessageA spin-loop with SDL_Delay(1), not a real OS wait; added a matching code comment above the definition in src/winuser_message.cpp cross-referencing PeekMessageA's "never sleep" invariant. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -1953,7 +1953,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0208: Document DispatchMessageA's null-hwnd single-window fallback assumption
-Status: TODO
+Status: DONE — updated include/winuser.h's DispatchMessageA doc comment and added a docs/out-of-scope.md entry ("Single live window assumption / DispatchMessageA's null-hwnd fallback") stating the single-window assumption and that multi-window support must not be added without revisiting this fallback. Implemented together with duplicate TASK-24H-0304. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -2051,7 +2051,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0212: Document WM_MOUSEMOVE/WM_TIMER queue coalescing as a deliberate, permanent Win32 semantic deviation
-Status: TODO
+Status: DONE — added a docs/out-of-scope.md entry ("WM_MOUSEMOVE/WM_TIMER queue coalescing") citing src/internal/FreeApiMessageQueue.cpp:68-101 and explaining why (unbounded queue growth without it). Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -2275,7 +2275,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0304: Document DispatchMessageA's single-registered-window null-hwnd fallback as a documented single-window-only assumption
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0208; implemented once there (see that entry).
 Priority: P2
 Area: WinUser
 Type: Documentation

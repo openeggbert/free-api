@@ -163,6 +163,42 @@ call site depends on the `FALSE`/`ERROR_ALREADY_EXISTS` distinction —
 `tests/test_file_regressions.cpp`'s `TestCreateDirectoryACreatesRealDirectory`
 locks in the actual (idempotent-`TRUE`) behavior.
 
+## `WM_MOUSEMOVE`/`WM_TIMER` queue coalescing (TASK-24H-0212)
+
+**Deliberate, permanent Win32 semantic deviation — not a bug.** `PushMessage`
+(`src/internal/FreeApiMessageQueue.cpp:68-101`) coalesces two message types
+rather than queuing every instance, unlike real Win32:
+
+* `WM_MOUSEMOVE` — a pending `WM_MOUSEMOVE` for the same `hwnd` is updated
+  in place (new `wParam`/`lParam`/`time`) instead of appending a duplicate.
+* `WM_TIMER` — a pending `WM_TIMER` for the same `hwnd`+timer-id (`wParam`)
+  is dropped entirely rather than duplicated.
+
+Both exist because mouse-motion and timer events can fire far faster than
+either game's own message pump drains the queue; without coalescing, every
+real click/keypress would end up queued behind a growing backlog of stale
+motion/timer messages, and the queue would grow unboundedly under sustained
+input. Real Win32 does not do this. Do not remove or change this behavior,
+and do not extend coalescing to any other message type without new
+evidence a specific message type causes the same unbounded-growth problem.
+
+## Single live window assumption / `DispatchMessageA`'s null-hwnd fallback (TASK-24H-0208/0304)
+
+**Deliberate, load-bearing — do not add multi-window support without
+revisiting this first.** free-api's window model assumes exactly one live
+window at a time. `DispatchMessageA` (`src/winuser_message.cpp:183-192`)
+relies on this directly: when a message's `hwnd` is `NULL` or not found in
+`g_windowProcedures`, it falls back to dispatching to whatever single
+window happens to be registered first
+(`g_windowProcedures.begin()`) — genuinely reachable today (e.g. if
+`SDL_EVENT_WINDOW_CLOSE_REQUESTED`'s window-ID resolution ever fails and
+pushes `WM_CLOSE` with a `NULL` hwnd). This is correct and safe only
+because both target games ever have at most one window open at a time; it
+would silently dispatch to the wrong window if the project ever grew
+multi-window support. Do not add multi-window support, or generalize this
+fallback, without first revisiting it — no evidenced need exists in either
+target game today.
+
 ## Resource subsystem: `FindResourceA` miss → file-based fallback
 
 **This is the actual, currently-working behavior, not a hypothetical or a

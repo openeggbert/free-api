@@ -249,7 +249,16 @@ typedef struct tagMSG
 
 extern "C" {
 //#2337
-/** @brief Blocks until a message is available or quit is posted. @note Status: PARTIAL */
+/**
+ * @brief Blocks until a message is available or quit is posted.
+ *
+ * Implemented as a PeekMessageA spin-loop with SDL_Delay(1) between poll
+ * attempts (src/winuser_message.cpp) -- 1ms-granularity polling, not a real
+ * OS-level wait/condvar. Only GetMessageA/WaitMessage are allowed to sleep;
+ * PeekMessageA itself never does (TASK-24H-0207).
+ *
+ * @note Status: PARTIAL
+ */
 BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
 
 //#2359
@@ -257,7 +266,18 @@ BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFil
 BOOL WINAPI TranslateMessage(const MSG* lpMsg);
 
 //#2365
-/** @brief Dispatches message to a window procedure. @note Status: PARTIAL */
+/**
+ * @brief Dispatches message to a window procedure.
+ *
+ * If lpMsg->hwnd is NULL/unregistered, falls back to whatever single window
+ * happens to be registered first (src/winuser_message.cpp) -- correct only
+ * because free-api's window model assumes exactly one live window at a
+ * time. See docs/out-of-scope.md for the single-window assumption this
+ * fallback depends on (TASK-24H-0208/0304): do not add multi-window support
+ * without revisiting it.
+ *
+ * @note Status: PARTIAL
+ */
 LRESULT WINAPI DispatchMessageA(const MSG* lpMsg);
 
 //#2388

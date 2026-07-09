@@ -106,6 +106,10 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
     return TRUE;
 }
 
+// TASK-24H-0207: this is a PeekMessageA spin-loop with SDL_Delay(1) between
+// poll attempts below -- 1ms-granularity polling, not a real OS-level
+// wait/condvar. Only GetMessageA/WaitMessage are allowed to sleep;
+// PeekMessageA's own "never sleep" invariant depends on that split holding.
 BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax)
 {
     if (!lpMsg) {
