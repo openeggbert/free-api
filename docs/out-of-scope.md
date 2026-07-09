@@ -479,6 +479,40 @@ Consolidates the resource-subsystem findings above into one statement:
   every `STRINGTABLE` entry in whichever game's `.rc` is driving the build,
   so no further scope narrowing was warranted.
 
+## `CompatDC::selectedBitmap`'s dangling-pointer risk (TASK-24H-1244)
+
+**Confirmed harmless, not a TODO.** `DeleteObject` (`src/wingdi_bitmap.cpp`)
+never scans open `CompatDC`s to clear a `selectedBitmap` pointer referencing
+the bitmap being deleted. If a caller deleted a bitmap while it was still
+selected into a *live* DC (rather than deleting/deselecting the DC first),
+that DC's `selectedBitmap` would become a dangling pointer, and a subsequent
+`GetPixel`/`SetPixel`/`StretchBlt`/`GetObjectA` call through that DC would
+read or write freed memory — audit.md §3 Finding C2 flagged this as "not
+confirmed reachable, but not confirmed safe either."
+
+Traced every `SelectObject`/`DeleteObject`/`DeleteDC` call site in both
+target games to resolve it. The only `SelectObject` call site in either
+game is inside `DDCopyBitmap` (`../free-eggbert/src/ddutil.cpp:144`,
+`../planetblupi/src/ddutil.cpp:202`): it creates a temporary DC via
+`CreateCompatibleDC`, selects the caller's bitmap into it
+(`SelectObject(hdcImage, hbm)`), blits via `StretchBlt`, then deletes that
+same DC (`DeleteDC(hdcImage)`) — all before `DDCopyBitmap` returns. The
+bitmap itself (`hbm`) is deleted separately, always by the *caller*
+(`DDLoadBitmap`/`DDReLoadBitmap`/`DDConnectBitmap`'s own callers, e.g.
+planetblupi's `decmap.cpp:594` minimap code), always *after* `DDCopyBitmap`
+has already returned — i.e. after the one DC that ever held a
+`selectedBitmap` reference to it has already been destroyed. Both games'
+real call order is therefore always "DC deleted first, bitmap deleted
+later," never the reverse — the dangling-pointer path this finding
+describes cannot occur with either game's actual, evidenced call sequence.
+`pixmap.cpp`'s several other `DeleteDC` call sites (both games) never call
+`SelectObject` at all — plain palette/capability-query DCs.
+
+Do not add `selectedBitmap`-clearing/reference-tracking to `DeleteObject`
+without new evidence a real call site deletes a bitmap while it remains
+selected into a live DC — per this project's default policy of not building
+generalized safety infrastructure without evidenced need.
+
 ## Full audit
 
 See `plan.md` section 5 for the complete, point-in-time table of every other

@@ -6028,7 +6028,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1244: Verify (and fix if needed) CompatDC::selectedBitmap's dangling-pointer risk against both games' real delete ordering
-Status: TODO
+Status: DONE -- traced every `SelectObject`/`DeleteObject`/`DeleteDC` call site in both target games (exhaustive grep + read). The only `SelectObject` call site in either game is `DDCopyBitmap` (../free-eggbert/src/ddutil.cpp:144, ../planetblupi/src/ddutil.cpp:202): it selects the caller's bitmap into a temporary DC, blits, then deletes that same DC -- all before returning. The bitmap itself is always deleted separately by the caller, always AFTER `DDCopyBitmap` (and thus the one DC referencing it) has already been destroyed. Confirmed via `DDLoadBitmap`/`DDReLoadBitmap`/`DDConnectBitmap`'s exact call order in both trees, including planetblupi's `decmap.cpp:594` minimap path (`Cache` -> `DDConnectBitmap` -> `DDCopyBitmap`, all synchronous, DC destroyed before `Cache` returns, bitmap deleted afterward by `decmap.cpp`). `pixmap.cpp`'s other `DeleteDC` call sites (both games) never call `SelectObject` at all. Confirmed unreachable with real, evidenced call-order proof -- documented in `docs/out-of-scope.md` (new "`CompatDC::selectedBitmap`'s dangling-pointer risk" section) per this task's own "if confirmed unreachable, document" branch. No code change; no new test needed (nothing to regress). Existing tests unaffected (no source touched).
 Priority: P2
 Area: GDI
 Type: Verification
