@@ -119,7 +119,12 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
     bitmap->width        = nWidth;
     bitmap->height       = nHeight;
     bitmap->bitsPerPixel = 32; // store as RGBA32 internally
-    bitmap->pitch        = nWidth * 4;
+    // TASK-24H-1231: cast before multiplying, matching the pixel-buffer size
+    // computation two lines below -- a plain `nWidth * 4` int*int
+    // multiplication is undefined behavior (signed overflow) once nWidth
+    // exceeds roughly 536,870,911. Not reachable by either game's real,
+    // small, fixed bitmap dimensions; purely defensive.
+    bitmap->pitch        = static_cast<int>(static_cast<int64_t>(nWidth) * 4);
     bitmap->pixels.resize(static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight) * 4u, 0);
     AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
                         g_diagCompatBitmapPixelCapacityHighWaterBytes,

@@ -139,6 +139,12 @@ struct MidiSession {
  * Only one song plays at a time (the game never overlaps music tracks).
  */
 struct MidiState {
+    // TASK-24H-1233: required lock order -- this mutex must never be held
+    // while acquiring the message-queue mutex (i.e. never call PostMessageA/
+    // PostQuitMessage while `mtx` is locked). Capture whatever notify data
+    // is needed while holding `mtx`, release it, then post. See
+    // MixerThread's needsNotify/notifyTarget/notifyId pattern for the
+    // established shape.
     std::mutex       mtx;
     tsf*             soundFont   = nullptr;
     SDL_AudioDeviceID device     = 0;
@@ -310,6 +316,17 @@ static void MixerThread()
     while (GetMidiState().running.load()) {
         bool rendered = false;
 
+        // TASK-24H-1233: notify data (target HWND + device id) for a
+        // just-finished song, captured while the lock below is held and
+        // acted on (PostMessageA) only after it's released -- PostMessageA
+        // acquires the message-queue mutex and does unrelated coalescing/
+        // diagnostics work; it must never run while GetMidiState().mtx is
+        // held (see the lock-order comment on GetMidiState().mtx's
+        // declaration).
+        bool needsNotify = false;
+        HWND notifyTarget = nullptr;
+        MCIDEVICEID notifyId = 0;
+
         // Find the active session and render its next block under a
         // single, uninterrupted lock acquisition. A prior version looked
         // up `active` in one lock_guard scope, released the lock, then
@@ -398,16 +415,23 @@ static void MixerThread()
                     active->playing  = false;
                     active->finished = true;
 
-                    /* Post MM_MCINOTIFY to the registered window. */
+                    /* Capture MM_MCINOTIFY target/id; posted after the lock
+                     * below is released. */
                     if (active->notifyHwnd) {
-                        MIDI_LOG("MCI_PLAY finished, posting MM_MCINOTIFY to HWND %p",
-                                 static_cast<void*>(active->notifyHwnd));
-                        PostMessageA(active->notifyHwnd, MM_MCINOTIFY,
-                                     MCI_NOTIFY_SUCCESSFUL,
-                                     static_cast<LPARAM>(active->id));
+                        needsNotify  = true;
+                        notifyTarget = active->notifyHwnd;
+                        notifyId     = active->id;
                     }
                 }
             }
+        }
+
+        if (needsNotify) {
+            MIDI_LOG("MCI_PLAY finished, posting MM_MCINOTIFY to HWND %p",
+                     static_cast<void*>(notifyTarget));
+            PostMessageA(notifyTarget, MM_MCINOTIFY,
+                         MCI_NOTIFY_SUCCESSFUL,
+                         static_cast<LPARAM>(notifyId));
         }
 
         if (rendered) {

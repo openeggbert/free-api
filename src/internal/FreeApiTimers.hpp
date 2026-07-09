@@ -4,7 +4,6 @@
 #include "mmsystem.h"
 #include <SDL3/SDL.h>
 #include <unordered_map>
-#include <unordered_set>
 #include <mutex>
 #include <atomic>
 #include <cstdint>
@@ -31,7 +30,6 @@ extern std::unordered_map<UINT_PTR, WinTimer>  g_winTimers;
 extern std::mutex                               g_winTimerMutex;
 extern std::unordered_map<UINT, MmTimerEntry>  g_mmTimers;
 extern std::mutex                               g_mmTimerMutex;
-extern std::unordered_set<UINT>                g_activeTimerIds;
 // TASK-24H-0502: deliberately shared between SetTimer (WinUser) and
 // timeSetEvent (WinMM) -- two otherwise fully independent timer mechanisms
 // with their own separate maps/mutexes above. Sharing this one counter

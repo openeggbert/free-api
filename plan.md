@@ -5675,7 +5675,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1230: Document wsprintfA's buffer-size hazard (1024-byte internal cap vs. real call sites' 256-byte buffers)
-Status: TODO
+Status: DONE -- added a prominent doc comment on `wsprintfA`'s declaration (include/winuser.h) stating it writes up to 1024 bytes regardless of the caller's actual buffer size, and that any new call site's expected output must stay under its OWN buffer's size. Added a matching, more detailed note to its `docs/supported-apis.md` row, also covering the pointer-as-%d inherited-UB detail for future-maintainer context. Documentation only, no behavior change. Verified standalone build/ still compiles and 26/26 tests pass (part of this session's TASK-24H-1230/1231/1233/1234/1236 batch verification).
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -5702,7 +5702,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1231: Fix CreateBitmap's pitch computation to avoid signed-int overflow
-Status: TODO
+Status: DONE -- `bitmap->pitch = nWidth * 4;` changed to `bitmap->pitch = static_cast<int>(static_cast<int64_t>(nWidth) * 4);` (src/wingdi_bitmap.cpp), matching the pixel-buffer size computation's existing cast-before-multiply pattern one line below. `pitch` kept as `int` per the task's own guidance -- the cast alone resolves the UB (the multiplication itself can no longer overflow; the narrowing store back to `int` is a separate, well-defined, much lower-severity concern for implausibly large widths neither game ever produces). No new dedicated test added: the overflow threshold (~536M) is impractical to construct in a test (would require a multi-GB pixel-buffer allocation attempt), and the task's own "Required work" list only calls for the cast, not a test. Verified standalone build/ compiles and 26/26 tests pass, no behavior change for any in-bounds dimension (part of this session's TASK-24H-1230/1231/1233/1234/1236 batch verification).
 Priority: P2
 Area: GDI
 Type: Bugfix
@@ -5754,7 +5754,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1233: Move the MIDI mixer thread's PostMessageA call outside its mutex's lock scope
-Status: TODO
+Status: DONE -- `MixerThread` (src/MidiMusic.cpp) now captures the notify HWND/device id into local `needsNotify`/`notifyTarget`/`notifyId` variables while `GetMidiState().mtx` is held, and calls `PostMessageA` only after that lock_guard scope closes. Added a lock-order comment directly on `MidiState::mtx`'s declaration ("this mutex must never be held while acquiring the message-queue mutex") pointing future changes at the established capture-then-post pattern. Scoped exactly to this one call site per the task's own "Out of scope" note -- the other `PostMessageA` call site in `MidiMusicSendCommand`'s `MCI_PLAY` no-SoundFont branch (still inside its own `lk` scope) was deliberately left untouched. Verified 26/26 passing in standalone build/, build-tsan/ (FREE_API_SANITIZE=thread), build-asan/ (FREE_API_SANITIZE=address), ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make) -- in particular test_mci_sequences.cpp's notify-driven-loop and stress tests, which exercise this exact path.
 Priority: P2
 Area: WinMM
 Type: Bugfix
@@ -5779,7 +5779,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1234: Remove the dead, unsynchronized g_activeTimerIds set
-Status: TODO
+Status: DONE -- re-verified via exhaustive grep (`g_activeTimerIds\.` across src/, include/, tests/) that it was only ever written (`insert`/`erase` in src/winmm.cpp's `timeSetEvent`/`timeKillEvent`), never read -- the audit finding still held. Removed the declaration (src/internal/FreeApiTimers.hpp), definition (src/internal/FreeApiTimers.cpp), both call sites (src/winmm.cpp), and the now-unused `<unordered_set>` include from FreeApiTimers.hpp. Verified 26/26 passing in standalone build/, build-tsan/ (FREE_API_SANITIZE=thread -- removing dead unsynchronized state introduced no new issue), build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make).
 Priority: P2
 Area: WinMM
 Type: Cleanup
@@ -5829,7 +5829,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1236: Eliminate PeekMessageA's per-frame heap allocation in the WM_TIMER-generation path
-Status: TODO
+Status: DONE -- `pendingTimers` (src/winuser_message.cpp, `PeekMessageA`) changed from a fresh per-call `std::vector<MSG>` to `thread_local std::vector<MSG> pendingTimers;` with a `.clear()` at the top of each use, matching `StretchBlt`'s (src/wingdi_blit.cpp) existing `thread_local` reusable-vector pattern for the same class of problem. `clear()` keeps the underlying buffer's capacity across calls (no deallocation), so only the first call per thread that actually finds elapsed timers allocates; subsequent calls reuse the already-sized buffer. No behavior change to WM_TIMER delivery content/ordering. Verified 26/26 passing in standalone build/, build-tsan/, build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make) -- in particular test_timer_regressions.cpp and both full-loop integration tests (test_planetblupi_loop.cpp, test_eggbert_loop.cpp).
 Priority: P2
 Area: WinUser
 Type: Performance

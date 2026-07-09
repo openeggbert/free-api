@@ -69,7 +69,15 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
         // Generate WM_TIMER messages for elapsed WinAPI timers (also only
         // when the queue was empty — pending timer messages would be coalesced
         // anyway, but doing this only when needed avoids redundant work).
-        std::vector<MSG> pendingTimers;
+        //
+        // TASK-24H-1236: thread_local + clear() (not a fresh local vector)
+        // so this doesn't heap-allocate on every call once warmed up --
+        // matches StretchBlt's (wingdi_blit.cpp) existing thread_local
+        // reusable-vector pattern for the same class of problem.
+        // clear() keeps the underlying buffer's capacity; only the first
+        // call (per thread) that actually finds elapsed timers allocates.
+        thread_local std::vector<MSG> pendingTimers;
+        pendingTimers.clear();
         {
             std::lock_guard<std::mutex> timerLock(g_winTimerMutex);
             const uint64_t now = SDL_GetTicks();

@@ -63,7 +63,18 @@
 
 extern "C"{
 //#205
-/** @brief Formatted print using vsnprintf with a 1024-byte fixed buffer. @note Status: PARTIAL */
+/**
+ * @brief Formatted print using vsnprintf with a 1024-byte fixed buffer. @note Status: PARTIAL
+ *
+ * TASK-24H-1230: matches real Win32 wsprintfA's own historically-unsafe
+ * contract -- there is no length parameter to bound the write against the
+ * caller's actual buffer. This implementation writes up to 1024 bytes into
+ * lpOut REGARDLESS of how large the caller's buffer actually is. Any call
+ * site's expected formatted output must stay well under its OWN buffer's
+ * size, not just under 1024 bytes -- a caller with, say, a 256-byte stack
+ * buffer and a format string capable of producing more than 256 bytes of
+ * output has a silent stack-buffer overflow, not a safe truncation.
+ */
 int WINAPIV wsprintfA(LPSTR lpOut, LPCSTR lpFmt, ...);
 }
 

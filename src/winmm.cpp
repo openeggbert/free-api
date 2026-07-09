@@ -187,7 +187,6 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
         auto it = g_mmTimers.find(timerId);
         if (it != g_mmTimers.end()) it->second.sdlId = sdlId;
     }
-    g_activeTimerIds.insert(timerId);
     if (FreeApiDiagnosticsEnabled()) {
         SDL_Log("free-api timeSetEvent: mmId=%u sdlId=%u delay=%u ms", timerId, sdlId, uDelay);
     }
@@ -226,7 +225,6 @@ MMRESULT WINAPI timeKillEvent(UINT uTimerID)
     if (sdlId != 0) {
         SDL_RemoveTimer(sdlId);
     }
-    g_activeTimerIds.erase(uTimerID);
     FreeApiDiagSnapshot("mm-timer-kill");
     return MMSYSERR_NOERROR;
 }
