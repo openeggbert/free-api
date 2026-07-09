@@ -2825,7 +2825,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0409: Document the unevidenced-but-harmless entries in the scancode→VK_* table
-Status: TODO
+Status: DONE — re-verified the exact unevidenced-entry list against src/internal/FreeApiMessageQueue.cpp directly (matches: digits 0-9, INSERT/DELETE/PAGEUP/PAGEDOWN/TAB/BACKSPACE, VK_MENU, KP_ENTER alias). Added a note to docs/supported-apis.md's VK_* row listing them as intentionally kept, referencing the existing HFONT/HPALETTE and _chdir/_getcwd "keep + document" pattern. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -2850,7 +2850,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0410: Update the MK_SHIFT/MK_CONTROL documentation row with the drag-select/flood-fill distinction
-Status: TODO
+Status: DONE — re-verified both call-site sets directly against event.cpp (MK_SHIFT -> BlupiHiliDown/Move/Up drag-select; MK_CONTROL -> ArrangeFill flood-fill, confirmed real flood-fill call, not just a generic modifier check). Updated docs/supported-apis.md's MK_* row to distinguish the two features with file:line evidence for each, referencing TASK-24H-0401/0403. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinUser
 Type: Documentation
