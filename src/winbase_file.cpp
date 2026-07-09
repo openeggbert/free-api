@@ -58,7 +58,7 @@ int WINAPI _lopen(LPCSTR lpPathName, int iReadWrite)
         // -- both a single, non-looping bitmap-open call), not a
         // multi-candidate probe loop, so this cannot fire more than once
         // per bitmap-load attempt.
-        SDL_Log("free-api _lopen: failed to open '%s' (orig: '%s')",
+        SDL_Log("free-api _lopen: failed to open '%s' (orig: '%s')",  // sdl-log-gating: intentional (failure)
                 path.c_str(), lpPathName);
         return -1;
     }
@@ -145,7 +145,7 @@ BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurity
     // real reason (permissions, disk full, etc.); it does not fire "never"
     // as free-eggbert's does, but a real filesystem failure is rare by
     // nature, so this stays an acceptable unconditional failure log either way.
-    SDL_Log("free-api CreateDirectoryA: failed to create '%s' (orig: '%s'): %s",
+    SDL_Log("free-api CreateDirectoryA: failed to create '%s' (orig: '%s'): %s",  // sdl-log-gating: intentional (failure)
             path.c_str(), lpPathName, SDL_GetError());
 
     return FALSE;

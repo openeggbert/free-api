@@ -17,18 +17,28 @@
  * implicit-bool-conversion form or an explicit g_debugInput.load(...) call,
  * TASK-24H-1243), or the local `diag` variable (src/wingdi_dc.cpp).
  *
- * A short, explicit, file:line allowlist below covers the confirmed-
- * intentional unconditional failure/startup/warning-path logs (the same
- * sites TASK-24H-1101/1102/1106-1111/1227 individually reviewed and
- * documented as compliant, rare, or deliberately always-visible). Anything
- * else found unconditional is a real regression this test is meant to
- * catch.
+ * TASK-0004 (maintainability sweep, 2026-07-09): the allowlist below used to
+ * be a `{file, line-number}` set. That broke every time an unrelated edit
+ * anywhere above one of the 16 allowlisted call sites shifted its line
+ * number -- confirmed to have happened at least 6-7 separate times across
+ * this project's sessions, each requiring a manual re-grep-and-fix cycle.
+ * It's now an inline marker comment on each intentionally-unconditional
+ * SDL_Log call's own line (`// sdl-log-gating: intentional (reason)`),
+ * matching the same shape as clang-tidy's `// NOLINT` convention -- the
+ * marker travels with the call site through any edit, so this allowlist can
+ * no longer drift out of sync with line numbers. See git history for the
+ * prior line-number-keyed version if ever needed.
+ *
+ * The marker covers the confirmed-intentional unconditional failure/
+ * startup/warning-path logs (the same sites TASK-24H-1101/1102/1106-1111/
+ * 1227 individually reviewed and documented as compliant, rare, or
+ * deliberately always-visible). Anything else found unconditional is a real
+ * regression this test is meant to catch.
  */
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <regex>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -46,30 +56,10 @@ static void Check(bool condition, const char* what)
     }
 }
 
-// file:line pairs (relative to src/) confirmed intentional/unconditional:
-// failure paths, rare startup warnings, or an unsupported-input fallback
-// warning. Each is a real call site reviewed this session (or by the
-// TASK-24H-1101/1102/1106-1111/1227 gating sweep) and deliberately left
-// unconditional -- not silenced behind a diagnostics flag -- because it
-// signals a real problem or fires at most once per process.
-static const std::set<std::pair<std::string, int>> kAllowlist = {
-    {"winmm.cpp", 150},           // timeSetEvent: invalid args (failure)
-    {"winmm.cpp", 166},           // timeSetEvent: SDL_INIT_EVENTS failed (failure)
-    {"winmm.cpp", 185},           // timeSetEvent: SDL_AddTimer failed (failure)
-    {"winmm.cpp", 225},           // timeKillEvent: unknown timer id (warning, not fatal)
-    {"winmm.cpp", 360},           // mciSendCommandA: avivideo decline (documented, TASK-24H-1111)
-    {"winbase_file.cpp", 61},     // _lopen: failed to open (failure)
-    {"winbase_file.cpp", 148},    // CreateDirectoryA: failed to create (failure)
-    {"MidiMusic.cpp", 111},       // No SoundFont found (always-visible startup warning)
-    {"MidiMusic.cpp", 484},       // SDL_InitSubSystem(AUDIO) failed (once-per-process via backendInitFailed latch, TASK-24H-1109)
-    {"MidiMusic.cpp", 494},       // SDL_OpenAudioDeviceStream failed (same latch)
-    {"MidiMusic.cpp", 641},       // MCI_OPEN: failed to load MIDI file (failure)
-    {"internal/FreeApiSdlVideo.cpp", 21}, // EnsureVideoSubsystem: SDL_INIT_VIDEO failed (failure)
-    {"wingdi_bitmap.cpp", 22},    // LoadImageA: resource bitmap loading not implemented (unsupported-input)
-    {"wingdi_bitmap.cpp", 35},    // LoadImageA: SDL_LoadBMP failed (failure)
-    {"wingdi_bitmap.cpp", 193},   // CreateBitmap: unsupported bpp, pixels zeroed (fallback warning)
-    {"internal/FreeApiGdi.cpp", 40}, // CreateCompatBitmapFromSurface: SDL_ConvertSurface failed (failure)
-};
+// The inline marker an intentionally-unconditional SDL_Log call carries on
+// its own line -- see this file's doc comment above for why this replaced
+// a line-number-keyed allowlist.
+static const char* const kIntentionalMarker = "sdl-log-gating: intentional";
 
 static std::string Trim(const std::string& s)
 {
@@ -197,15 +187,18 @@ static void ScanFile(const fs::path& srcRoot, const fs::path& file)
         const bool androidGated = !ppStack.empty() && ppStack.back() == 1;
         if (androidGated) continue;
 
-        const int lineNo = static_cast<int>(i) + 1;
-        if (kAllowlist.count({relPath, lineNo})) continue;
+        // TASK-0004: the marker travels with the call site, so this check
+        // is immune to unrelated line-shift edits (see this file's doc
+        // comment for why this replaced a {file, line-number} allowlist).
+        if (raw.find(kIntentionalMarker) != std::string::npos) continue;
 
+        const int lineNo = static_cast<int>(i) + 1;
         if (!IsGatedLine(lines, i)) {
             char msg[512];
             snprintf(msg, sizeof(msg),
                      "ungated SDL_Log at %s:%d is neither behind a recognized "
-                     "gate nor allowlisted: %s",
-                     relPath.c_str(), lineNo, Trim(raw).c_str());
+                     "gate nor marked \"%s\": %s",
+                     relPath.c_str(), lineNo, kIntentionalMarker, Trim(raw).c_str());
             Check(false, msg);
         }
     }

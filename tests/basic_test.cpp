@@ -2,6 +2,8 @@
 #include <mmsystem.h>
 #include <SDL3/SDL.h>
 
+#include "support/MidiFixtures.hpp"
+
 #include <cerrno>
 #include <cstdlib>
 #include <cstdio>
@@ -11,33 +13,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
-
-static bool WriteMinimalMidi(const std::string& path)
-{
-    static const unsigned char kMidi[] = {
-        'M', 'T', 'h', 'd',
-        0x00, 0x00, 0x00, 0x06,
-        0x00, 0x00,
-        0x00, 0x01,
-        0x00, 0x60,
-        'M', 'T', 'r', 'k',
-        0x00, 0x00, 0x00, 0x0F,
-        0x00, 0xC0, 0x00,
-        0x00, 0x90, 0x3C, 0x40,
-        0x60, 0x80, 0x3C, 0x00,
-        0x00, 0xFF, 0x2F, 0x00,
-    };
-
-    FILE* f = fopen(path.c_str(), "wb");
-    if (!f) {
-        std::cerr << "failed to create MIDI file: " << path << " errno=" << errno << "\n";
-        return false;
-    }
-
-    const size_t written = fwrite(kMidi, 1, sizeof(kMidi), f);
-    fclose(f);
-    return written == sizeof(kMidi);
-}
 
 static int RunSleepSmokeTest()
 {
@@ -92,6 +67,7 @@ static int RunMidiCaseFallbackRegression()
 #endif
 
     if (!WriteMinimalMidi(upperFile)) {
+        std::cerr << "failed to create MIDI file: " << upperFile << " errno=" << errno << "\n";
 #ifdef _WIN32
         RemoveDirectoryA(upperDir.c_str());
         RemoveDirectoryA(root.c_str());

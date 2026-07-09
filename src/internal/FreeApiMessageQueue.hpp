@@ -15,7 +15,13 @@ extern std::deque<MSG>   g_messageQueue;
 extern std::mutex        g_messageQueueMutex;
 extern std::atomic_bool  g_updateMessagePending;
 
-// Mouse button state tracked for MK_* wParam in WM_MOUSEMOVE
+// Mouse button state tracked for MK_* wParam in WM_MOUSEMOVE.
+// TASK-0004 (maintainability sweep, 2026-07-09): deliberately unsynchronized
+// (no mutex) -- safe only because it's exclusively written/read from
+// PumpSdlEvents(), which only ever runs on the single main/game thread
+// under this project's documented single-live-window assumption
+// (docs/out-of-scope.md). Do not touch this from a new background thread
+// without adding real synchronization first.
 extern WPARAM g_mouseButtons;
 
 // Optional debug logging for input translation (set FREE_API_DEBUG_INPUT=1 at

@@ -379,7 +379,7 @@ done; these are the concrete follow-through actions.
 
 ### TASK-0001: Close the 28-symbol documentation gap in `docs/supported-apis.md`
 
-Status: TODO
+Status: DONE — found dormant during a maintainability sweep (2026-07-09): genuinely still open (21 of the original 28 symbols were still missing a `docs/supported-apis.md` row, re-verified directly, not assumed). Of those 21, 18 turned out to already be adequately covered elsewhere (`docs/out-of-scope.md`/`docs/public-surface-audit.md`, satisfying this task's own "OR is explicitly covered by..." acceptance-criteria clause) — no action needed for those. The remaining 3 (`SetRect`, `IntersectRect`, `UnionRect`) were genuinely undocumented anywhere despite being real, heavily-used functions in both games (`IntersectRect` alone has ~15+ real call sites across `decmove.cpp`/`pixmap.cpp`/`decnet.cpp`/`decblupi.cpp`) — added proper rows for all 3 to `docs/supported-apis.md`, with real evidence citations, noting their current zero test coverage honestly (matching this project's established practice, e.g. `GlobalMemoryStatus` before `TASK-24H-1252`). No behavior change; documentation only.
 Priority: P2
 Area: Documentation
 Type: Documentation
@@ -489,7 +489,7 @@ Out of scope:
 
 ### TASK-0004: Gate object-lifetime diagnostic counters in GDI DC/bitmap creation paths
 
-Status: TODO
+Status: DONE — found dormant during a maintainability sweep (2026-07-09), re-verified still genuinely unconditional. Gated the diagnostics-snapshot-only counters (`g_diagCompatDcsDestroyed`/`g_diagCompatBitmapsDestroyed`/`g_diagSdlSurfaces`/`g_diagSdlSurfacesEver`/`g_diagSdlSurfacesDestroyed`, and every `AdjustDiagLiveBytes` pixel-capacity-bytes call) behind `FreeApiDiagnosticsFastEnabled()`, matching the rest of the diagnostics system's convention. **Deliberately did NOT gate `g_diagCompatDcs`/`g_diagCompatDcsEver`/`g_diagCompatBitmaps`/`g_diagCompatBitmapsEver`** — discovered the hard way (2 real test failures) that `tests/test_gdi_regressions.cpp` reads these four directly as an always-on leak-detection primitive, independent of whether verbose diagnostics logging is enabled; gating them would have silently turned those tests into vacuous no-ops (0==0 always true) rather than real leak checks. This is a deliberate, evidenced amendment to the task's original "gate all these counters" premise, not a partial implementation — documented inline at each site so a future session doesn't re-attempt the naive full-gate and reintroduce the same test regression. Verified 29/29 passing in standalone build/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make).
 Priority: P2
 Area: GDI / Diagnostics
 Type: Hardening
@@ -523,7 +523,7 @@ Out of scope:
 
 ### TASK-0005: Extend `docs/out-of-scope.md`'s test-infrastructure-only classification
 
-Status: TODO
+Status: DONE — found dormant during a maintainability sweep (2026-07-09), re-verified all 5 symbols still have zero call sites in either game (fresh grep, not assumed) and are genuinely used only by free-api's own tests. Extended `docs/out-of-scope.md`'s `GetTickCount`/`Sleep` row to also name `GetLastError`, `SetLastError`, `RemoveDirectoryA`, `SetEnvironmentVariableA`, `access`/`_access`, each with its exact test-file citation, and added a note excluding `CloseHandle` (which looks similar but is actually zero-call-sites-anywhere, including tests — a different, already-corrected classification per `TASK-24H-1228`). No behavior change; documentation only.
 Priority: P2
 Area: Documentation
 Type: Documentation
@@ -622,7 +622,7 @@ Out of scope:
 
 ### TASK-0008: Remove the stale "MIDI looping not supported" comment
 
-Status: TODO
+Status: DONE — found during a maintainability sweep (2026-07-09) to be a false-TODO: this task's exact goal was already completed, under a different task ID (`TASK-24H-0901`), without this task's own status field ever being flipped. `src/MidiMusic.cpp`'s file doc-comment header (line 15-19) and `MidiMusicSendCommand`'s doc comment (line 593-596) both now correctly state that native MCI-level looping is intentionally unimplemented because both games' own `MM_MCINOTIFY` handlers re-issue playback themselves, citing `TASK-24H-0901` — exactly what this task's "Required work" asked for. This is the same failure mode `TASK-0011`/`0012`'s own DONE notes already described ("effectively already resolved... but the status field was never flipped") recurring a further time; no other action needed here beyond closing the loop on the status field itself.
 Priority: P3
 Area: WinMM / Documentation
 Type: Cleanup
@@ -696,7 +696,7 @@ Out of scope:
 
 ### TASK-0010: Verify `LoadImageA` harmlessly ignores `LR_CREATEDIBSECTION` without `LR_LOADFROMFILE`
 
-Status: TODO
+Status: DONE — found dormant during a maintainability sweep (2026-07-09), re-verified planetblupi's exact real call shape still matches (`ddutil.cpp:90`, `LoadImage(..., LR_CREATEDIBSECTION)` with no `LR_LOADFROMFILE`) and current `LoadImageA` (`src/wingdi_bitmap.cpp`) still returns a clean `NULL` for this shape (the `(fuLoad & LR_LOADFROMFILE) == 0` early-return). No implementation change needed — confirmed safe, not a bug. Added new regression test `TestLoadImageARejectsResourceLoadWithoutLoadFromFile` (`tests/test_gdi_regressions.cpp`) locking in the clean-failure contract directly. Verified passing in standalone build/.
 Priority: P3
 Area: GDI
 Type: Test / verification
@@ -899,11 +899,31 @@ All 16 (plus the pre-existing `TASK-24H-0706`) were implemented and pushed;
 a second, ground-up re-audit against the resulting source (`audit.md`,
 2026-07-09, same date but a full rewrite of the file, not an update) then
 added 6 more tasks (`TASK-24H-1245`-`1250`, see "Deep Audit Follow-up #2"
-section). 205 tasks total as of that addition. Original per-area breakdown (stale,
-kept for historical context only): Build/Integration (17), Scope/Headers
-(18), WinUser message-loop (17), Window/Cursor (16), Input (12), Timers
-(9), GDI (17), Files (14), Resources (8), WinMM/MIDI/MCI (11), Joystick
-(5), Diagnostics (13), Documentation (20).
+section); a coverage sweep (gcov, same date) closed 3 more test-coverage
+gaps (`TASK-24H-1251`-`1253`, "Coverage Sweep Follow-up" section). A
+maintainability sweep (2026-07-09, three parallel reviews of code
+structure/build-test infrastructure/documentation architecture) then found
+the **original `TASK-0001`-`0012` namespace** (this section's own
+predecessor, from before the `TASK-24H-*` convention started) had 5 tasks
+silently dormant for multiple sessions -- never mentioned in any
+"backlog closed" narrative because every such claim only ever counted
+`TASK-24H-*`. All 5 (`TASK-0001`/`0004`/`0005`/`0008`/`0010`) were
+re-verified against current source and closed; `TASK-0008` specifically
+was a **false-TODO** -- its exact goal had already been completed under a
+different task ID (`TASK-24H-0901`) without its own status field ever
+being flipped, the same failure mode `TASK-0011`/`0012`'s own DONE notes
+already described, recurring at least a third time. **Both task-ID
+namespaces are now fully accounted for: 220 tasks total (12 in the
+original namespace, 208 in `TASK-24H-*`), 215 `DONE`, 4 `TODO` (all
+human-playtest-only), 1 `OBSOLETE`.** Grep `plan.md` for `^### TASK-`
++ `Status: TODO`/`DONE` for current, accurate counts going forward --
+do not trust any hardcoded count in prose (including this one) without
+re-grepping, since this exact staleness pattern has now recurred multiple
+times. Original per-area breakdown (stale, kept for historical context
+only): Build/Integration (17), Scope/Headers (18), WinUser message-loop
+(17), Window/Cursor (16), Input (12), Timers (9), GDI (17), Files (14),
+Resources (8), WinMM/MIDI/MCI (11), Joystick (5), Diagnostics (13),
+Documentation (20).
 
 ## Build and Integration
 

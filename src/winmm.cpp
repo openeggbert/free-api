@@ -147,7 +147,7 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
     (void)fuEvent;
 
     if (uDelay == 0 || lpTimeProc == nullptr) {
-        SDL_Log("free-api timeSetEvent: invalid args (uDelay=%u, lpTimeProc=%p)", uDelay, (void*)(uintptr_t)lpTimeProc);
+        SDL_Log("free-api timeSetEvent: invalid args (uDelay=%u, lpTimeProc=%p)", uDelay, (void*)(uintptr_t)lpTimeProc);  // sdl-log-gating: intentional (failure)
         return 0;
     }
 
@@ -163,7 +163,7 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
     // lifetime, but the fix is free and correct regardless: only actually
     // initialize the subsystem if it isn't already active.
     if (!SDL_WasInit(SDL_INIT_EVENTS) && !SDL_InitSubSystem(SDL_INIT_EVENTS)) {
-        SDL_Log("free-api timeSetEvent: SDL_INIT_EVENTS failed: %s", SDL_GetError());
+        SDL_Log("free-api timeSetEvent: SDL_INIT_EVENTS failed: %s", SDL_GetError());  // sdl-log-gating: intentional (failure)
     }
 
     const UINT timerId = g_nextTimerId.fetch_add(1);
@@ -182,7 +182,7 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
     void* const userdata = reinterpret_cast<void*>(static_cast<uintptr_t>(timerId));
     SDL_TimerID sdlId = SDL_AddTimer(uDelay, FreeApiMmTimerBridge, userdata);
     if (sdlId == 0) {
-        SDL_Log("free-api timeSetEvent: SDL_AddTimer failed: %s", SDL_GetError());
+        SDL_Log("free-api timeSetEvent: SDL_AddTimer failed: %s", SDL_GetError());  // sdl-log-gating: intentional (failure)
         std::lock_guard<std::mutex> lock(g_mmTimerMutex);
         g_mmTimers.erase(timerId);
         return 0;
@@ -222,7 +222,7 @@ MMRESULT WINAPI timeKillEvent(UINT uTimerID)
         std::lock_guard<std::mutex> lock(g_mmTimerMutex);
         auto it = g_mmTimers.find(uTimerID);
         if (it == g_mmTimers.end()) {
-            SDL_Log("free-api timeKillEvent: unknown timer id %u", uTimerID);
+            SDL_Log("free-api timeKillEvent: unknown timer id %u", uTimerID);  // sdl-log-gating: intentional (warning, not fatal)
             return 1;
         }
         sdlId = it->second.sdlId;
@@ -357,7 +357,7 @@ MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwComma
     // (informational about a permanent, deliberate decision) -- do not gate.
 
     if (uMsg == MCI_OPEN && (fdwCommand & MCI_OPEN_TYPE) && !(fdwCommand & MCI_OPEN_ELEMENT)) {
-        SDL_Log("free-api mciSendCommandA: MCI_OPEN device-type-only (avivideo) — "
+        SDL_Log("free-api mciSendCommandA: MCI_OPEN device-type-only (avivideo) — "  // sdl-log-gating: intentional (documented, TASK-24H-1111)
                 "video playback not implemented, returning MCIERR_UNSUPPORTED_FUNCTION");
         return MCIERR_UNSUPPORTED_FUNCTION;
     }

@@ -17,6 +17,14 @@ HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int b
     }
 
     auto* dc = new CompatDC{};
+    // TASK-0004: g_diagCompatDcs/g_diagCompatDcsEver are intentionally NOT
+    // gated behind FreeApiDiagnosticsFastEnabled(), unlike the other
+    // diagnostic-only counters in this file -- tests/test_gdi_regressions.cpp
+    // reads both directly as an always-on leak-detection primitive
+    // (independent of whether verbose diagnostics logging is enabled), so
+    // gating them would silently turn those tests into no-ops rather than
+    // real checks. Verified this the hard way: gating them broke 2 real
+    // test assertions before this was reverted to just these two counters.
     g_diagCompatDcs.fetch_add(1, std::memory_order_relaxed);
     g_diagCompatDcsEver.fetch_add(1, std::memory_order_relaxed);
     dc->kind               = CompatDcKind::Surface;
@@ -40,8 +48,13 @@ BOOL FreeApiDestroySurfaceDC(HDC hdc)
     // of risking a double-free against stale-but-still-tagged memory.
     dc->magic = 0;
     delete dc;
+    // TASK-0004: g_diagCompatDcs itself stays ungated (see the matching
+    // comment in FreeApiCreateSurfaceDC above); only g_diagCompatDcsDestroyed
+    // (diagnostics-snapshot-only, never read by any test) is gated.
     g_diagCompatDcs.fetch_sub(1, std::memory_order_relaxed);
-    g_diagCompatDcsDestroyed.fetch_add(1, std::memory_order_relaxed);
+    if (FreeApiDiagnosticsFastEnabled()) {
+        g_diagCompatDcsDestroyed.fetch_add(1, std::memory_order_relaxed);
+    }
     return TRUE;
 }
 
@@ -73,6 +86,7 @@ HDC WINAPI CreateCompatibleDC(HDC hdc)
 {
     (void)hdc;
     auto* dc = new CompatDC{};
+    // TASK-0004: see FreeApiCreateSurfaceDC's matching comment above.
     g_diagCompatDcs.fetch_add(1, std::memory_order_relaxed);
     g_diagCompatDcsEver.fetch_add(1, std::memory_order_relaxed);
     dc->kind = CompatDcKind::Memory;
@@ -110,8 +124,11 @@ BOOL WINAPI DeleteDC(HDC hdc)
     // TASK-24H-1229: see FreeApiDestroySurfaceDC's matching comment above.
     dc->magic = 0;
     delete dc;
+    // TASK-0004: see FreeApiDestroySurfaceDC's matching comment above.
     g_diagCompatDcs.fetch_sub(1, std::memory_order_relaxed);
-    g_diagCompatDcsDestroyed.fetch_add(1, std::memory_order_relaxed);
+    if (FreeApiDiagnosticsFastEnabled()) {
+        g_diagCompatDcsDestroyed.fetch_add(1, std::memory_order_relaxed);
+    }
     return TRUE;
 }
 

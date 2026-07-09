@@ -39,6 +39,9 @@
 #include <windows.h>
 #include <digitalv.h>
 #include <SDL3/SDL.h>
+
+#include "support/MidiFixtures.hpp"
+
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -70,31 +73,6 @@ static HWND MakeTestWindow(const char* className)
     RegisterClassA(&wc);
     return CreateWindowExA(0, className, "Test", WS_POPUPWINDOW | WS_VISIBLE,
                             0, 0, 320, 240, nullptr, nullptr, (HINSTANCE)1, nullptr);
-}
-
-// A tiny, valid, single-note Type-0 MIDI file -- long enough to render at
-// least one mixer block, short enough to finish (and fire MM_MCINOTIFY)
-// quickly in a test.
-static bool WriteMinimalMidi(const std::string& path)
-{
-    static const unsigned char kMidi[] = {
-        'M', 'T', 'h', 'd',
-        0x00, 0x00, 0x00, 0x06,
-        0x00, 0x00,
-        0x00, 0x01,
-        0x00, 0x60,
-        'M', 'T', 'r', 'k',
-        0x00, 0x00, 0x00, 0x0F,
-        0x00, 0xC0, 0x00,
-        0x00, 0x90, 0x3C, 0x40,
-        0x60, 0x80, 0x3C, 0x00,
-        0x00, 0xFF, 0x2F, 0x00,
-    };
-    FILE* f = fopen(path.c_str(), "wb");
-    if (!f) return false;
-    const size_t written = fwrite(kMidi, 1, sizeof(kMidi), f);
-    fclose(f);
-    return written == sizeof(kMidi);
 }
 
 static MCIERROR OpenSequencer(const std::string& path, MCIDEVICEID* outId)

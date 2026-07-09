@@ -31,6 +31,9 @@
 #include <windows.h>
 #include <digitalv.h>
 #include <SDL3/SDL.h>
+
+#include "support/MidiFixtures.hpp"
+
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -240,29 +243,9 @@ static std::vector<uint8_t> BuildMinimalSf2(int sampleCount)
     return file;
 }
 
-// ---- MIDI fixture (identical shape to test_mci_sequences.cpp's
-// WriteMinimalMidi: program-change 0, note-on 60/64, note-off) ----------
-static bool WriteMinimalMidi(const std::string& path)
-{
-    static const unsigned char kMidi[] = {
-        'M', 'T', 'h', 'd',
-        0x00, 0x00, 0x00, 0x06,
-        0x00, 0x00,
-        0x00, 0x01,
-        0x00, 0x60,
-        'M', 'T', 'r', 'k',
-        0x00, 0x00, 0x00, 0x0F,
-        0x00, 0xC0, 0x00,
-        0x00, 0x90, 0x3C, 0x40,
-        0x60, 0x80, 0x3C, 0x00,
-        0x00, 0xFF, 0x2F, 0x00,
-    };
-    FILE* f = fopen(path.c_str(), "wb");
-    if (!f) return false;
-    const size_t written = fwrite(kMidi, 1, sizeof(kMidi), f);
-    fclose(f);
-    return written == sizeof(kMidi);
-}
+// MIDI fixture (WriteMinimalMidi: program-change 0, note-on 60/64,
+// note-off) now lives in support/MidiFixtures.hpp, shared with
+// test_mci_sequences.cpp and basic_test.cpp (TASK-0004).
 
 static LRESULT WINAPI MidiTestWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {

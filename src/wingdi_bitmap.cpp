@@ -19,7 +19,7 @@ HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy
     }
 
     if ((fuLoad & LR_LOADFROMFILE) == 0) {
-        SDL_Log("free-api LoadImageA: resource bitmap loading is not implemented for '%s'", name);
+        SDL_Log("free-api LoadImageA: resource bitmap loading is not implemented for '%s'", name);  // sdl-log-gating: intentional (unsupported-input)
         return NULL;
     }
 
@@ -32,7 +32,7 @@ HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy
     std::string normalizedPath = NormalizeFilesystemPath(name);
     SDL_Surface* loaded = SDL_LoadBMP(normalizedPath.c_str());
     if (!loaded) {
-        SDL_Log("free-api LoadImageA: SDL_LoadBMP failed for '%s': %s", normalizedPath.c_str(), SDL_GetError());
+        SDL_Log("free-api LoadImageA: SDL_LoadBMP failed for '%s': %s", normalizedPath.c_str(), SDL_GetError());  // sdl-log-gating: intentional (failure)
         return NULL;
     }
     g_diagSdlSurfaces.fetch_add(1, std::memory_order_relaxed);
@@ -92,16 +92,34 @@ BOOL WINAPI DeleteObject(HGDIOBJ ho)
         return FALSE;
     }
 
-    AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
-                        g_diagCompatBitmapPixelCapacityHighWaterBytes,
-                        -static_cast<int64_t>(bitmap->pixels.capacity()));
+    // TASK-0004: gated behind diagnostics-enabled, matching the rest of the
+    // diagnostics system's convention (FreeApiDiagnosticsFastEnabled() is
+    // cached once per process, so an inc/dec pair is always consistently
+    // gated together -- never observes a mid-process toggle).
+    if (FreeApiDiagnosticsFastEnabled()) {
+        AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
+                            g_diagCompatBitmapPixelCapacityHighWaterBytes,
+                            -static_cast<int64_t>(bitmap->pixels.capacity()));
+    }
     // TASK-24H-1229: clear the magic tag before delete so a double-delete
     // of the same (now-freed) handle fails AsCompatBitmap's validation
     // instead of risking a double-free against stale-but-still-tagged memory.
     bitmap->magic = 0;
     delete bitmap;
+    // TASK-0004: g_diagCompatBitmaps/g_diagCompatBitmapsEver are
+    // intentionally NOT gated behind FreeApiDiagnosticsFastEnabled(), unlike
+    // the other diagnostic-only counters in this file --
+    // tests/test_gdi_regressions.cpp reads both directly as an always-on
+    // leak-detection primitive (independent of whether verbose diagnostics
+    // logging is enabled), so gating them would silently turn those tests
+    // into no-ops rather than real checks. Verified this the hard way:
+    // gating them broke 2 real test assertions before this was reverted to
+    // just these two counters; g_diagCompatBitmapsDestroyed (never read by
+    // any test) stays gated.
     g_diagCompatBitmaps.fetch_sub(1, std::memory_order_relaxed);
-    g_diagCompatBitmapsDestroyed.fetch_add(1, std::memory_order_relaxed);
+    if (FreeApiDiagnosticsFastEnabled()) {
+        g_diagCompatBitmapsDestroyed.fetch_add(1, std::memory_order_relaxed);
+    }
     return TRUE;
 }
 
@@ -118,6 +136,9 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
     }
 
     auto* bitmap = new CompatBitmap{};
+    // TASK-0004: see DeleteObject's matching comment above -- these two
+    // stay ungated (test-critical leak-detection primitive); only the
+    // pixel-capacity-bytes tracking below (diagnostics-snapshot-only) gates.
     g_diagCompatBitmaps.fetch_add(1, std::memory_order_relaxed);
     g_diagCompatBitmapsEver.fetch_add(1, std::memory_order_relaxed);
     bitmap->width        = nWidth;
@@ -130,9 +151,11 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
     // small, fixed bitmap dimensions; purely defensive.
     bitmap->pitch        = static_cast<int>(static_cast<int64_t>(nWidth) * 4);
     bitmap->pixels.resize(static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight) * 4u, 0);
-    AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
-                        g_diagCompatBitmapPixelCapacityHighWaterBytes,
-                        static_cast<int64_t>(bitmap->pixels.capacity()));
+    if (FreeApiDiagnosticsFastEnabled()) {
+        AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
+                            g_diagCompatBitmapPixelCapacityHighWaterBytes,
+                            static_cast<int64_t>(bitmap->pixels.capacity()));
+    }
 
     if (lpBits) {
         if (nBitCount == 8) {
@@ -190,7 +213,7 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
             const size_t byteCount = static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight) * 4u;
             memcpy(bitmap->pixels.data(), lpBits, byteCount);
         } else {
-            SDL_Log("free-api CreateBitmap: unsupported bpp=%u, pixels zeroed", nBitCount);
+            SDL_Log("free-api CreateBitmap: unsupported bpp=%u, pixels zeroed", nBitCount);  // sdl-log-gating: intentional (fallback warning)
         }
     }
 

@@ -35,6 +35,9 @@ narrower than full Win32 semantics, sufficient for both games' actual use)
 | `MoveWindow` | WinUser | dead-reach only | dead-reach only | PARTIAL — repositions/resizes the real SDL window, but never updates `g_freeApiWindowStates`'s logical width/height (`GetClientRect`/`ClientToScreen`/`ScreenToClient` would go stale after a real resize). Confirmed harmless: the only call sites in either game are inside `movie.cpp`, itself dead-reach since the AVI probe always fails (`TASK-24H-0309`) | none (dead-reach; not exercised by either game in practice) |
 | `SetWindowTextA` | WinUser | Yes (`blupi.cpp:532,541`) | Yes (`blupi.cpp:453,462`) | IMPLEMENTED (real `SDL_SetWindowTitle` call) | `test_winuser_regressions.cpp` (`TestSetWindowTextASetsRealWindowTitle`) |
 | `GetClientRect` | WinUser | Yes | Yes (hot path) | IMPLEMENTED | `test_winuser_regressions.cpp` |
+| `SetRect` | WinUser | Yes (`blupi.cpp:756`) | Yes (`blupi.cpp:648`) | IMPLEMENTED (`include/winuser.h`, header-only inline; real Win32 semantics, null-checked) | none |
+| `IntersectRect` | WinUser | Yes (`decnet.cpp:368`, `pixmap.cpp:1610`, `decmove.cpp`: ~14 call sites, `decblupi.cpp:4275,4298`) | Yes (`pixmap.cpp:1083`) | IMPLEMENTED (`include/winuser.h`, header-only inline; real Win32 semantics — computes the overlap rect and returns whether it's non-empty, null-checked) | none |
+| `UnionRect` | WinUser | Yes (`pixmap.cpp:1612`) | Yes (`pixmap.cpp:1085`) | IMPLEMENTED (`include/winuser.h`, header-only inline; real Win32 semantics, null-checked) | none |
 | `SetTimer`/`KillTimer`/`WM_TIMER` | WinUser/Timers | dead | Yes (live) | IMPLEMENTED | `test_timer_regressions.cpp` |
 | `timeSetEvent`/`timeKillEvent` | WinMM/Timers | Yes (live) | dead | IMPLEMENTED | `test_timer_regressions.cpp` |
 | `GetCursorPos`/`ScreenToClient`/`ClientToScreen`/`SetCursorPos` | WinUser/Input | Yes | Yes (hot path) | IMPLEMENTED | `test_winuser_regressions.cpp` |

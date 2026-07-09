@@ -18,7 +18,7 @@ bool EnsureVideoSubsystem()
     }
 
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
-        SDL_Log("free-api EnsureVideoSubsystem: SDL_INIT_VIDEO failed: %s", SDL_GetError());
+        SDL_Log("free-api EnsureVideoSubsystem: SDL_INIT_VIDEO failed: %s", SDL_GetError());  // sdl-log-gating: intentional (failure)
         return false;
     }
 

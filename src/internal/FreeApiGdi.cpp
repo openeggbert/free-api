@@ -37,11 +37,22 @@ CompatBitmap* CreateCompatBitmapFromSurface(SDL_Surface* surface)
         // project policy keeps error logs visible by default, unlike
         // success/startup logs which are gated behind FreeApiDiagnosticsEnabled()
         // et al. Do not gate this.
-        SDL_Log("free-api LoadImageA: SDL_ConvertSurface failed: %s", SDL_GetError());
+        SDL_Log("free-api LoadImageA: SDL_ConvertSurface failed: %s", SDL_GetError());  // sdl-log-gating: intentional (failure)
         return nullptr;
     }
-    g_diagSdlSurfaces.fetch_add(1, std::memory_order_relaxed);
-    g_diagSdlSurfacesEver.fetch_add(1, std::memory_order_relaxed);
+    // TASK-0004: g_diagSdlSurfaces and the pixel-capacity-bytes tracking
+    // below are diagnostics-snapshot-only (never read by any test) and are
+    // gated behind FreeApiDiagnosticsFastEnabled() -- cached once per
+    // process, so an inc/dec pair is always consistently gated together.
+    // g_diagCompatBitmaps/g_diagCompatBitmapsEver just below are
+    // deliberately NOT gated: tests/test_gdi_regressions.cpp reads both
+    // directly as an always-on leak-detection primitive, independent of
+    // whether verbose diagnostics logging is enabled.
+    const bool diagEnabled = FreeApiDiagnosticsFastEnabled();
+    if (diagEnabled) {
+        g_diagSdlSurfaces.fetch_add(1, std::memory_order_relaxed);
+        g_diagSdlSurfacesEver.fetch_add(1, std::memory_order_relaxed);
+    }
 
     auto* bitmap = new CompatBitmap{};
     g_diagCompatBitmaps.fetch_add(1, std::memory_order_relaxed);
@@ -56,9 +67,11 @@ CompatBitmap* CreateCompatBitmapFromSurface(SDL_Surface* surface)
     // small, fixed loaded-bitmap dimensions; purely defensive.
     bitmap->pitch = static_cast<int>(static_cast<int64_t>(bitmap->width) * 4);
     bitmap->pixels.resize(static_cast<size_t>(bitmap->pitch) * static_cast<size_t>(bitmap->height));
-    AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
-                        g_diagCompatBitmapPixelCapacityHighWaterBytes,
-                        static_cast<int64_t>(bitmap->pixels.capacity()));
+    if (diagEnabled) {
+        AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
+                            g_diagCompatBitmapPixelCapacityHighWaterBytes,
+                            static_cast<int64_t>(bitmap->pixels.capacity()));
+    }
 
     for (int y = 0; y < bitmap->height; ++y) {
         const auto* srcRow = static_cast<const uint8_t*>(rgbaSurface->pixels) + static_cast<size_t>(y) * static_cast<size_t>(rgbaSurface->pitch);
@@ -67,8 +80,10 @@ CompatBitmap* CreateCompatBitmapFromSurface(SDL_Surface* surface)
     }
 
     SDL_DestroySurface(rgbaSurface);
-    g_diagSdlSurfaces.fetch_sub(1, std::memory_order_relaxed);
-    g_diagSdlSurfacesDestroyed.fetch_add(1, std::memory_order_relaxed);
+    if (diagEnabled) {
+        g_diagSdlSurfaces.fetch_sub(1, std::memory_order_relaxed);
+        g_diagSdlSurfacesDestroyed.fetch_add(1, std::memory_order_relaxed);
+    }
     return bitmap;
 }
 
@@ -105,10 +120,12 @@ void ScaleCompatBitmap(CompatBitmap& bitmap, const int targetWidth, const int ta
     // CreateCompatBitmapFromSurface above / CreateBitmap (wingdi_bitmap.cpp).
     bitmap.pitch = static_cast<int>(static_cast<int64_t>(targetWidth) * 4);
     bitmap.pixels.swap(scaled);
-    const auto delta = static_cast<int64_t>(bitmap.pixels.capacity()) - static_cast<int64_t>(oldCapacity);
-    AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
-                        g_diagCompatBitmapPixelCapacityHighWaterBytes,
-                        delta);
+    if (FreeApiDiagnosticsFastEnabled()) { // TASK-0004
+        const auto delta = static_cast<int64_t>(bitmap.pixels.capacity()) - static_cast<int64_t>(oldCapacity);
+        AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
+                            g_diagCompatBitmapPixelCapacityHighWaterBytes,
+                            delta);
+    }
 }
 
 } // namespace FreeApi::Internal

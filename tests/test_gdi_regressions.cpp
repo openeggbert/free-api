@@ -777,6 +777,21 @@ static void TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimen
     remove(fixturePath);
 }
 
+// TASK-0010: planetblupi's real DDLoadBitmap (ddutil.cpp:90) calls
+// LoadImageA with LR_CREATEDIBSECTION alone (no LR_LOADFROMFILE) as a
+// resource-load attempt that's expected to fail and fall through to the
+// file-based path (LR_LOADFROMFILE|LR_CREATEDIBSECTION, ddutil.cpp:95).
+// This exact flag-combination-without-LR_LOADFROMFILE shape had never been
+// directly tested -- only "probably fine because it falls through today"
+// in practice. Confirms the clean-failure contract directly.
+static void TestLoadImageARejectsResourceLoadWithoutLoadFromFile()
+{
+    HANDLE h = LoadImageA(nullptr, "nonexistent_resource_name", IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
+    Check(h == nullptr,
+          "LoadImageA(..., LR_CREATEDIBSECTION without LR_LOADFROMFILE) returns a clean NULL "
+          "(matching planetblupi's real DDLoadBitmap call shape), not a crash or garbage handle");
+}
+
 // TASK-24H-1104: minimal, file-local SDL_Log capture helper -- a regression
 // guard for TASK-24H-1102's "quiet by default" fix, so a future edit can't
 // silently reintroduce an ungated SDL_Log on LoadImageA's success path.
@@ -1090,6 +1105,7 @@ int main()
     TestGetObjectARejectsDegenerateArguments();
     TestGetObjectAReturnsActualBytesCopiedNotAlwaysFullSize();
     TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
+    TestLoadImageARejectsResourceLoadWithoutLoadFromFile();
     TestLoadImageASuccessPathIsQuietByDefault();
     TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd();
     TestSelectObjectDeleteObjectBitmapIntoDcLifecycle();

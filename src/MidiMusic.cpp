@@ -108,7 +108,7 @@ static tsf* LoadSoundFont()
         MIDI_LOG("SoundFont not found at: %s", path);
     }
 
-    SDL_Log("[midi] WARNING: No SoundFont found. Music will be silent. "
+    SDL_Log("[midi] WARNING: No SoundFont found. Music will be silent. "  // sdl-log-gating: intentional (always-visible startup warning)
             "Set FREE_API_SOUNDFONT=/path/to/file.sf2 or place default.sf2 in "
             "assets/soundfont/ or soundfont/.");
     return nullptr;
@@ -481,7 +481,7 @@ static bool EnsureMidiBackend()
     if (GetMidiState().backendInitFailed) return false; /* already failed once; don't re-log */
 
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-        SDL_Log("[midi] SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError());
+        SDL_Log("[midi] SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError());  // sdl-log-gating: intentional (once-per-process via backendInitFailed latch, TASK-24H-1109)
         GetMidiState().backendInitFailed = true;
         return false;
     }
@@ -491,7 +491,7 @@ static bool EnsureMidiBackend()
         &kMixSpec, nullptr, nullptr);
 
     if (!GetMidiState().stream) {
-        SDL_Log("[midi] SDL_OpenAudioDeviceStream failed: %s", SDL_GetError());
+        SDL_Log("[midi] SDL_OpenAudioDeviceStream failed: %s", SDL_GetError());  // sdl-log-gating: intentional (same latch)
         GetMidiState().backendInitFailed = true;
         return false;
     }
@@ -638,7 +638,7 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
         if (!path.empty()) {
             song = tml_load_filename(path.c_str());
             if (!song) {
-                SDL_Log("[midi] MCI_OPEN: failed to load MIDI file '%s'", path.c_str());
+                SDL_Log("[midi] MCI_OPEN: failed to load MIDI file '%s'", path.c_str());  // sdl-log-gating: intentional (failure)
                 return MCIERR_INTERNAL;
             }
             MIDI_LOG("MCI_OPEN: MIDI loaded '%s'", path.c_str());
