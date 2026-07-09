@@ -21,7 +21,10 @@ or when adding/removing a public header in `include/`.
 | `ddraw.h`, `dsound.h`, `dplay.h`/`"dplay.h"` | Yes | Yes | **Out of scope** — belongs to sibling project `free-direct`. Listed only because these headers co-occur with real WinAPI/GDI symbols in the same files. See `docs/scope.md`'s DirectX boundary statement. |
 
 See [`docs/supported-apis.md`](supported-apis.md) for the symbol-level (not
-header-level) status table, and [`plan.md`](../plan.md) §4 for the
+header-level) status table, [`docs/public-surface-audit.md`](public-surface-audit.md)
+for a consolidated required-by-game/test-infrastructure-only/free-direct-bridge/
+permanent-documented-stub/vestigial-but-harmless classification of every
+public declaration (`TASK-24H-0115`), and [`plan.md`](../plan.md) §4 for the
 original audit this table was derived from.
 
 ## Why `windows.h` globally redefines `fopen` (TASK-24H-0113/1206)

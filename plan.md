@@ -1672,7 +1672,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0115: Produce a definitive cross-check of every public header declaration against target-game usage
-Status: TODO
+Status: DONE — produced docs/public-surface-audit.md, a consolidated table classifying every public declaration in include/*.h and include_non_windows/*.h (grouped by header, constant families grouped into single rows per docs/supported-apis.md's own convention) into exactly one of the 5 categories (required-by-game / test-infrastructure-only / free-direct-bridge / permanent-documented-stub / vestigial-but-harmless), consolidating existing classification work from docs/scope.md, docs/out-of-scope.md, and docs/supported-apis.md rather than re-deriving it, with fresh file:line verification against ../free-eggbert/src and ../planetblupi/src for symbols not already carrying a citation. Found and filed (not fixed) one real mismatch: CloseHandle (include/handleapi.h) has zero call sites anywhere -- not either game, not any test, not free-api's own src beyond its own definition -- so its true classification is vestigial-but-harmless, not test-infrastructure-only as TASK-24H-0114's own problem text implied. Filed as TASK-24H-1228 (see below), not fixed in this pass. Verified 26/26 in the standalone build (docs-only change).
 Priority: P2
 Area: Scope
 Type: Verification
@@ -5606,3 +5606,29 @@ Acceptance criteria:
 
 Out of scope:
 - Do not change `ShutdownVideoSubsystemIfLastWindow`'s teardown behavior — this task only gates the log, not the subsystem lifecycle.
+
+---
+
+### TASK-24H-1228: Classify and document CloseHandle (include/handleapi.h) as vestigial-but-harmless
+Status: TODO
+Priority: P3
+Area: Headers
+Type: Documentation
+Evidence: include/handleapi.h; src/winbase.cpp:59 (definition, only reference anywhere); found by TASK-24H-0115's public-surface classification audit, docs/public-surface-audit.md
+Depends on: None
+
+Problem:
+`CloseHandle` (`include/handleapi.h`) has zero call sites anywhere: not in `../free-eggbert` or `../planetblupi`, not in any `tests/*.cpp` file, and not in free-api's own `src/` beyond its own definition (`src/winbase.cpp:59`). It doesn't appear in `docs/out-of-scope.md`'s "Compile-only stubs" table, has no row in `docs/supported-apis.md`, and `TASK-24H-0114`'s own problem text (which established the "test-infrastructure-only" exception category) listed it alongside `GetLastError`/`SetLastError`/`RemoveDirectoryA`/`SetEnvironmentVariableA` as if it were test-infrastructure-only too -- but unlike those four, no test actually calls it. Its real classification is `vestigial-but-harmless` (proven unused by both games AND by tests), and it is currently undocumented as such anywhere.
+
+Required work:
+- Add a row for `CloseHandle` to `docs/out-of-scope.md`'s "Compile-only stubs" table (or a new short standalone entry, matching the file's existing style), stating it is proven unused anywhere (games, tests, and free-api's own internal code) and is kept only for Win32 header-shape compatibility.
+- Correct `TASK-24H-0114`'s own problem text (or add a note) so it no longer implies `CloseHandle` is test-infrastructure-only.
+
+Acceptance criteria:
+- `docs/out-of-scope.md` carries a discoverable entry for `CloseHandle`'s true (vestigial-but-harmless) classification.
+- `docs/public-surface-audit.md`'s "Mismatches found" section is updated to note this has been resolved, or the row is left as historical record with a pointer to the fix.
+- No behavior change; documentation only.
+
+Out of scope:
+- Do not remove `CloseHandle` from the header -- removal is a separate decision (see `docs/out-of-scope.md`'s "Removal/hiding policy for proven-unused symbols"), not automatic just because this task documents its true status.
+- Do not re-audit any other symbol as part of this task -- scoped to `CloseHandle` only.
