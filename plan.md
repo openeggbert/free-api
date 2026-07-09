@@ -2874,7 +2874,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0411: Investigate whether WM_NCMOUSEMOVE's absence in free-api's SDL translation is a real gap
-Status: TODO
+Status: DONE — investigated and confirmed non-issue via direct SDL source evidence (not requiring live playtest): SDL's cursor-hiding is scoped strictly to the app's own client window/surface on both X11 (XDefineCursor on the app's own xwindow, never the WM's separate decoration/frame window) and Wayland (wl_pointer_set_cursor only in response to the app's own wl_surface's pointer events, never compositor-drawn chrome). The WM/compositor always shows its own default cursor over its own title bar independent of the app's ShowCursor state, so WM_NCMOUSEMOVE's absence causes no observable defect. Documented in docs/out-of-scope.md ("WM_NCMOUSEMOVE is never generated"). No follow-up bugfix task filed since no real defect was found.
 Priority: P2
 Area: WinUser
 Type: Audit

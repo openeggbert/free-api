@@ -104,6 +104,43 @@ resizable-window support, or any per-game opt-in for it, without first
 re-verifying on an affected compositor that this workaround is no longer
 needed — there is no evidenced need for resizability in either game.
 
+## `WM_NCMOUSEMOVE` is never generated (TASK-24H-0411)
+
+**Investigated, confirmed non-issue.** planetblupi's `WndProc` has a real
+`case WM_NCMOUSEMOVE:` handler (`../planetblupi/src/event.cpp:4998-5006`)
+that calls `ShowCursor(TRUE)` to restore the real OS cursor when the mouse
+moves over the window's non-client area (e.g. the title bar in windowed
+mode, `WS_POPUPWINDOW|WS_CAPTION`). Free API's SDL event translation never
+produces `WM_NCMOUSEMOVE` — grep confirms zero references anywhere in
+`src/`.
+
+This does **not** cause any observable cursor-visibility defect. Free API's
+cursor hiding (`ShowCursor(FALSE)` → SDL's `SDL_HideCursor`) is implemented,
+on both compositor backends both games actually run on, as a call scoped
+strictly to the app's own client window/surface — never the window
+manager's/compositor's own title-bar decoration, which is a wholly separate
+window/surface the WM/compositor owns and manages its own cursor for:
+
+* **X11**: `X11_ShowCursor` (`SDL/src/video/x11/SDL_x11mouse.c`) calls
+  `XDefineCursor(display, data->xwindow, ...)` — `data->xwindow` is the
+  app's own client window; the WM's separate frame/decoration window (which
+  draws the title bar after reparenting) is never touched.
+* **Wayland**: cursor changes go through `wl_pointer_set_cursor`, issued
+  only in response to `wl_pointer` enter/motion events for the app's own
+  `wl_surface`. The app never receives — and never attempts to override —
+  pointer events for compositor-drawn (server-side/xdg-decoration) chrome.
+
+So the window manager/compositor always shows its own default cursor over
+its own title bar, completely independent of whatever cursor-visibility
+state the app has set via `ShowCursor`. There is nothing for
+`WM_NCMOUSEMOVE`'s `ShowCursor(TRUE)` handler to actually fix in practice —
+planetblupi's handler is defensive code for a Win32-specific scenario (a
+real Win32 non-client area is owned by the same process/window as the
+client area, so the OS cursor really can get left hidden there) that
+doesn't apply under SDL's X11/Wayland windowing model. Do not add
+`WM_NCMOUSEMOVE` generation without new evidence of a real, observed cursor
+defect in windowed mode.
+
 ## `CreateDirectoryA`'s already-exists return value (TASK-24H-0709)
 
 **Confirmed harmless, not a TODO.** Real Win32 `CreateDirectoryA` returns
