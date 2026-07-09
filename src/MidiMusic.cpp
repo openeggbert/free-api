@@ -276,46 +276,77 @@ static std::string NormalizeMidiPath(const char* raw)
         return std::filesystem::exists(path, ec);
     };
 
-    /* Step 1 – shared prefix normalization (see doc comment above). */
-    std::string s = FreeApi::Internal::NormalizeFilesystemPath(raw);
-
-    /* Step 2 – try the path as-is (handles already-correct paths). */
-    if (fileExists(s)) {
-        return s;
-    }
-
     /*
-     * Step 3 – retry with uppercase fallbacks.
-     *
-     * We uppercase progressively larger suffixes of the path (from basename
-     * to parent folders), e.g.:
+     * Tries `s` as-is, then with progressively larger uppercase suffixes
+     * (from basename to parent folders), e.g.:
      *   /.../bin/sound/music000.blp
      *   /.../bin/sound/MUSIC000.BLP
      *   /.../bin/SOUND/MUSIC000.BLP
      *
-     * This keeps absolute path prefixes intact while handling uppercase asset
-     * directories/files on case-sensitive file systems.
+     * This keeps path prefixes intact while handling uppercase asset
+     * directories/files on case-sensitive file systems. Returns the first
+     * existing candidate, or empty if none exist.
      */
-    std::vector<size_t> componentStarts;
-    componentStarts.push_back(0);
-    for (size_t i = 0; i < s.size(); ++i) {
-        if (s[i] == '/' && i + 1 < s.size()) {
-            componentStarts.push_back(i + 1);
+    auto resolveExisting = [&](const std::string& s) -> std::string {
+        if (fileExists(s)) {
+            return s;
         }
-    }
 
-    for (auto it = componentStarts.rbegin(); it != componentStarts.rend(); ++it) {
-        std::string upper = s;
-        for (size_t i = *it; i < upper.size(); ++i) {
-            if (upper[i] != '/') {
-                upper[i] = static_cast<char>(toupper(static_cast<unsigned char>(upper[i])));
+        std::vector<size_t> componentStarts;
+        componentStarts.push_back(0);
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (s[i] == '/' && i + 1 < s.size()) {
+                componentStarts.push_back(i + 1);
             }
         }
 
-        if (upper != s && fileExists(upper)) {
-            MIDI_LOG("NormalizeMidiPath: using uppercase fallback '%s'", upper.c_str());
-            return upper;
+        for (auto it = componentStarts.rbegin(); it != componentStarts.rend(); ++it) {
+            std::string upper = s;
+            for (size_t i = *it; i < upper.size(); ++i) {
+                if (upper[i] != '/') {
+                    upper[i] = static_cast<char>(toupper(static_cast<unsigned char>(upper[i])));
+                }
+            }
+
+            if (upper != s && fileExists(upper)) {
+                MIDI_LOG("NormalizeMidiPath: using uppercase fallback '%s'", upper.c_str());
+                return upper;
+            }
         }
+
+        return {};
+    };
+
+    /*
+     * Step 1 – if `raw` (only backslash-normalized, leading slash intact) is
+     * a genuinely-existing absolute path, prefer it as-is. This handles
+     * GetCurrentDirectory()-derived absolute paths (e.g. CSound::PlayMusic's
+     * GetCurrentDir()+strcat() pattern) when the process's actual working
+     * directory is itself absolute (e.g. launched from an IDE with an
+     * absolute "Working directory" setting) -- NormalizeFilesystemPath's
+     * leading-slash-stripping (Step 2) assumes a Windows-rooted-but-meant-
+     * to-be-relative path and would otherwise corrupt a legitimately-
+     * absolute one. Falls through untouched if no such path exists, so the
+     * documented relative-invocation behavior is unchanged.
+     */
+    std::string withSlashes(raw);
+    for (char& c : withSlashes) {
+        if (c == '\\') c = '/';
+    }
+    if (!withSlashes.empty() && withSlashes.front() == '/') {
+        std::string resolved = resolveExisting(withSlashes);
+        if (!resolved.empty()) {
+            return resolved;
+        }
+    }
+
+    /* Step 2 – shared prefix normalization (see doc comment above). */
+    std::string s = FreeApi::Internal::NormalizeFilesystemPath(raw);
+
+    /* Step 3 – try the path as-is, then uppercase fallbacks. */
+    std::string resolved = resolveExisting(s);
+    if (!resolved.empty()) {
+        return resolved;
     }
 
     /* Return original normalised path; tml_load_filename will report the error. */
