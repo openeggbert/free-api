@@ -1274,8 +1274,12 @@ static void TestSetCursorReturnsPreviousHandle()
     HCURSOR second = LoadCursorA(nullptr, "IDC_POINTER");
     Check(first != nullptr && second != nullptr, "LoadCursorA returns non-null handles for SetCursor test");
 
+    // TASK-24H-0315: this is the only SetCursor call site in this test
+    // binary, so it's genuinely the first-ever SetCursor call in this
+    // process -- g_currentCursor starts at nullptr (src/winuser_cursor.cpp),
+    // so the very first call's returned "previous" handle must be NULL.
     HCURSOR previousBeforeAny = SetCursor(first);
-    (void)previousBeforeAny;
+    Check(previousBeforeAny == nullptr, "SetCursor's very first call in a process returns a NULL previous handle");
 
     HCURSOR previous = SetCursor(second);
     Check(previous == first, "SetCursor returns the previously-active cursor handle");

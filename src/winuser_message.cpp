@@ -16,6 +16,11 @@ extern "C" BOOL WINAPI DestroyWindow(HWND hWnd);
 
 extern "C" {
 
+// TASK-24H-0215: deliberately performs no hWnd/Msg validation -- enqueues
+// any combination as-is. Safe because both target games only ever post to
+// windows they themselves created (see docs/supported-apis.md's
+// PostMessageA row); do not add validation without an evidenced need
+// (would add a rejection-path neither game exercises).
 BOOL WINAPI PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 {
     PushMessage(hWnd, Msg, wParam, lParam);

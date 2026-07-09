@@ -1698,7 +1698,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0116: Add a one-line doc confirmation that RegisterClassExA/WNDCLASSEXA absence was checked
-Status: TODO
+Status: DONE — added a row to docs/out-of-scope.md's "Unsupported APIs" table. Implemented together with duplicate TASK-24H-0302. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Scope
 Type: Documentation
@@ -1747,7 +1747,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0118: Sharpen the UNICODE-branch-macros documentation to state the target W functions are undeclared, not just unimplemented
-Status: TODO
+Status: DONE — confirmed via grep that all 16 W-suffixed target functions are undeclared anywhere outside the macro definitions themselves. Added the precise fail-loud-at-compile-time statement to docs/out-of-scope.md's Unicode section. No code change. Verified 26/26 in all three build trees.
 Priority: P3
 Area: Headers
 Type: Documentation
@@ -2026,7 +2026,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0211: Verify existing coverage for DestroyWindow's synchronous WM_DESTROY dispatch is adequate
-Status: TODO
+Status: DONE — re-ran TestDestroyWindowDispatchesWmDestroySynchronously directly and confirmed it passes and genuinely exercises synchronous dispatch. docs/supported-apis.md's DestroyWindow row already cites the exact test name (added in an earlier session) -- acceptance criteria already satisfied, no doc change needed. No duplicate test added.
 Priority: P3
 Area: WinUser
 Type: Verification
@@ -2124,7 +2124,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0215: Document PostMessageA's lack of hWnd/message validation as an accepted design choice
-Status: TODO
+Status: DONE — added a note to docs/supported-apis.md's PostQuitMessage/PostMessageA row and a matching code comment above PostMessageA (src/winuser_message.cpp). No behavior change. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -2223,7 +2223,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0302: Add one-line confirming note that RegisterClassExA/WNDCLASSEXA do not exist
-Status: TODO
+Status: DONE — duplicate of TASK-24H-0116; implemented once there (see that entry).
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -2326,7 +2326,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0306: Replace ShowWindow's magic-number SW_* cases with named constants or document why they're intentionally unreachable
-Status: TODO
+Status: DONE — chose the documentation approach (lower risk than adding new SW_* macros that could imply broader support than exists). Added a code comment at ShowWindow's switch (src/winuser_window.cpp) confirming nCmdShow is always SW_SHOW from FreeApiRunWinMain and both games forward it unchanged, so cases 2/6/3/9 are structurally unreachable. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Cleanup
@@ -2428,7 +2428,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0310: Add explicit AdjustWindowRect non-goal statement to docs/out-of-scope.md
-Status: TODO
+Status: DONE — added a dedicated section stating the identity transform is deliberate and permanent, and forbidding real window-chrome math absent new evidence. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -2479,7 +2479,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0312: Document why UpdateWindow's raise-window mapping is safe given neither game uses WM_PAINT
-Status: TODO
+Status: DONE — confirmed via grep zero WM_PAINT/BeginPaint/EndPaint/PAINTSTRUCT references in either game's source. Added a code comment at UpdateWindow (src/winuser_window.cpp) documenting the rationale. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -2531,7 +2531,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0314: Verify and document GetClientRect's SDL-size fallback branch is defensive-only dead code
-Status: TODO
+Status: DONE — confirmed CreateWindowExA has a single, unconditional g_freeApiWindowStates insertion point for every window it creates. Added a code comment at the fallback branch (src/winuser_window.cpp) documenting it as defensive-only. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Verification
@@ -2557,7 +2557,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0315: Assert SetCursor's very first call returns a NULL previous handle
-Status: TODO
+Status: DONE — replaced the (void) discard with a real Check(previousBeforeAny == nullptr, ...) assertion (tests/test_winuser_regressions.cpp). Confirmed this is the only SetCursor call site in the whole test binary (genuinely the first-ever call in the process). Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Test
@@ -2901,7 +2901,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0412: Fix the misleading "Ignore repeat keydowns" comment in the SDL key-event handler
-Status: TODO
+Status: DONE — rewrote the comment (src/internal/FreeApiMessageQueue.cpp) to accurately describe current behavior: no repeat filtering happens, every keydown forwards as WM_KEYDOWN with a hardcoded repeat-count of 1. No behavior change. Verified 26/26 in all three build trees.
 Priority: P3
 Area: WinUser
 Type: Cleanup

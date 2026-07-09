@@ -317,6 +317,17 @@ never set to anything but 0 — a real backend here does not, by itself,
 make the game actually poll it; that would need a further, separate change
 to free-eggbert's own source, which is out of this repo's scope.
 
+## `AdjustWindowRect`'s identity transform (TASK-24H-0310)
+
+**Deliberate, permanent — do not add real window-chrome math.**
+`AdjustWindowRect` (`src/winuser_misc.cpp`) is an identity transform:
+`lpRect` is returned unchanged. This is correct, not a stub, because
+`CreateWindowExA`/`GetClientRect` define "window size" as equal to client
+size in this implementation — there is no separate title-bar/border size to
+account for. Do not implement real Win32 non-client-area size math (title
+bar/border thickness deltas) absent new evidence that window size and
+client size must differ for some game.
+
 *(Historical note: `AdjustWindowRect`, `ShowCursor`, `SetCursor`, and
 `LoadStringA` were flagged in this exact way early in this project's audit
 as "STUB but not actually safe." All four have since been investigated and
@@ -340,6 +351,17 @@ macro aliases in `winuser.h` (see that header's own doc comment above its
 Win32 headers. **Do not implement real wide-character runtime behavior**
 for any `W`-suffixed function unless a target game is proven to build with
 `UNICODE` defined — there is no evidence either ever will.
+
+**Precise failure mode (TASK-24H-0118):** the sixteen `W`-suffixed target
+functions the `UNICODE`-branch macros alias to (`SetWindowTextW`,
+`PostMessageW`, `MessageBoxW`, `LoadStringW`, `GetModuleHandleW`,
+`LoadImageW`, `GetObjectW`, `RegisterClassW`, `CreateWindowExW`,
+`CreateWindowW`, `PeekMessageW`, `GetMessageW`, `DispatchMessageW`,
+`DefWindowProcW`, `LoadCursorW`, `LoadIconW`) are **not declared anywhere**
+in free-api (confirmed by grep — zero matches for any of the sixteen
+outside the macro definitions themselves). A `UNICODE` build therefore
+**fails to compile** at the first macro use, not merely "compiles against
+an alias with no real behavior" — a deliberate fail-loud design.
 
 **`OutputDebugStringW` (`include/debugapi.h`, `src/winbase.cpp:70-76`) is the
 one exception worth calling out explicitly** (TASK-24H-0109/1215, closing
@@ -371,6 +393,7 @@ Nothing below should be implemented absent new evidence of a real call site.
 | `GetTickCount`, `Sleep` | Implemented — kept for **test infrastructure**, not proven game-required | Neither function is proven directly called by either game's core source; they're retained because `tests/basic_test.cpp` uses them directly. Trivial and harmless either way — this note exists so a future "is this used by the games?" audit isn't confused by their presence. |
 | `PeekMessageA`'s `hWnd`/`wMsgFilterMin`/`wMsgFilterMax` | Implemented, but **intentionally ignored** — do not implement real filtering | Every call is an unfiltered peek regardless of what's passed. Two independent full-source usage sweeps confirm neither game ever passes a non-zero filter or specific `hWnd` (TASK-24H-0201/1210). |
 | `WaitMessage`'s blocking contract | Implemented as a **polling approximation**, not true OS-level blocking | Checks the queue twice around one SDL event pump, sleeps ~1ms if still empty, then returns `TRUE` unconditionally even if the queue is still empty. Adequate for both games' idle-loop usage; do not implement a real condition-variable-based blocking wait without new evidence it's needed (TASK-24H-0204/1211). |
+| `RegisterClassExA`/`WNDCLASSEXA` | Not implemented | Confirmed absent-and-correct, not an oversight: zero call sites in either game (both use the plain `WNDCLASSA`/`RegisterClassA` form). Checked explicitly this session (TASK-24H-0116/0302). Any future request to add these should be scrutinized hard, since there is no existing partial implementation to extend from. |
 
 ## Resources policy (summary)
 

@@ -299,8 +299,14 @@ void PumpSdlEvents()
             }
             case SDL_EVENT_KEY_DOWN:
             case SDL_EVENT_KEY_UP: {
-                // Ignore repeat keydowns (SDL sends repeat events; pass them through
-                // as WM_KEYDOWN repeats matching Windows behavior)
+                // TASK-24H-0412: despite this comment's original wording, no
+                // repeat filtering actually happens here -- every keydown
+                // (initial press or OS/SDL autorepeat) is unconditionally
+                // forwarded as WM_KEYDOWN with a hardcoded repeat-count of 1
+                // (see the lParam packing below) and no previous-key-state
+                // bit distinguishing a repeat from an initial press.
+                // Confirmed harmless: neither target game inspects those
+                // specific lParam bits for WM_KEYDOWN.
                 HWND hwnd = GetActiveWindow();
                 if (!hwnd) break;
                 WPARAM vk = SdlScancodeToVK(event.key.scancode);

@@ -221,6 +221,15 @@ BOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
     if (FreeApiDiagnosticsEnabled()) {
         SDL_Log("free-api ShowWindow: hwnd=%p cmd=%d window=%p", hWnd, nCmdShow, static_cast<void*>(sdlWindow));
     }
+    // TASK-24H-0306: cases 2/6/3/9 below use raw numeric literals (real
+    // Win32 SW_SHOWMINIMIZED/SW_MINIMIZE/SW_SHOWMAXIMIZED/SW_RESTORE
+    // values) rather than named constants, because only SW_HIDE/SW_SHOW are
+    // declared in include/winuser.h -- and these four branches are
+    // currently structurally unreachable anyway: FreeApiRunWinMain
+    // (src/winmain_bridge.cpp) always calls the game's entry point with
+    // nCmdShow=SW_SHOW, and both games forward that same value straight
+    // into their own ShowWindow(g_hWnd, nCmdShow) call. Kept for source-
+    // completeness, not because they're exercised in practice.
     switch (nCmdShow) {
         case SW_HIDE:
             SDL_HideWindow(sdlWindow);
@@ -284,6 +293,12 @@ BOOL WINAPI InvalidateRect(HWND hWnd, const RECT* lpRect, BOOL bErase)
     return TRUE;
 }
 
+// TASK-24H-0312: implemented as SDL_RaiseWindow, not real Win32's "force an
+// immediate WM_PAINT if the update region is non-empty" semantics -- safe
+// because neither target game ever uses WM_PAINT/BeginPaint/EndPaint/
+// PAINTSTRUCT at all (confirmed zero references in either game's source).
+// Do not implement a real WM_PAINT dispatch/paint cycle without an
+// evidenced call site.
 BOOL WINAPI UpdateWindow(HWND hWnd)
 {
     if (!hWnd) {
@@ -325,6 +340,13 @@ BOOL WINAPI GetClientRect(HWND hWnd, LPRECT lpRect)
         return TRUE;
     }
 
+    // TASK-24H-0314: defensive-only fallback, not a real, evidenced call
+    // path. CreateWindowExA always inserts a g_freeApiWindowStates entry for
+    // every window it creates (the sole insertion point), so this branch is
+    // only reachable for an hWnd that was never created via
+    // CreateWindowExA/CreateWindowA -- effectively unreachable from either
+    // game's real code. Kept for robustness against a hypothetically
+    // foreign HWND, not because it's exercised in practice.
     int w = 0;
     int h = 0;
     if (!SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hWnd), &w, &h)) {
