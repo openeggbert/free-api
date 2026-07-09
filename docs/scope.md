@@ -45,6 +45,34 @@ Symbols proven unused by both target games are legitimate candidates for
 removal, hiding behind an opt-in macro, or being left as a documented stub —
 see `plan.md` §5 for the current classification of such cases.
 
+## Automated enforcement (TASK-24H-1238)
+
+The rule above was, until now, enforced entirely by human/AI diligence when
+writing `plan.md` entries — nothing in the build or test suite verified it.
+The `check_public_surface_baseline` CTest test (backed by
+`cmake/CheckPublicSurfaceBaseline.cmake`) now closes that gap: it extracts
+every public declaration currently in `include/*.h`/`include_non_windows/*.h`
+and fails, naming the offending symbol, if anything appears that isn't
+already listed in `cmake/known-public-symbols.txt`.
+
+This is a **deliberate speed bump, not a hard block**: if a new symbol is
+genuinely needed, follow the rule above (write a `plan.md` task with a real
+`file:line` citation), then add the symbol's exact name to
+`cmake/known-public-symbols.txt` (one per line) to make the test pass again.
+Do not add a symbol to the baseline file without that citation existing
+first — doing so defeats the entire point of this check.
+
+The extractor is deliberately lightweight (matching
+`cmake/CheckNoHardcodedPaths.cmake`'s own "not a general static-analysis
+tool" precedent): it recognizes the declaration shapes this project's
+headers actually use (`#define` macros, single-line `WINAPI`-style function
+declarations, single-line inline function definitions, function-pointer
+typedefs, typedef'd structs with alias lists, plain struct/enum tags, simple
+one-line typedefs, `extern` globals) via regex, not a real C++ parser. If it
+ever misses a new symbol added in some exotic shape it hasn't seen before,
+tighten `cmake/CheckPublicSurfaceBaseline.cmake`'s regex set — do not remove
+the check because it isn't perfect.
+
 ## Boundary with `free-direct`
 
 Both target games' `ddutil.cpp`-style code freely mixes real Win32 GDI calls

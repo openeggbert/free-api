@@ -385,6 +385,25 @@ if(FREE_API_BUILD_TESTS)
                      -DCHECKER_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoHardcodedPaths.cmake
                      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoHardcodedPathsSelfTest.cmake")
 
+    # TASK-24H-1238: a lightweight guard against docs/scope.md's citation
+    # rule eroding silently -- fails loudly (naming the offending symbol) if
+    # include/*.h or include_non_windows/*.h gains a new public declaration
+    # not yet listed in cmake/known-public-symbols.txt. Same
+    # CMAKE_CURRENT_SOURCE_DIR rationale as check_no_hardcoded_paths above.
+    add_test(NAME check_public_surface_baseline
+             COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckPublicSurfaceBaseline.cmake")
+
+    # TASK-24H-1238: proves the extractor's regex set still actually finds
+    # every declaration shape it's meant to (and excludes include guards/
+    # comments), and that the baseline-diff logic fires on a genuinely new
+    # symbol -- the real check above only ever exercises the "nothing new
+    # found" branch against the current, already-clean header set.
+    add_test(NAME check_public_surface_baseline_self_test
+             COMMAND ${CMAKE_COMMAND}
+                     -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-fixtures-out
+                     -DCHECKER_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckPublicSurfaceBaseline.cmake
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckPublicSurfaceBaselineSelfTest.cmake")
+
     # TASK-24H-0801/0802: negative-path tests proving ExtractStringTable.cmake's
     # fail-loud gates (REQUIRE_STRINGS, VERIFY_ID/VERIFY_TEXT, USED_IDS_FILE's
     # missing-ID and duplicate-ID checks) actually fire on broken input,
@@ -577,6 +596,7 @@ if(FREE_API_BUILD_TESTS)
         PROPERTIES LABELS "integration")
     set_tests_properties(basic_test check_no_hardcoded_paths
         check_no_hardcoded_paths_self_test
+        check_public_surface_baseline check_public_surface_baseline_self_test
         test_header_compile test_sdl_log_gating test_winmain_bridge
         PROPERTIES LABELS "hygiene")
     if(NOT WIN32)
