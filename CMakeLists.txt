@@ -460,6 +460,14 @@ if(FREE_API_BUILD_TESTS)
     target_link_libraries(test_header_compile PRIVATE freeapi_compat_headers)
     add_test(NAME test_header_compile COMMAND test_header_compile)
 
+    # TASK-24H-1113: source-scan guard against future ungated SDL_Log
+    # additions. Must use CMAKE_CURRENT_SOURCE_DIR, not CMAKE_SOURCE_DIR --
+    # see the check_no_hardcoded_paths comment above for why.
+    add_executable(test_sdl_log_gating tests/test_sdl_log_gating.cpp)
+    target_compile_definitions(test_sdl_log_gating PRIVATE
+        FREE_API_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_test(NAME test_sdl_log_gating COMMAND test_sdl_log_gating)
+
     add_executable(test_winuser_regressions tests/test_winuser_regressions.cpp)
     target_link_libraries(test_winuser_regressions PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_winuser_regressions COMMAND test_winuser_regressions)

@@ -173,7 +173,9 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
         if (it != g_mmTimers.end()) it->second.sdlId = sdlId;
     }
     g_activeTimerIds.insert(timerId);
-    SDL_Log("free-api timeSetEvent: mmId=%u sdlId=%u delay=%u ms", timerId, sdlId, uDelay);
+    if (FreeApiDiagnosticsEnabled()) {
+        SDL_Log("free-api timeSetEvent: mmId=%u sdlId=%u delay=%u ms", timerId, sdlId, uDelay);
+    }
     FreeApiDiagSnapshot("mm-timer-set");
     return timerId;
 }

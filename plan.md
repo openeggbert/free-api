@@ -4887,7 +4887,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1113: Add a source-scan guard against future ungated SDL_Log additions
-Status: TODO
+Status: DONE — added tests/test_sdl_log_gating.cpp (new CTest binary), a text-scan heuristic over src/**/*.cpp recognizing 4 gating shapes actually used in this codebase (same-line "if (GATE) SDL_Log(...)", block "if (GATE) { SDL_Log(...) }", early-return "if (!GATE) return;" earlier in the same function, and "#if defined(__ANDROID__)" compile-time guards), plus a short explicit file:line allowlist for the 16 confirmed-intentional unconditional failure/startup/warning sites. Found and fixed 2 real, previously-uncaught ungated logs while building it: winmm.cpp's timeSetEvent success-path log (see its own doc comment) and confirmed EnsureVideoSubsystem's fix from TASK-24H-1227 was needed. Verified with a genuine negative control (temporarily injected an ungated SDL_Log, confirmed the test caught it, reverted). Verified 25/25 in all three build trees. NOTE: the allowlist is file:line-precise, not content-hash-based -- an unrelated edit that shifts line numbers above an allowlisted site will require updating its entry; this is an accepted tradeoff of the "simple heuristic, not full static analysis" scope this task specifies.
 Priority: P2
 Area: Diagnostics
 Type: Test
