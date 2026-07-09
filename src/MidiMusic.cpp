@@ -80,6 +80,17 @@ static const SDL_AudioSpec kMixSpec = {SDL_AUDIO_F32, 2, 44100};
 /** Size of each render block in frames. */
 static constexpr int kBlockFrames = 512;
 
+/* TASK: MixerThread backpressure (see MixerThread). Without a cap on how far
+ * ahead of real-time we're allowed to render, the mixer thread would render
+ * PCM as fast as the CPU allows -- since SDL_PutAudioStreamData is
+ * non-blocking, that bursts an entire song into the stream in a fraction of
+ * a second, pegging one CPU core at ~100% and making active->timeMs (and
+ * therefore the MM_MCINOTIFY "song finished" notification) run far ahead of
+ * what's actually audible. Keeping only a few blocks buffered ahead paces
+ * rendering to real time. */
+static constexpr int kMaxQueuedBlocksAhead = 4;
+static constexpr int kThrottleSleepMs = 5;
+
 /* -------------------------------------------------------------------------- */
 /*  SoundFont loader                                                           */
 /* -------------------------------------------------------------------------- */
@@ -327,6 +338,18 @@ static void MixerThread()
     std::vector<float> pcm(static_cast<size_t>(kBlockFrames) * 2);
 
     while (GetMidiState().running.load()) {
+        // Backpressure: don't render (or advance song time) faster than the
+        // stream is actually draining. See kMaxQueuedBlocksAhead's comment.
+        if (GetMidiState().stream) {
+            const int queuedBytes = SDL_GetAudioStreamQueued(GetMidiState().stream);
+            const int maxQueuedBytes = kMaxQueuedBlocksAhead * kBlockFrames *
+                                       kMixSpec.channels * static_cast<int>(sizeof(float));
+            if (queuedBytes > maxQueuedBytes) {
+                SDL_Delay(kThrottleSleepMs);
+                continue;
+            }
+        }
+
         bool rendered = false;
 
         // TASK-24H-1233: notify data (target HWND + device id) for a
