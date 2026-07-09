@@ -46,7 +46,7 @@ cd FREE_API && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-fai
 
 Both should report the same test count and 100% pass as the standalone
 build — the exact count is the current total of `add_test(...)` entries in
-`CMakeLists.txt` (23 as of this writing: run `ctest -N` to get the live
+`CMakeLists.txt` (28 as of this writing: run `ctest -N` to get the live
 count, since this number grows as tasks add coverage).
 
 ## Running one specific test binary directly

@@ -269,12 +269,18 @@ cmake --build build
 
 ## Project Status
 
-**Work in progress**
+**Feature-complete for its two target games; hardening and verification ongoing.**
 
-Current focus:
-* Supporting `free-direct` requirements
-* Basic windowing and message pump
-* Cross-platform compatibility
+The AI-doable backlog (200+ tracked tasks — see [`plan.md`](plan.md)) is
+closed, including two full independent deep audits (correctness,
+performance, memory safety, edge cases, architectural risk — see
+[`audit.md`](audit.md)). The full test suite (`ctest`) passes cleanly
+across every supported build configuration, including under
+ThreadSanitizer and AddressSanitizer (with LeakSanitizer enabled). What
+remains is exclusively human-only work: playtesting specific interactive
+behaviors (drag-select, flood-fill, MIDI audio, rendering/save-load) that
+can't be verified headlessly — see
+[`docs/target-game-verification.md`](docs/target-game-verification.md).
 
 ---
 

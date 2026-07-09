@@ -94,18 +94,33 @@ cd build-tsan && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ctest --output-on-f
 ```
 
 Swap `thread` for `address` to run under AddressSanitizer instead. No manual
-`LD_PRELOAD`/`ASAN_OPTIONS` juggling needed: as of TASK-24H-0506's session-3
-follow-up, configuring with `FREE_API_SANITIZE` set resolves the matching
-sanitizer runtime `.so` via the compiler at configure time and auto-attaches
-it (`LD_PRELOAD`, plus `ASAN_OPTIONS=detect_leaks=0` for `address` --
-SDL3 itself holds long-lived global allocations that read as false-positive
-"leaks" at exit, unrelated to anything free-api does) as each test's
-`ENVIRONMENT` CTest property — a plain `ctest` in a sanitizer-configured
-build tree just works. Look for the `-- free-api: FREE_API_SANITIZE=...
-auto-LD_PRELOADing ...` configure-time message to confirm it resolved
-correctly; if it instead prints a `WARNING`, fall back to the manual
+`LD_PRELOAD` juggling needed: as of TASK-24H-0506's session-3 follow-up,
+configuring with `FREE_API_SANITIZE` set resolves the matching sanitizer
+runtime `.so` via the compiler at configure time and auto-attaches it
+(`LD_PRELOAD`) as each test's `ENVIRONMENT` CTest property — a plain
+`ctest` in a sanitizer-configured build tree just works. Look for the
+`-- free-api: FREE_API_SANITIZE=... auto-LD_PRELOADing ...` configure-time
+message to confirm it resolved correctly; if it instead prints a
+`WARNING`, fall back to the manual
 `LD_PRELOAD="$(readlink -f "$(gcc -print-file-name=libtsan.so)")" ctest ...`
 form (swap `libtsan.so`/`libasan.so` to match).
+
+**LeakSanitizer (AddressSanitizer builds only):** left at its default
+(enabled), not blanket-disabled. An earlier iteration of this setup added
+`ASAN_OPTIONS=detect_leaks=0` on the theory that SDL3 itself holds
+long-lived global allocations that read as false-positive "leaks" at exit
+— `TASK-24H-1247` re-verified that premise by running every real test
+binary with `detect_leaks=1` (dummy SDL video/audio drivers, this
+project's actual test environment) and found zero leaks, real or
+false-positive, so the blanket disable was removed rather than kept
+speculatively. This was not a hypothetical fix: a genuine test-file
+resource leak went undetected through every `ctest`-based ASan pass across
+multiple sessions while `detect_leaks=0` was in effect, only found by
+manually running a test binary directly. If a genuine SDL3 false-positive
+leak is ever observed in some other configuration (a real X11/Wayland
+video driver, a different SDL3 version, etc.), prefer a scoped
+`LSAN_OPTIONS=suppressions=<file>` naming SDL3's specific allocation
+stacks over reintroducing a blanket disable.
 
 `test_timer_regressions.cpp` has two tests written specifically to give a
 sanitizer something real to catch: `TestTimeSetEventKillRaceHasNoUseAfterFree`
@@ -114,9 +129,10 @@ against an in-flight `FreeApiMmTimerBridge` callback) and
 `TestGDebugInputSurvivesRaceUnderSanitizer` (200000 iterations racing
 `g_debugInput` writes against continuous `InputLog()` reads). Running the
 full suite (`ctest`, per the command above) under both sanitizers is clean
-(23/23, zero sanitizer reports) as of this session. This exact workflow is
-what caught and led to fixing three previously-undetected bugs — see
-`plan.md` `TASK-24H-0506` and `src/winmm.cpp`/
+(28/28, zero sanitizer reports, LeakSanitizer included) as of this
+session. This exact workflow is what caught and led to fixing several
+previously-undetected bugs across multiple sessions — see `plan.md`
+`TASK-24H-0506`/`1229`/`1247` and `src/winmm.cpp`/
 `src/internal/FreeApiMessageQueue.hpp`'s comments for specifics.
 
 ## LoadStringA / STRINGTABLE target-game selection

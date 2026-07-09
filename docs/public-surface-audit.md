@@ -26,6 +26,22 @@ all `VK_*` keycodes) are grouped into one row, matching
 `docs/supported-apis.md`'s own convention, rather than one row per
 `#define`.
 
+**This table itself is a point-in-time snapshot (`TASK-24H-0115`) and is
+not automatically re-verified — it can drift.** `TASK-24H-1238` added the
+mechanical, always-current enforcement this table can't provide on its
+own: `cmake/CheckPublicSurfaceBaseline.cmake` (run via the
+`check_public_surface_baseline` CTest test) extracts every public
+declaration currently in `include/*.h`/`include_non_windows/*.h` and fails
+loudly, naming the symbol, if anything appears that isn't already listed
+in `cmake/known-public-symbols.txt` — see `docs/scope.md`'s "Automated
+enforcement" section. That check confirms *a symbol is classified at all*
+(by requiring an explicit baseline addition, which the citation rule then
+gates); it does not verify classification *correctness* the way this
+table's evidence column does. Use this table for the reasoning behind an
+existing symbol's classification; trust the CTest check, not this table's
+symbol *list*, for whether the header set has grown since this table was
+written.
+
 Real per-symbol usage verification for this table was done directly
 against `../free-eggbert/src` and `../planetblupi/src` (not assumed from
 prior docs) wherever an existing doc didn't already carry a `file:line`
