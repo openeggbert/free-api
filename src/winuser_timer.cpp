@@ -49,6 +49,12 @@ BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent)
                 static_cast<unsigned long>(uIDEvent));
     }
     FreeApiDiagSnapshot("timer-kill");
+    // TASK-24H-0509: always returns TRUE, even for an unknown/already-removed
+    // timer ID -- real Win32 returns FALSE (0) in that case. Confirmed both
+    // target games' every KillTimer call site is fire-and-forget (bare
+    // statement, return value discarded, from their WM_DESTROY handlers).
+    // Do not change to return FALSE for unknown IDs without new evidence a
+    // real caller needs it.
     return TRUE;
 }
 

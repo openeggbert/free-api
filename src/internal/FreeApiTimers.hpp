@@ -32,6 +32,12 @@ extern std::mutex                               g_winTimerMutex;
 extern std::unordered_map<UINT, MmTimerEntry>  g_mmTimers;
 extern std::mutex                               g_mmTimerMutex;
 extern std::unordered_set<UINT>                g_activeTimerIds;
+// TASK-24H-0502: deliberately shared between SetTimer (WinUser) and
+// timeSetEvent (WinMM) -- two otherwise fully independent timer mechanisms
+// with their own separate maps/mutexes above. Sharing this one counter
+// guarantees ID uniqueness if a caller ever mixed both APIs; it is the
+// only coupling between them. Do not split into two independent
+// per-mechanism counters -- confirmed intentional, not an accidental coupling.
 extern std::atomic<UINT>                       g_nextTimerId;
 
 } // namespace FreeApi::Internal

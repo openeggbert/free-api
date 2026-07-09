@@ -2927,7 +2927,7 @@ Out of scope:
 ## Timers
 
 ### TASK-24H-0501: Verify and document timeKillEvent's non-standard failure return values
-Status: TODO
+Status: DONE — confirmed free-eggbert's sole timeKillEvent call site (blupi.cpp:628) is a bare, return-value-discarding statement; planetblupi has zero call sites. Added comments at both failure returns (src/winmm.cpp) and the doc comment (include/mmsystem.h) stating this is a known, intentional-but-informal convention. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinMM
 Type: Verification
@@ -2954,7 +2954,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0502: Document the shared SetTimer/timeSetEvent ID-generator design decision
-Status: TODO
+Status: DONE — added comments at g_nextTimerId's declaration (src/internal/FreeApiTimers.hpp) and definition (.cpp) explaining the deliberate sharing; added a cross-referencing sentence to docs/headers.md's mmsystem.h row. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinUser
 Type: Documentation
@@ -2980,7 +2980,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0503: Document that timeSetEvent ignores fuEvent and always behaves as periodic
-Status: TODO
+Status: DONE — updated include/mmsystem.h's timeSetEvent doc comment stating fuEvent/TIME_ONESHOT is accepted but not honored, and why TIME_ONESHOT has no defined constant. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinMM
 Type: Documentation
@@ -3089,7 +3089,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0507: Record the "do not unify SetTimer and timeSetEvent" decision in permanent docs
-Status: TODO
+Status: DONE — added a docs/out-of-scope.md entry ("SetTimer/WM_TIMER and timeSetEvent/timeKillEvent must stay two independent implementations") recording the decision explicitly. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinMM
 Type: Documentation
@@ -3140,7 +3140,7 @@ Out of scope:
 ---
 
 ### TASK-24H-0509: Verify and document KillTimer's unconditional TRUE return for unknown timer IDs
-Status: TODO
+Status: DONE — confirmed both games' every KillTimer call site is a bare, return-value-discarding statement from their WM_DESTROY handlers. Added comments at src/winuser_timer.cpp's return TRUE and include/winuser.h's doc comment. Verified 25/25 in all three build trees.
 Priority: P2
 Area: WinUser
 Type: Verification

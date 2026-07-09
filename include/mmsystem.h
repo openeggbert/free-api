@@ -218,6 +218,13 @@ typedef HMIDIOUT* LPHMIDIOUT;
  * @brief Starts a WinMM-style periodic timer.
  *
  * Internally mapped to a compatibility timer queue in `free-api`.
+ *
+ * TASK-24H-0503: `fuEvent`/`TIME_ONESHOT` is accepted but not honored --
+ * every timer is always treated as periodic (`TIME_PERIODIC`) regardless of
+ * the flag passed. `TIME_ONESHOT` has no defined constant in this header
+ * because neither target game uses it; adding it is out of scope without an
+ * evidenced call site.
+ *
  * @note Status: PARTIAL
  */
 MMRESULT WINAPI timeSetEvent(UINT uDelay,
@@ -228,6 +235,12 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
 
 /**
  * @brief Stops a timer started by `timeSetEvent`.
+ *
+ * TASK-24H-0501: always returns a literal `1` on failure (unknown timer id,
+ * or `uTimerID==0`), not a named `MMRESULT`/`TIMERR_*` constant -- an
+ * informal, intentional convention, confirmed unused by either target
+ * game's sole call site (a bare, return-value-discarding statement).
+ *
  * @note Status: PARTIAL
  */
 MMRESULT WINAPI timeKillEvent(UINT uTimerID);

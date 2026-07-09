@@ -104,6 +104,20 @@ resizable-window support, or any per-game opt-in for it, without first
 re-verifying on an affected compositor that this workaround is no longer
 needed — there is no evidenced need for resizability in either game.
 
+## `SetTimer`/`WM_TIMER` and `timeSetEvent`/`timeKillEvent` must stay two independent implementations (TASK-24H-0507)
+
+**Previously-considered-and-rejected idea, not an oversight — do not
+unify.** `SetTimer`/`KillTimer`/`WM_TIMER` (`src/winuser_timer.cpp`) and
+`timeSetEvent`/`timeKillEvent` (`src/winmm.cpp`) are confirmed to be
+planetblupi's and free-eggbert's respective sole, mutually-exclusive frame
+pumps — each game depends on its own mechanism working in isolation.
+Consolidating them into one shared implementation has been considered and
+rejected: the two mechanisms only share one intentional coupling (the
+`g_nextTimerId` ID-generator counter, `src/internal/FreeApiTimers.hpp`,
+TASK-24H-0502) and must otherwise remain fully independent (separate maps,
+separate mutexes, separate SDL timer backends). Do not perform or propose
+any consolidation without new evidence a real caller needs it.
+
 ## `WM_NCMOUSEMOVE` is never generated (TASK-24H-0411)
 
 **Investigated, confirmed non-issue.** planetblupi's `WndProc` has a real

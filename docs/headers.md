@@ -12,7 +12,7 @@ or when adding/removing a public header in `include/`.
 | `windows.h` | Yes (~12 files) | Yes (~15 files) | Central facade; required by nearly every source file in both games. |
 | `windowsx.h` | Yes (`blupi.cpp`, `ddutil.cpp`, `movie.cpp`) | Yes (`blupi.cpp`, `ddutil.cpp`, `movie.cpp`) | In **both** games, only the `GetStockBrush` macro is actually used (once, at startup). `ddutil.cpp`/`movie.cpp` include it but use nothing from it in either game. |
 | `wtypes.h` | Yes (`misc.hpp:5`, `blupi.cpp:14`) | Not included | free-eggbert only; types (`VARTYPE`/`SCODE`/`DATE`/`CLIPFORMAT`) compile but are never exercised at runtime in either game. |
-| `mmsystem.h` | Yes (`blupi.cpp`, `movie.cpp`) | Yes (`blupi.cpp`, `movie.cpp`) | WinMM subset: MCI, MIDI-out, timers. |
+| `mmsystem.h` | Yes (`blupi.cpp`, `movie.cpp`) | Yes (`blupi.cpp`, `movie.cpp`) | WinMM subset: MCI, MIDI-out, timers. `timeSetEvent`'s device-ID counter is deliberately shared with `windows.h`'s `SetTimer` (TASK-24H-0502) — see `src/internal/FreeApiTimers.hpp`. |
 | `digitalv.h` | Yes (`movie.cpp`) | Yes (`movie.cpp`) | MCI digital-video (AVI) + sequencer parameter structs. |
 | `commdlg.h` | Yes (`movie.cpp:9`) — **zero API calls** | Yes (`movie.cpp:6`) — **zero API calls** | Vestigial dead include in both games (no `GetOpenFileName` etc. anywhere). Keep as empty stub only. |
 | `io.h` | Yes (`event.cpp:12,14`, for `_findfirst`/`_findnext`) | Not included; `_findfirst` family confirmed unused | free-eggbert only. |

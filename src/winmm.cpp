@@ -197,6 +197,13 @@ MMRESULT WINAPI timeSetEvent(UINT uDelay,
 MMRESULT WINAPI timeKillEvent(UINT uTimerID)
 {
     if (uTimerID == 0) {
+        // TASK-24H-0501: both failure returns below use the literal 1, an
+        // informal "non-zero means failure" convention, not a named
+        // MMRESULT/TIMERR_* constant -- inconsistent with the success path's
+        // MMSYSERR_NOERROR (0) but confirmed harmless: free-eggbert's sole
+        // call site (blupi.cpp:628) is a bare statement, discarding the
+        // return value. Do not change these to a named constant without new
+        // evidence a caller depends on the exact value.
         return 1;
     }
     SDL_TimerID sdlId = 0;

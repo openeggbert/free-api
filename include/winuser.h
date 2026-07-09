@@ -386,7 +386,14 @@ HWND WINAPI SetFocus(HWND hWnd);
 UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTimerFunc);
 
 //#4487
-/** @brief Removes a stored polling timer. @note Status: PARTIAL */
+/**
+ * @brief Removes a stored polling timer.
+ *
+ * TASK-24H-0509: always returns TRUE, even for an unknown/already-removed
+ * timer ID, unlike real Win32 (which returns FALSE in that case).
+ *
+ * @note Status: PARTIAL
+ */
 BOOL WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent);
 
 //#4600
