@@ -6141,7 +6141,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1248: Apply the pitch-overflow-cast fix to CreateCompatBitmapFromSurface and ScaleCompatBitmap
-Status: TODO
+Status: DONE -- applied the identical `static_cast<int>(static_cast<int64_t>(width) * 4)` pattern (already used in `wingdi_bitmap.cpp`'s `CreateBitmap`) to both `CreateCompatBitmapFromSurface` (src/internal/FreeApiGdi.cpp:52) and `ScaleCompatBitmap` (same file, was line 99). Re-grepped the entire codebase for any other `pitch = ... * 4`-shaped computation (`grep -rn "pitch\s*=.*\*\s*4\b" src/`) and confirmed these three (now all fixed) are the only pitch computations that exist anywhere in the codebase -- nothing else needed the same fix. Verified 28/28 passing in standalone build/, build-tsan/, build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make); no behavior change for any in-bounds bitmap dimension.
 Priority: P3
 Area: GDI
 Type: Bugfix
@@ -6166,7 +6166,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1249: Document or narrow PushMessage's coalescing-scan lock scope
-Status: TODO
+Status: DONE -- chose documentation over narrowing (no evidenced real slowdown, per the task's own guidance to prefer documentation absent profiling evidence). Added a comment directly above the two coalescing scans (src/internal/FreeApiMessageQueue.cpp, `PushMessage`) explaining the self-limiting invariant (coalescing keeps at most one WM_MOUSEMOVE and one WM_TIMER-per-(hwnd,id) entry queued, so each scan terminates within a few hops in the common case), the confirming evidence already available (`g_diagQueueHighWater` shows queue depth never grows large in practice), and a concrete fallback approach (track the last WM_MOUSEMOVE/WM_TIMER-per-hwnd position outside the deque) if the assumption is ever broken by a future change. No behavior change; documentation only. Verified standalone build/ still compiles and 28/28 tests pass, in particular test_timer_regressions.cpp's stress tests and both full-loop integration tests.
 Priority: P3
 Area: WinUser
 Type: Documentation
@@ -6191,7 +6191,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1250: Change g_nextTimerId's fetch_add to memory_order_relaxed
-Status: TODO
+Status: DONE -- `g_nextTimerId.fetch_add(1)` (src/winuser_timer.cpp, `SetTimer`) changed to `g_nextTimerId.fetch_add(1, std::memory_order_relaxed)`, matching every other counter atomic in the codebase (and TASK-24H-1243's identical precedent for `g_debugInput`). Verified 28/28 passing in standalone build/, build-tsan/ (FREE_API_SANITIZE=thread -- this atomic is shared across the documented WinUser/WinMM timer-ID-uniqueness coupling in src/internal/FreeApiTimers.hpp, confirmed unaffected), build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make); no behavior change to timer ID uniqueness/allocation order.
 Priority: P3
 Area: Timers
 Type: Performance

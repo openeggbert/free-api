@@ -49,7 +49,12 @@ CompatBitmap* CreateCompatBitmapFromSurface(SDL_Surface* surface)
     bitmap->width = rgbaSurface->w;
     bitmap->height = rgbaSurface->h;
     bitmap->bitsPerPixel = 32;
-    bitmap->pitch = bitmap->width * 4;
+    // TASK-24H-1248: cast before multiplying, matching CreateBitmap's
+    // (src/wingdi_bitmap.cpp) already-fixed pattern -- a plain int*int
+    // multiplication is undefined behavior (signed overflow) once width
+    // exceeds roughly 536,870,911. Not reachable by either game's real,
+    // small, fixed loaded-bitmap dimensions; purely defensive.
+    bitmap->pitch = static_cast<int>(static_cast<int64_t>(bitmap->width) * 4);
     bitmap->pixels.resize(static_cast<size_t>(bitmap->pitch) * static_cast<size_t>(bitmap->height));
     AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
                         g_diagCompatBitmapPixelCapacityHighWaterBytes,
@@ -96,7 +101,9 @@ void ScaleCompatBitmap(CompatBitmap& bitmap, const int targetWidth, const int ta
 
     bitmap.width = targetWidth;
     bitmap.height = targetHeight;
-    bitmap.pitch = targetWidth * 4;
+    // TASK-24H-1248: cast before multiplying, same rationale as
+    // CreateCompatBitmapFromSurface above / CreateBitmap (wingdi_bitmap.cpp).
+    bitmap.pitch = static_cast<int>(static_cast<int64_t>(targetWidth) * 4);
     bitmap.pixels.swap(scaled);
     const auto delta = static_cast<int64_t>(bitmap.pixels.capacity()) - static_cast<int64_t>(oldCapacity);
     AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,

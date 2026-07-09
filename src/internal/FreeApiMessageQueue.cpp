@@ -75,6 +75,21 @@ void PushMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
         std::lock_guard<std::mutex> lock(g_messageQueueMutex);
 
+        // TASK-24H-1249: both coalescing scans below are linear scans of
+        // g_messageQueue performed while g_messageQueueMutex is held, on
+        // the hottest call path in the message system (WM_MOUSEMOVE fires
+        // at OS event rate). This is self-limiting by construction, not by
+        // luck: coalescing keeps at most one WM_MOUSEMOVE and one
+        // WM_TIMER-per-(hwnd,id) entry in the queue at a time, so each
+        // scan terminates within a few hops in the common case -- it is
+        // NOT an unbounded linear scan over an ever-growing queue. Confirmed
+        // via g_diagQueueHighWater (FreeApiDiagnostics) that queue depth
+        // never grows large in practice. If that assumption is ever broken
+        // (e.g. a future message type queues many non-coalescible entries
+        // ahead of a mouse-move burst), consider tracking the last
+        // WM_MOUSEMOVE/WM_TIMER-per-hwnd position outside the deque
+        // instead of scanning for it.
+
         // ---- Coalescing for WM_MOUSEMOVE: if there is already a pending
         // WM_MOUSEMOVE for the same hwnd, update it in place rather than
         // appending another one. Mouse motion events fire much faster than

@@ -13,7 +13,10 @@ UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, void* lpTim
     (void)lpTimerFunc;
 
     if (nIDEvent == 0) {
-        nIDEvent = g_nextTimerId.fetch_add(1);
+        // TASK-24H-1250: relaxed, matching every other counter atomic in
+        // the codebase -- this only needs to hand out a unique value, not
+        // synchronize any other data.
+        nIDEvent = g_nextTimerId.fetch_add(1, std::memory_order_relaxed);
     }
 
     WinTimer wt;
