@@ -49,8 +49,14 @@ SDL_Joystick* ResolveJoystick(UINT uJoyID)
     SDL_JoystickID* ids = SDL_GetJoysticks(&count);
     if (!ids) return nullptr;
 
+    // TASK-24H-1246: compare uJoyID (UINT) against the same UINT-cast count
+    // used to bound it, matching the type actually used to index `ids`
+    // below -- the old `static_cast<int>(uJoyID) < count` check compared a
+    // DIFFERENT (signed, wraps negative for uJoyID >= 0x80000000) value
+    // than the one used for the array access, so a large-enough uJoyID
+    // could pass the check and then index far out of bounds.
     SDL_Joystick* joystick = nullptr;
-    if (static_cast<int>(uJoyID) < count) {
+    if (count > 0 && uJoyID < static_cast<UINT>(count)) {
         joystick = SDL_OpenJoystick(ids[uJoyID]);
     }
     SDL_free(ids);

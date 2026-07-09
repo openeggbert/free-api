@@ -113,6 +113,30 @@ static void TestJoyGetPosExReportsUnpluggedForOutOfRangeIndex()
     Check(rc == JOYERR_UNPLUGGED, "joyGetPosEx reports JOYERR_UNPLUGGED for an out-of-range device index");
 }
 
+// TASK-24H-1246: ResolveJoystick's bounds check (src/winmm.cpp) used to
+// compare static_cast<int>(uJoyID) against `count`, a DIFFERENT value than
+// the uncast uJoyID actually used to index SDL_GetJoysticks()'s array. A
+// uJoyID with the high bit set casts to a negative int, which is always
+// < count for any positive count -- the check incorrectly passed, then the
+// array access indexed far out of bounds. Not reachable by either target
+// game's real (small, plausible) device indices, but a genuine defect in
+// the validation logic itself, not just a theoretical hardening gap.
+static void TestJoyGetPosExRejectsHighBitSetDeviceIndex()
+{
+    JOYINFOEX joy{};
+    joy.dwSize = sizeof(JOYINFOEX);
+    MMRESULT rc = joyGetPosEx(0x80000000u, &joy);
+    Check(rc == JOYERR_UNPLUGGED,
+          "joyGetPosEx(0x80000000, ...) does not crash and safely reports JOYERR_UNPLUGGED "
+          "(a high-bit-set uJoyID must not defeat the bounds check via signed-cast sign flipping)");
+
+    JOYINFOEX joy2{};
+    joy2.dwSize = sizeof(JOYINFOEX);
+    MMRESULT rc2 = joyGetPosEx(0xFFFFFFFFu, &joy2);
+    Check(rc2 == JOYERR_UNPLUGGED,
+          "joyGetPosEx(UINT_MAX, ...) does not crash and safely reports JOYERR_UNPLUGGED");
+}
+
 int main()
 {
     printf("[joystick-regressions] Starting\n");
@@ -120,6 +144,7 @@ int main()
     TestVirtualJoystickAxisAndButtonRoundTrip();
     TestJoyGetPosExRejectsNullAndTooSmallStruct();
     TestJoyGetPosExReportsUnpluggedForOutOfRangeIndex();
+    TestJoyGetPosExRejectsHighBitSetDeviceIndex();
 
     if (g_failures > 0) {
         printf("[joystick-regressions] %d FAILURE(S)\n", g_failures);

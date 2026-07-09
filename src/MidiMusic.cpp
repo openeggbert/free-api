@@ -140,12 +140,13 @@ struct MidiSession {
  * Only one song plays at a time (the game never overlaps music tracks).
  */
 struct MidiState {
-    // TASK-24H-1233: required lock order -- this mutex must never be held
-    // while acquiring the message-queue mutex (i.e. never call PostMessageA/
-    // PostQuitMessage while `mtx` is locked). Capture whatever notify data
-    // is needed while holding `mtx`, release it, then post. See
-    // MixerThread's needsNotify/notifyTarget/notifyId pattern for the
-    // established shape.
+    // TASK-24H-1233/1245: required lock order -- this mutex must never be
+    // held while acquiring the message-queue mutex (i.e. never call
+    // PostMessageA/PostQuitMessage while `mtx` is locked). Capture whatever
+    // notify data is needed while holding `mtx`, release it, then post. See
+    // MixerThread's and MidiMusicSendCommand's MCI_PLAY handler's matching
+    // needsNotify/notifyTarget/notifyId pattern for the established shape --
+    // apply the same pattern to any future call site added here.
     std::mutex       mtx;
     tsf*             soundFont   = nullptr;
     SDL_AudioDeviceID device     = 0;
@@ -664,49 +665,77 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
     if (uMsg == MCI_PLAY) {
         auto* parms = reinterpret_cast<MCI_PLAY_PARMS*>(dwParam);
 
-        std::lock_guard<std::mutex> lk(GetMidiState().mtx);
-        for (auto& s : GetMidiState().sessions) {
-            if (s.id == mciId) {
-                /* Stop any current playback on other sessions. */
-                for (auto& other : GetMidiState().sessions) {
-                    if (other.id != mciId) {
-                        other.playing = false;
+        // TASK-24H-1245: notify data captured while GetMidiState().mtx is
+        // held, acted on (PostMessageA) only after the lock below is
+        // released -- see the lock-order comment on GetMidiState().mtx's
+        // declaration and MixerThread's matching capture-then-post pattern
+        // (this is the second call site TASK-24H-1233 left untouched).
+        bool needsNotify = false;
+        HWND notifyTarget = nullptr;
+        MCIDEVICEID notifyId = 0;
+        bool sessionFound = false;
+        bool silentSuccess = false;
+
+        {
+            std::lock_guard<std::mutex> lk(GetMidiState().mtx);
+            for (auto& s : GetMidiState().sessions) {
+                if (s.id == mciId) {
+                    sessionFound = true;
+
+                    /* Stop any current playback on other sessions. */
+                    for (auto& other : GetMidiState().sessions) {
+                        if (other.id != mciId) {
+                            other.playing = false;
+                        }
                     }
-                }
 
-                if (GetMidiState().soundFont) {
-                    tsf_reset(GetMidiState().soundFont);
-                }
-
-                s.cursor   = s.song;
-                s.timeMs   = 0.0;
-                s.playing  = true;
-                s.finished = false;
-
-                if (parms && (fdwCommand & MCI_NOTIFY)) {
-                    s.notifyHwnd = reinterpret_cast<HWND>(parms->dwCallback);
-                } else {
-                    s.notifyHwnd = nullptr;
-                }
-
-                if (!GetMidiState().soundFont) {
-                    s.playing = false;
-                    s.finished = true;
-                    if (s.notifyHwnd) {
-                        PostMessageA(s.notifyHwnd, MM_MCINOTIFY,
-                                     MCI_NOTIFY_SUCCESSFUL,
-                                     static_cast<LPARAM>(s.id));
+                    if (GetMidiState().soundFont) {
+                        tsf_reset(GetMidiState().soundFont);
                     }
-                    MIDI_LOG("MCI_PLAY: no SoundFont loaded; treating device id=%u as silent success",
-                             (unsigned)mciId);
-                    return 0;
-                }
 
-                MIDI_LOG("MCI_PLAY: device id=%u notifyHwnd=%p",
-                         (unsigned)mciId, static_cast<void*>(s.notifyHwnd));
-                return 0;
+                    s.cursor   = s.song;
+                    s.timeMs   = 0.0;
+                    s.playing  = true;
+                    s.finished = false;
+
+                    if (parms && (fdwCommand & MCI_NOTIFY)) {
+                        s.notifyHwnd = reinterpret_cast<HWND>(parms->dwCallback);
+                    } else {
+                        s.notifyHwnd = nullptr;
+                    }
+
+                    if (!GetMidiState().soundFont) {
+                        s.playing = false;
+                        s.finished = true;
+                        silentSuccess = true;
+                        if (s.notifyHwnd) {
+                            needsNotify  = true;
+                            notifyTarget = s.notifyHwnd;
+                            notifyId     = s.id;
+                        }
+                    } else {
+                        MIDI_LOG("MCI_PLAY: device id=%u notifyHwnd=%p",
+                                 (unsigned)mciId, static_cast<void*>(s.notifyHwnd));
+                    }
+                    break;
+                }
             }
         }
+
+        if (needsNotify) {
+            PostMessageA(notifyTarget, MM_MCINOTIFY,
+                         MCI_NOTIFY_SUCCESSFUL,
+                         static_cast<LPARAM>(notifyId));
+        }
+
+        if (sessionFound) {
+            if (silentSuccess) {
+                MIDI_LOG("MCI_PLAY: no SoundFont loaded; treating device id=%u as silent success",
+                         (unsigned)mciId);
+            }
+            return 0;
+        }
+
         MIDI_LOG("MCI_PLAY: unknown device id=%u", (unsigned)mciId);
         return MCIERR_INVALID_DEVICE_ID;
     }

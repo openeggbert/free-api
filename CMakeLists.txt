@@ -646,14 +646,27 @@ if(FREE_API_BUILD_TESTS)
                 OUTPUT_STRIP_TRAILING_WHITESPACE
         )
         get_filename_component(_free_api_sanitizer_lib_real "${_free_api_sanitizer_lib}" REALPATH)
-        # AddressSanitizer only: SDL3 itself holds long-lived global
-        # allocations that read as false-positive "leaks" at exit, unrelated
-        # to anything free-api does -- detect_leaks=0 avoids spurious
-        # failures. Irrelevant (and harmless to set) for ThreadSanitizer.
+        # TASK-24H-1247: this used to blanket-disable LeakSanitizer for the
+        # entire ctest suite (`ASAN_OPTIONS=detect_leaks=0`) on the theory
+        # that SDL3 itself holds long-lived global allocations that read as
+        # false-positive "leaks" at exit. That meant `ctest` in a
+        # FREE_API_SANITIZE=address build tree could never catch a real
+        # leak in free-api's own code through the standard, documented
+        # workflow -- confirmed to be a real gap, not a hypothetical one: a
+        # genuine test-file resource leak (TASK-24H-1229's verification)
+        # went undetected through every prior ctest-based ASan pass across
+        # multiple sessions, only found by manually running a test binary
+        # directly (bypassing this ENVIRONMENT override). Re-verified with
+        # detect_leaks=1 across every real test binary in this build
+        # (16/16, dummy SDL video/audio drivers) and found zero leaks, real
+        # or false-positive, from SDL3 or anything else -- the blanket
+        # disable is not needed in this project's actual configuration, so
+        # leak detection is left at its default (enabled) rather than
+        # speculatively suppressed. If a genuine SDL3 false-positive leak
+        # is ever observed in some other configuration, prefer a scoped
+        # LSAN_OPTIONS=suppressions=<file> naming SDL3's specific
+        # allocation stacks over reintroducing a blanket disable.
         set(_free_api_sanitizer_env "LD_PRELOAD=${_free_api_sanitizer_lib_real}")
-        if(FREE_API_SANITIZE STREQUAL "address")
-            list(APPEND _free_api_sanitizer_env "ASAN_OPTIONS=detect_leaks=0")
-        endif()
         if(EXISTS "${_free_api_sanitizer_lib_real}")
             get_property(_free_api_all_tests DIRECTORY PROPERTY TESTS)
             foreach(_free_api_test_name IN LISTS _free_api_all_tests)
