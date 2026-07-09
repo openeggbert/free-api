@@ -4915,7 +4915,7 @@ Out of scope:
 ## Documentation
 
 ### TASK-24H-1201: Fix README.md "Project Structure" section's stale single-file `src/winapi.cpp` claim
-Status: TODO
+Status: DONE — replaced the "src/ -> winapi.cpp" leaf with the real current file layout (all src/*.cpp files by area, src/internal/*, and winapi.cpp noted as the empty redirect-comment file). Verified `grep -n "└── winapi.cpp" README.md` returns no match. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -4940,7 +4940,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1202: Reword README.md's MIDI looping and cdaudio "TODO" claims to match confirmed-working/intentional behavior
-Status: TODO
+Status: DONE — reworded both bullets to state confirmed-working/intentional behavior instead of "TODO". Verified both stale-text greps return no match. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Docs
 Type: Documentation
@@ -4989,7 +4989,7 @@ Out of scope:
 ---
 
 ### TASK-24H-1204: Fix Documentation.md's stale single-file `src/winapi.cpp` claims
-Status: TODO
+Status: DONE — updated the architecture diagram to reference the real successor files/directories, and replaced the reading-order table's single winapi.cpp row with rows naming the real successor files per responsibility (message queue, GDI, timers, path normalization, diagnostics), plus a final row noting winapi.cpp is now just an empty redirect-comment file. Verified both stale-text greps return no match. Verified 25/25 in all three build trees.
 Priority: P2
 Area: Docs
 Type: Documentation

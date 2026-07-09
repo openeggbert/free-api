@@ -18,7 +18,7 @@ Legacy game source code
         v
 Free API public headers  (include/)
         |
-        | implemented in src/winapi.cpp  +  src/MidiMusic.cpp
+        | implemented in src/*.cpp + src/internal/*.cpp  +  src/MidiMusic.cpp
         v
 SDL3 windowing, events, timers, audio  +  POSIX file calls
 ```
@@ -39,7 +39,12 @@ The recommended reading order is:
 | `include/windef.h` | Opaque handle types, `WPARAM/LPARAM/LRESULT`, calling-convention macros |
 | `include/winnt.h` | String/char types, `HRESULT`, `GUID`, `IUnknown` alias |
 | `include/wtypes.h` | Minimal OLE/WTypes aliases |
-| `src/winapi.cpp` | Implementation details: message queue, SDL event translation, GDI internals, timer internals, path normalization, diagnostics |
+| `src/internal/FreeApiMessageQueue.cpp` | Message queue, SDL event translation |
+| `src/internal/FreeApiGdi.cpp` + `src/wingdi_*.cpp` | GDI internals |
+| `src/internal/FreeApiTimers.cpp` + `src/winuser_timer.cpp` + `src/winmm.cpp` | Timer internals (`SetTimer`/`WM_TIMER` and `timeSetEvent`/`timeKillEvent`) |
+| `src/internal/FreeApiPath.cpp` | Path normalization |
+| `src/internal/FreeApiDiagnostics.cpp` | Diagnostics |
+| `src/winapi.cpp` | Empty; doc-comment redirect map to the files above (see the file itself for the full, current list) |
 | `src/MidiMusic.cpp` | MIDI/MCI backend: TinySoundFont + TinyMidiLoader + SDL3 audio, SoundFont lookup, mixer thread, MCI session lifecycle |
 | `src/MidiMusic.h` | Private MIDI backend API (not for public consumers) |
 

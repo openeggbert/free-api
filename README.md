@@ -161,8 +161,13 @@ Free SoundFonts suitable for testing:
 
 #### Limitations / TODOs
 
-- Looping (`MCI_PLAY` with loop flag): TODO — playback stops at end-of-song
-- CD audio (`cdaudio`): TODO — gracefully declined
+- Looping (`MCI_PLAY` with loop flag): intentionally unimplemented at the
+  MCI level — both target games' own `MM_MCINOTIFY` handlers re-issue
+  playback themselves on song-end, so music genuinely loops end-to-end in
+  real gameplay; native MCI-level looping is never needed
+- CD audio (`cdaudio`): deliberate, permanent, working decline (not a gap)
+  — `MCI_OPEN("cdaudio")` is gracefully rejected, and both games' own
+  fallback immediately opens the MIDI sequencer path instead
 - MCI_NOTIFY: posted when song ends (partial; no timeout handling)
 - Concurrent music tracks: not supported (one at a time)
 - Web (Emscripten): SDL3 audio may require a user gesture before audio starts
@@ -214,7 +219,17 @@ free-api/
 │    ├── winnt.h
 │    └── ...
 ├── src/
-│    └── winapi.cpp
+│    ├── winbase.cpp, winbase_file.cpp
+│    ├── winuser_window.cpp, winuser_message.cpp, winuser_cursor.cpp,
+│    │   winuser_timer.cpp, winuser_misc.cpp
+│    ├── wingdi_bitmap.cpp, wingdi_dc.cpp, wingdi_blit.cpp, wingdi_misc.cpp
+│    ├── winmm.cpp, MidiMusic.cpp
+│    ├── crt_io.cpp, crt_direct.cpp
+│    ├── winmain_bridge.cpp
+│    ├── winapi.cpp (empty; doc-comment redirect map to the files above)
+│    └── internal/
+│         └── FreeApi{Diagnostics,Gdi,WindowRegistry,MessageQueue,
+│              Timers,Path,SdlVideo,StringTable}.{hpp,cpp}
 └── CMakeLists.txt
 ```
 
