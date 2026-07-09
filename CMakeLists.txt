@@ -573,6 +573,14 @@ if(FREE_API_BUILD_TESTS)
     target_link_libraries(test_midi_backend_failure PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_midi_backend_failure COMMAND test_midi_backend_failure)
 
+    # TASK-24H-1251: deliberately a separate binary from test_mci_sequences,
+    # same reasoning as test_midi_backend_failure above -- EnsureMidiBackend
+    # loads FREE_API_SOUNDFONT at most once per process, and no other MIDI
+    # test in this suite has a SoundFont available.
+    add_executable(test_midi_soundfont_rendering tests/test_midi_soundfont_rendering.cpp)
+    target_link_libraries(test_midi_soundfont_rendering PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_midi_soundfont_rendering COMMAND test_midi_soundfont_rendering)
+
     # TASK-24H-1223: FreeApiRunWinMain (src/winmain_bridge.cpp) is the real
     # process-bootstrap bridge both target games launch through, but had
     # zero automated coverage -- test_eggbert_loop/test_planetblupi_loop
@@ -596,7 +604,7 @@ if(FREE_API_BUILD_TESTS)
         PROPERTIES LABELS "winuser")
     set_tests_properties(test_gdi_regressions PROPERTIES LABELS "gdi")
     set_tests_properties(test_mci_sequences test_mci_avivideo_regressions
-        test_midi_backend_failure test_joystick_regressions
+        test_midi_backend_failure test_midi_soundfont_rendering test_joystick_regressions
         PROPERTIES LABELS "winmm")
     set_tests_properties(test_timer_regressions PROPERTIES LABELS "winuser;winmm")
     set_tests_properties(test_file_regressions test_file_paths

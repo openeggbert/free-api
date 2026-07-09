@@ -64,6 +64,12 @@
 // used by tests/test_gdi_regressions.cpp for the diagnostic counters.
 namespace FreeApi::Internal {
 WPARAM ApplyKeyboardModifierFlags(const bool* keys, WPARAM base);
+// TASK-24H-1253: same forward-declaration pattern, for GetActiveWindow's
+// "no focus window set yet" fallback branch (src/internal/
+// FreeApiWindowRegistry.cpp) -- every keyboard event and any mouse event
+// with an unresolved SDL windowID routes through this function.
+HWND GetActiveWindow();
+extern HWND g_focusWindow;
 }
 
 static int g_failures = 0;
@@ -251,6 +257,74 @@ static void TestGetSystemMetricsCyCaptionAndUnqueriedIndexFallback()
     // index" fallback branch (src/winuser_misc.cpp).
     Check(GetSystemMetrics(12345) == 0,
           "GetSystemMetrics returns 0 for an index none of the three implemented constants match");
+}
+
+// TASK-24H-1252: GlobalMemoryStatus (src/winbase.cpp) is a real, live,
+// documented call site (docs/supported-apis.md: "Required by free-eggbert:
+// Yes") -- free-eggbert calls it twice, once at startup (blupi.cpp:234) to
+// gate g_bTrueColorBack/g_bTrueColorDecor on `mem.dwTotalPhys < 32000000`,
+// and once for a diagnostic time.blp log (blupi.cpp:693). A coverage sweep
+// (2026-07-09) found this documented-as-live function had zero test
+// coverage anywhere in the suite. Locks in both the null-safety contract
+// and the exact hardcoded dwTotalPhys value the real TrueColor gate
+// depends on.
+static void TestGlobalMemoryStatusPopulatesPlausibleValues()
+{
+    GlobalMemoryStatus(nullptr);
+    Check(true, "GlobalMemoryStatus(nullptr) does not crash");
+
+    MEMORYSTATUS mem{};
+    mem.dwLength = sizeof(MEMORYSTATUS);
+    GlobalMemoryStatus(&mem);
+
+    Check(mem.dwLength == sizeof(MEMORYSTATUS), "GlobalMemoryStatus sets dwLength to sizeof(MEMORYSTATUS)");
+    Check(mem.dwTotalPhys == 512u * 1024u * 1024u,
+          "GlobalMemoryStatus reports the documented fixed dwTotalPhys (512MB)");
+    Check(mem.dwTotalPhys >= 32000000u,
+          "dwTotalPhys clears free-eggbert's real 32,000,000-byte TrueColor benchmark threshold "
+          "(blupi.cpp:236) -- the exact real gameplay effect this function's value controls");
+    Check(mem.dwAvailPhys > 0 && mem.dwTotalPageFile > 0 && mem.dwAvailPageFile > 0 &&
+          mem.dwTotalVirtual > 0 && mem.dwAvailVirtual > 0,
+          "GlobalMemoryStatus populates all remaining MEMORYSTATUS fields with plausible non-zero values");
+}
+
+// TASK-24H-1253: GetActiveWindow (src/internal/FreeApiWindowRegistry.cpp)
+// falls back to the first registered window when g_focusWindow hasn't been
+// set yet -- reached in the real window between CreateWindowExA and the
+// first SDL_EVENT_WINDOW_FOCUS_GAINED-triggered focus assignment, since
+// every WM_KEYDOWN/WM_KEYUP and any mouse event with an unresolved SDL
+// windowID route through this function (src/internal/
+// FreeApiMessageQueue.cpp). A coverage sweep (2026-07-09) found this
+// fallback branch had zero test coverage. Does not assert exact HWND
+// equality -- other tests earlier in this same binary may leave additional
+// windows registered depending on execution order and cleanup, so only the
+// real, meaningful contract is checked: the fallback returns a live,
+// non-null window rather than silently returning NULL (which would drop
+// the keyboard/mouse event) whenever at least one window is registered.
+static void TestGetActiveWindowFallsBackBeforeFocusIsSet()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_ActiveWindowFallback";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowA("RegTest_ActiveWindowFallback", "Test", WS_POPUPWINDOW | WS_VISIBLE,
+                              0, 0, 320, 240, HWND_DESKTOP, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowA succeeds for the GetActiveWindow-fallback test");
+    if (!hwnd) return;
+
+    // Force the "no focus window set yet" state this test targets -- do
+    // not drain messages first, which could process a real SDL focus
+    // event and mask the fallback path this test specifically exercises.
+    FreeApi::Internal::g_focusWindow = nullptr;
+
+    HWND active = FreeApi::Internal::GetActiveWindow();
+    Check(active != nullptr,
+          "GetActiveWindow returns a live registered window (not NULL) when g_focusWindow is not yet set");
+
+    DrainMessages();
+    DestroyWindow(hwnd);
 }
 
 // TASK-24H-0210: the original version of this test only observed the
@@ -1470,6 +1544,8 @@ int main()
     TestCreateWindowExAFullscreenPath();
     TestCreateWindowExANeverSetsResizableFlag();
     TestGetSystemMetricsCyCaptionAndUnqueriedIndexFallback();
+    TestGlobalMemoryStatusPopulatesPlausibleValues();
+    TestGetActiveWindowFallsBackBeforeFocusIsSet();
     TestDefWindowProcHandlesWmClose();
     TestDestroyWindowDispatchesWmDestroySynchronously();
     TestRegisterClassADiscardsNonWndprocFields();

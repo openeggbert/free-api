@@ -6211,3 +6211,82 @@ Acceptance criteria:
 
 Out of scope:
 - Do not change any other atomic variable's memory order as part of this task -- scoped to `g_nextTimerId` only.
+
+---
+
+## Coverage Sweep Follow-up (2026-07-09)
+
+The 3 tasks below (`TASK-24H-1251`-`1253`) formalize findings from a GCC-`--coverage`/`gcov` line-coverage sweep of free-api's own `src/**` (72.1% weighted line coverage, 1740 executable lines), run after both `audit.md` rounds closed. Unlike the two audit rounds (which read code for logic bugs), this measured which already-implemented, already-scoped code paths are actually exercised by the existing 28-test suite. Two other 0%-covered functions found by the same sweep were investigated and confirmed to be **dead-reach, not gaps** (no task filed): `ScaleCompatBitmap` (`src/internal/FreeApiGdi.cpp`) -- every real `DDLoadBitmap` call site in both games passes `dx=dy=0`, confirmed via a fresh grep of both trees; and `ShowWindow`'s non-`SW_SHOW` case branches (`src/winuser_window.cpp`) -- `src/winmain_bridge.cpp`'s `FreeApiRunWinMain` hardcodes `SW_SHOW` for both games' `WinMain` entry, so no other `nCmdShow` value can ever reach it.
+
+### TASK-24H-1251: Add test coverage for MixerThread's real TinySoundFont rendering path (0% covered by any existing test)
+Status: DONE -- new standalone test binary `tests/test_midi_soundfont_rendering.cpp` programmatically constructs the smallest spec-valid SF2 SoundFont TinySoundFont's loader (`external/tsf.h`) will accept (1 preset/1 instrument/1 sample, no modulators, all 9 "hydra" record types present with correct boundary-index terminal records) plus a real 440Hz sine-wave PCM sample, writes it to a temp file, points `FREE_API_SOUNDFONT` at it before any SDL/MIDI call in the process, then runs a real `MCI_OPEN`/`MCI_PLAY`(`MCI_NOTIFY`)/`MM_MCINOTIFY`-wait/`MCI_CLOSE` sequence against the existing minimal-MIDI fixture shape (program-change 0, note-on, note-off) already used by `test_mci_sequences.cpp`. Confirms via captured `MIDI_LOG` output that the synthetic SoundFont was genuinely accepted (not silently falling back to the no-SoundFont branch every other MIDI test in the suite takes) and that `MM_MCINOTIFY` arrives, proving `MixerThread`'s full event-dispatch/PCM-synthesis loop ran to completion. **Found and fixed two real bugs while building this test, neither previously reachable by any prior test:** (1) a genuine heap-buffer-overflow inside vendored `external/tsf.h` itself (`tsf_voice_render`, reading one interpolation sample past the raw PCM buffer) -- real SF2 files always pad their sample data with trailing "guard" zero-samples per spec exactly for this reason; the test's own synthetic fixture didn't, since nothing before this test had ever exercised real sample playback to find the gap -- fixed by padding the fixture's PCM data with 64 trailing zero-samples while keeping `shdr.end` at the real sample count; (2) reproduced the already-known-and-documented `SDL_Quit()`-before-`MidiState`-static-teardown ordering hazard (`test_mci_sequences.cpp`'s own doc comment, verified via ASan in an earlier session) -- fixed the same established way, by not calling `SDL_Quit()` in this test either. Registered as its own CTest entry/binary (`test_midi_soundfont_rendering`, `winmm` label) for the same reason `test_midi_backend_failure` is separate: `EnsureMidiBackend` loads `FREE_API_SOUNDFONT` at most once per process. Verified 29/29 passing in standalone build/, build-tsan/, build-asan/ (with real leak detection active, TASK-24H-1247), ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make).
+Priority: P2
+Area: WinMM
+Type: Test Coverage
+Evidence: src/MidiMusic.cpp (`MixerThread`, the entire TinySoundFont event-dispatch/rendering body); coverage sweep (2026-07-09): 0% line coverage on `MixerThread`'s body; README.md ("No SoundFont is bundled, to avoid copyright issues") explains why no prior test could exercise this without building one
+Depends on: None
+
+Problem:
+Every existing MCI/MIDI test runs with no SoundFont available (none is bundled by project policy), so every `MCI_PLAY` in the suite takes `MixerThread`'s early "no SoundFont, silent success" branch. The actual TinySoundFont-based rendering code -- program-change/note-on/note-off/pitch-bend/control-change dispatch and PCM synthesis, the entire reason `external/tsf.h`/`tml.h` are vendored -- had never been executed by any automated test in this project's history, only ever verifiable by a human ear (`TASK-24H-1221`).
+
+Required work:
+- Construct a minimal, valid, synthetic SoundFont fixture (in-test, no external asset needed) sufficient for TinySoundFont to load and render at least one note.
+- Drive a real `MCI_OPEN`/`MCI_PLAY`/notify/`MCI_CLOSE` sequence against it and confirm the real rendering path (not the no-SoundFont branch) actually ran.
+- Isolate in its own test binary/process, matching `test_midi_backend_failure.cpp`'s established precedent, since `FREE_API_SOUNDFONT` lookup happens at most once per process.
+
+Acceptance criteria:
+- New test passes in all three build trees and both sanitizer builds.
+- The test demonstrably exercises the real-SoundFont rendering path, not the silent-success fallback (verified via log output, not assumed).
+- No unrelated API is added; does not attempt to verify audio *quality*, only that rendering runs to completion without crashing (quality remains `TASK-24H-1221`'s job).
+
+Out of scope:
+- Do not bundle a real, non-synthetic SoundFont asset -- project policy (README.md) is to never ship one, to avoid copyright issues.
+- Do not attempt to assert anything about the specific rendered PCM sample values (pitch/timbre correctness) -- that's audio-quality territory, out of an automated test's reach.
+
+---
+
+### TASK-24H-1252: Add test coverage for GlobalMemoryStatus (documented as live, tested as "none")
+Status: DONE -- new `TestGlobalMemoryStatusPopulatesPlausibleValues` (tests/test_winuser_regressions.cpp) calls `GlobalMemoryStatus(nullptr)` (null-safety), then with a real buffer, asserting `dwLength`/`dwTotalPhys` match the documented hardcoded values, that `dwTotalPhys` clears free-eggbert's real 32,000,000-byte TrueColor benchmark threshold (`blupi.cpp:236`) -- the exact real gameplay effect this function's value controls -- and that all remaining `MEMORYSTATUS` fields are populated with plausible non-zero values. Verified 29/29 passing in standalone build/, build-tsan/, build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make).
+Priority: P3
+Area: WinUser
+Type: Test Coverage
+Evidence: src/winbase.cpp (`GlobalMemoryStatus`); docs/supported-apis.md (row explicitly lists "Required by free-eggbert: Yes", test coverage: "none"); ../free-eggbert/src/blupi.cpp:234,236,693 (real call sites); coverage sweep (2026-07-09): 0% line coverage
+Depends on: None
+
+Problem:
+`GlobalMemoryStatus` is a real, live, already-documented call site (free-eggbert calls it twice: once to gate its TrueColor rendering path on `dwTotalPhys`, once for a diagnostic log) with zero test coverage anywhere in the suite -- `docs/supported-apis.md`'s own table already honestly listed this gap, but nothing had closed it.
+
+Required work:
+- Add a direct test calling `GlobalMemoryStatus` and asserting its populated values, including the specific field (`dwTotalPhys`) the real gameplay-affecting call site depends on.
+
+Acceptance criteria:
+- New test passes in all three build trees.
+- Locks in both the null-safety contract and the exact hardcoded values the real TrueColor gate depends on.
+- No unrelated API is added; no behavior change.
+
+Out of scope:
+- Do not implement accurate `dwMemoryLoad`/`dwAvailPhys`/etc. beyond the current hardcoded plausible values -- already decided out of scope in `docs/out-of-scope.md`.
+
+---
+
+### TASK-24H-1253: Add test coverage for GetActiveWindow's no-focus-yet fallback branch (0% covered by any existing test)
+Status: DONE -- new `TestGetActiveWindowFallsBackBeforeFocusIsSet` (tests/test_winuser_regressions.cpp) forward-declares `FreeApi::Internal::GetActiveWindow()`/`g_focusWindow` (matching this file's existing `ApplyKeyboardModifierFlags` forward-declaration precedent), creates a window, explicitly resets `g_focusWindow = nullptr` to force the target state (since other tests earlier in the same binary may have already set it), and asserts `GetActiveWindow()` returns a live, non-null window rather than `NULL`. Deliberately does not assert exact `HWND` equality with the just-created window, since other tests in the same binary may leave additional windows registered depending on execution order/cleanup -- only the real, meaningful contract is checked (a live window is returned, not `NULL`, which would silently drop the keyboard/mouse event that reached this fallback). Verified 29/29 passing in standalone build/, build-tsan/, build-asan/, ../free-eggbert/cmake-build-debug (Ninja), ../planetblupi/build (Make).
+Priority: P3
+Area: WinUser
+Type: Test Coverage
+Evidence: src/internal/FreeApiWindowRegistry.cpp (`GetActiveWindow`'s fallback branch); src/internal/FreeApiMessageQueue.cpp (4 call sites: every `WM_KEYDOWN`/`WM_KEYUP` and any mouse event with an unresolved SDL windowID); coverage sweep (2026-07-09): 0% line coverage on the fallback branch specifically
+Depends on: None
+
+Problem:
+`GetActiveWindow` falls back to the first registered window when `g_focusWindow` hasn't been set yet -- reached in the real window between `CreateWindowExA` and the first `SDL_EVENT_WINDOW_FOCUS_GAINED`-triggered focus assignment, since every keyboard event and any mouse event with an unresolved SDL windowID route through this function. This branch had zero test coverage; a bug here (e.g. silently returning `NULL` instead of falling back) would drop real input events during that startup window without any test catching it.
+
+Required work:
+- Add a direct test (via the established internal-symbol forward-declaration pattern) that forces the "no focus window set yet" state and confirms the fallback returns a live window, not `NULL`.
+
+Acceptance criteria:
+- New test passes in all three build trees.
+- Robust against other tests in the same binary leaving additional windows registered (does not assume exact `HWND` equality).
+- No unrelated API is added; no behavior change.
+
+Out of scope:
+- Do not change `GetActiveWindow`'s fallback logic itself -- this task is test-coverage-only, no behavior gap was found.
