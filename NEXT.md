@@ -2,14 +2,22 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `7fc9ae6` (2026-07-09, `develop` branch, 15 commits
+state as of commit `323de70` (2026-07-09, `develop` branch, 30 commits
 ahead of `origin/develop`, **not yet pushed**; working tree clean; the
-prior 6a523da and earlier commits were pushed earlier this session — see
+prior `6a523da` and earlier commits were pushed earlier this session — see
 git log for the exact boundary). See [`plan.md`](plan.md) for the full
-task backlog (12 original tasks + 182-task `TASK-24H-0001`–`1227` backlog,
-grew by 1 this session) and
-[`docs/audit-24h-free-api.md`](docs/audit-24h-free-api.md) for the full
+task backlog (12 original tasks + 183-task `TASK-24H-0001`–`1228` backlog)
+and [`docs/audit-24h-free-api.md`](docs/audit-24h-free-api.md) for the full
 24-hour deep audit that backlog was derived from.
+
+**MILESTONE: the entire AI-doable P0–P3 backlog is now closed.** 178 of
+183 `TASK-24H-*` tasks are `DONE`, 1 is `OBSOLETE`. The only 5 remaining
+`TODO` tasks are 4 human-playtest-only items (`TASK-24H-0401`/`0403`/
+`1221`/`1222`, all P1/P2, all with acceptance criteria and one consolidated
+checklist — [`docs/target-game-verification.md`](docs/target-game-verification.md))
+and 1 deliberately-deferred refactor (`TASK-24H-0706`). There is no more
+safe, AI-doable backlog work to pick up without either a human completing
+a playtest, or a fresh audit/re-scope finding new gaps.
 
 ## 1. Project summary
 
@@ -55,34 +63,51 @@ had real bugs found and fixed during verification (a stack-lifetime
 use-after-free in the `FreeApiRunWinMain` test, and two distinct bugs — a
 `fopen`-macro path-normalization surprise and a stdio-buffering-vs-`dup2`
 ordering bug — in the `OutputDebugStringA` test); see §3/§6 for detail.
-**Session 5 (this pass)** worked straight through the remaining P2
-backlog, closing 33 more tasks (a mix of Test/Verification/Documentation/
-Bugfix) across 15 commits, all re-verified against current source (not
-copy-pasted from stale task text) and tested 25/25 across all three build
-trees per commit. Highlights: added direct test coverage for 5 previously-
-untested WinUser/WinMM/GDI/Resource behaviors (`GetSystemMetrics`
-fallback, the non-resizable-window compositor workaround, `WM_CHAR`
-ASCII-only forwarding, the 5 resource-stub contracts, the
-`mciGetDeviceIDA`/`MCI_CLOSE` id-collision, and an end-to-end
-notify-driven MIDI-loop test); added `tests/test_sdl_log_gating.cpp`
-(`TASK-24H-1113`), a new source-scan CTest guard against future ungated
-`SDL_Log` additions; and closed out the diagnostics-logging, WinMM-timer,
-and stale-documentation (README/Documentation.md/joystick) task clusters.
-**Found and fixed 3 more real, previously-unknown gaps while verifying
+**Session 5 (this pass)** worked straight through the *entire* remaining
+P2 and P3 backlog to completion — 91 tasks closed across 30 commits, all
+re-verified against current source (not copy-pasted from stale task text)
+and tested across all three build trees per commit (test count grew from
+24 to 26 during the session: `test_sdl_log_gating` and
+`check_no_hardcoded_paths_self_test` both new). Highlights: added direct
+test coverage for previously-untested WinUser/WinMM/GDI/Resource behaviors
+(`GetSystemMetrics` fallback, the non-resizable-window compositor
+workaround, `WM_CHAR` ASCII-only forwarding, the 5 resource-stub
+contracts, the `mciGetDeviceIDA`/`MCI_CLOSE` id-collision, an end-to-end
+notify-driven MIDI-loop test, `GetPixel`/`SetPixel`'s Memory-DC path,
+`CreateBitmap`'s unsupported-bit-depth fallback, `GetObjectA`'s rejection
+paths, and `SetCursor`'s first-call contract); added
+`tests/test_sdl_log_gating.cpp` (`TASK-24H-1113`), a source-scan CTest
+guard against future ungated `SDL_Log` additions, and
+`cmake/CheckNoHardcodedPathsSelfTest.cmake` (`TASK-24H-0011`), which
+exercises the real checker logic against controlled fixtures instead of
+only the "nothing found" branch; ran a dedicated fork to produce
+`docs/public-surface-audit.md` (`TASK-24H-0115`), a consolidated
+required-by-game/test-infrastructure-only/free-direct-bridge/permanent-
+stub/vestigial classification of every public declaration; fixed the
+incomplete `install()`/export packaging (`TASK-24H-0007`); and closed out
+every remaining documentation/verification cluster (diagnostics-logging,
+WinMM-timer, WinUser message-pump, joystick, MCI/MidiMusic, GDI, README/
+Documentation.md staleness).
+**Found and fixed 4 more real, previously-unknown gaps while verifying
 task premises** (not just implementing what tasks assumed):
 `CreateDirectoryA`'s already-exists branch is dead code (`SDL_CreateDirectory`
 itself is idempotent) — the *test* task's original premise was wrong, not
 just untested; `EnsureVideoSubsystem`'s and `timeSetEvent`'s success-path
 logs were both completely unconditional despite `TASK-24H-1101/1102`
 supposedly having swept this area (closed as new `TASK-24H-1227` plus a
-`TASK-24H-1113`-adjacent fix); and `TASK-24H-1110`'s premise that
+`TASK-24H-1113`-adjacent fix); `TASK-24H-1110`'s premise that
 `CreateDirectoryA`'s only call sites are dead code was only true for
-free-eggbert — planetblupi's `AddUserPath` call site is genuinely live.
-**120 of 182 new tasks are now DONE**, 1 marked OBSOLETE — all verified,
-tested, and committed; **0 P0, 0 AI-doable P1 tasks remain** (3 P1 left —
-`TASK-24H-0401`/`1221`/`1222` — all human-only, all with acceptance
-criteria and one consolidated checklist doc). 12 P2 and 46 P3 tasks
-remain — see section 8.
+free-eggbert — planetblupi's `AddUserPath` call site is genuinely live;
+and `TASK-24H-0907`'s premise about `cdaudio` being dead in free-eggbert
+was wrong — `sound.cpp` (not the assumed-dead `soundbass.cpp`) is the
+live sound backend given this build's `_BASS`/`_LEGACY` macro defaults,
+and its `cdaudio` path is genuinely reachable via a real config option.
+**178 of 183 new tasks are now DONE**, 1 marked OBSOLETE — all verified,
+tested, and committed; **0 P0, 0 AI-doable P1, 0 AI-doable P2, 0 AI-doable
+P3 tasks remain.** Only 5 tasks are still `TODO`: 4 human-playtest-only
+(`TASK-24H-0401`/`0403`/`1221`/`1222`, all with acceptance criteria and one
+consolidated checklist doc) and 1 deliberately-deferred refactor
+(`TASK-24H-0706`) — see section 8.
 
 **Important architectural decisions (unchanged across all sessions):**
 
@@ -115,24 +140,27 @@ remain — see section 8.
 
 **Build status — all confirmed working after every change this session:**
 * Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): configures, builds,
-  **25/25** tests pass.
+  **26/26** tests pass.
 * As a subdirectory of `../free-eggbert` (Ninja), including the
   `free-api`+`free-direct` diamond dependency (`FREEDIRECT` backend):
-  25/25.
-* As a subdirectory of `../planetblupi` (Make): 25/25.
+  26/26.
+* As a subdirectory of `../planetblupi` (Make): 26/26.
 * `../free-direct` standalone: configures, builds, links `FREE_DIRECT`
   cleanly against `include/free_api_bridge.h`.
-* The same 25-test suite also passes cleanly (0 sanitizer reports) under
+* The same 26-test suite also passes cleanly (0 sanitizer reports) under
   both `-DFREE_API_SANITIZE=thread` and `=address`, via plain `ctest`
   (no manual env vars beyond `SDL_VIDEODRIVER`/`SDL_AUDIODRIVER`).
 
-**Test status:** 25 test binaries/CTest entries (started session 4 at 22),
-25/25 passing in all three build modes and both sanitizer builds. Session 4
-added 2 new binaries (`test_midi_backend_failure`, `test_winmain_bridge`);
-session 5 added a 3rd (`test_sdl_log_gating`, TASK-24H-1113) plus many new
-test functions across `test_winuser_regressions.cpp`, `test_gdi_regressions.cpp`,
-`test_input_pipeline.cpp`, `test_mci_sequences.cpp`, `test_resources.cpp`,
-and `test_file_regressions.cpp` — see §3 below and git log for the full list.
+**Test status:** 26 CTest entries (started session 4 at 22), 26/26 passing
+in all three build modes and both sanitizer builds (all four re-verified
+fresh at the end of session 5). Session 4 added 2 new binaries
+(`test_midi_backend_failure`, `test_winmain_bridge`); session 5 added a
+3rd (`test_sdl_log_gating`, `TASK-24H-1113`) plus a new script-mode CTest
+entry (`check_no_hardcoded_paths_self_test`, `TASK-24H-0011`) and many new
+test functions across `test_winuser_regressions.cpp`,
+`test_gdi_regressions.cpp`, `test_input_pipeline.cpp`,
+`test_mci_sequences.cpp`, `test_resources.cpp`, and
+`test_file_regressions.cpp` — see §3 below and git log for the full list.
 
 **What does NOT work / known gaps:** unchanged except for items closed in
 section 3 below. MCI digital-video remains intentionally unimplemented.
@@ -146,8 +174,10 @@ checklist covering all of them:
 
 ## 3. Recent changes (session 5 first, then session 4, most recent first within each)
 
-**Session 5** closed 33 P2 tasks across 15 commits (`git log` has full
-detail per-commit; summary here, not a per-task repeat of `plan.md`):
+**Session 5** closed the entire remaining P2+P3 backlog (91 tasks) across
+30 commits (`git log` has full detail per-commit; summary here, not a
+per-task repeat of `plan.md`). First half (P2 sweep) below; second half
+(P3 sweep to zero remaining) summarized at the end of this section.
 * New test coverage: `GetSystemMetrics(SM_CYCAPTION)`/fallback,
   `CreateWindowExA` never sets `SDL_WINDOW_RESIZABLE` (compositor `WM_CLOSE`
   workaround), `WM_CHAR` ASCII-only forwarding (`test_input_pipeline.cpp`),
@@ -188,6 +218,42 @@ detail per-commit; summary here, not a per-task repeat of `plan.md`):
   throughout); the same ground was covered directly instead. Lesson: avoid
   running a fork concurrently with direct main-thread edits to the same
   repo — it seems to get confused seeing changes it didn't make.
+* **Fixed the incomplete `install()`/export packaging** (`TASK-24H-0007`):
+  removed a dangling `EXPORT free-api-targets` clause with no matching
+  `install(EXPORT ...)` (so `find_package()` could never have worked, and
+  no consumer needs it — both games use `add_subdirectory()`); added the
+  missing `install(DIRECTORY include_non_windows/...)` call. Verified via a
+  real `cmake --install` into a scratch prefix, before/after.
+* **A second, better-behaved fork** produced `docs/public-surface-audit.md`
+  (`TASK-24H-0115`) — a consolidated classification of every public
+  declaration in `include/*.h`/`include_non_windows/*.h`. It correctly
+  avoided the earlier fork's confusion (left the parent session's
+  concurrently-modified files untouched) and found one real classification
+  mismatch: `CloseHandle` has zero call sites anywhere (not test-
+  infrastructure-only as `TASK-24H-0114` assumed) — filed and closed as
+  `TASK-24H-1228`.
+* **`TASK-24H-0907`'s premise was wrong**, found while re-verifying it:
+  free-eggbert has two alternate sound-backend files (`sound.cpp`/
+  `soundbass.cpp`, selected by `_BASS`/`_LEGACY` macros); with both
+  undefined in this build, `sound.cpp` — not the assumed-dead
+  `soundbass.cpp` — is live, and its `cdaudio` path is genuinely reachable
+  via a real `CDAudio=` config option, not dead code.
+* Closed the entire P3 backlog to zero: WinUser small-cluster docs
+  (`TASK-24H-0116`-`0412`, 11 tasks), `GetSystemMetrics`/`MoveWindow`/
+  `GetDeviceCaps`/`CloseHandle`/`UnlockResource` docs (7 tasks), MCI/
+  MidiMusic.cpp cleanup (`TASK-24H-0806`-`0910`/`1207`, 7 tasks — includes
+  removing 3 genuinely-dead `MCIERR_*` constant duplicates), joystick/file/
+  timer/logging-consolidation docs (9 tasks), build-verification and
+  header cleanup (`TASK-24H-0015`-`0217`, 6 tasks — includes consolidating
+  a duplicate `byte` macro between `rpcndr.h`/`wtypes.h`, confirmed a
+  guaranteed no-op via the real include graph), and the final GDI
+  test-coverage cluster (`TASK-24H-0611`/`0612`/`0614`/`0616`).
+  `TASK-24H-0614`'s verification of `examples/04_gdi_minimap.cpp` is
+  explicitly partial: confirmed it builds and its GDI calls execute
+  without crashing headlessly, but full visual/pixel-level confirmation
+  needs a real display and isn't claimed.
+* Re-verified all 26 tests pass cleanly under both `FREE_API_SANITIZE=thread`
+  and `=address` at the very end of the session (0 sanitizer reports).
 
 **Session 4:**
 
@@ -303,7 +369,7 @@ detail per-commit; summary here, not a per-task repeat of `plan.md`):
 
 ## 4. Current blocker / main problem
 
-**No blocker.** All build configurations work, 25/25 tests pass everywhere
+**No blocker.** All build configurations work, 26/26 tests pass everywhere
 (default and both sanitizer builds). **26 commits are sitting locally on
 `develop`, not yet pushed to `origin/develop`** — push only if/when the
 user explicitly asks.
@@ -408,32 +474,32 @@ No lint/formatter is configured in this repository.
 
 ## 8. Next smallest tasks
 
-**0 P0, 0 AI-doable P1 tasks remain TODO.** 3 P1 (`TASK-24H-0401`,
-`1221`, `1222` — all human-only) and 12 P2 + 46 P3 tasks remain (1 P2,
-`TASK-24H-0704`, is marked OBSOLETE rather than TODO/DONE — see section 3).
-Concrete starting points:
+**The entire AI-doable P0–P3 backlog is closed.** Only 5 `TASK-24H-*`
+tasks remain `TODO` (1 P2, `TASK-24H-0704`, is marked `OBSOLETE` rather
+than `TODO`/`DONE` — see section 3):
 
-1. **Human playtests** — all four now formally tracked with acceptance
+1. **4 human-playtest-only tasks**, all formally tracked with acceptance
    criteria and one consolidated checklist:
    [`docs/target-game-verification.md`](docs/target-game-verification.md)
    covers `MK_SHIFT`/`MK_CONTROL` (`TASK-24H-0401`/`0403`), MIDI audio
-   sign-off (`TASK-24H-1221`), and rendering sign-off (`TASK-24H-1222`).
-   Needs an actual human with a real display/audio backend.
-2. **12 P2 tasks remain TODO** (session 5 closed the rest): `0003`/`0004`
-   (FREE_API_TARGET_GAME override confirmation), `0007` (install/export
-   packaging), `0010` (CTest LABELS), `0011` (CheckNoHardcodedPaths.cmake
-   self-test), `0012`/`0013` (re-confirm/script both games' build paths),
-   `0114` (formal scope.md exception policy), `0115` (definitive header
-   cross-check), `0305` (verify `dwExStyle` is stored/logged only), `0706`
-   (deliberately-deferred `NormalizeMidiPath` migration — see below).
-3. **`TASK-24H-0706`** (migrate `NormalizeMidiPath`'s backslash-conversion
+   sign-off (`TASK-24H-1221`), and rendering/save-load sign-off
+   (`TASK-24H-1222`). Needs an actual human with a real display/audio
+   backend — a Claude Code session cannot complete these.
+2. **`TASK-24H-0706`** (migrate `NormalizeMidiPath`'s backslash-conversion
    step to call `NormalizeFilesystemPath` directly, same pattern
    `TASK-24H-0705` used for `free_api_fopen`) — left `TODO` on purpose
    since it touches file-local MIDI-subsystem code with a more involved
-   fallback than `0705`'s case; verify carefully in its own pass.
-4. **46 P3 tasks remain** — grep `plan.md` for `Priority: P3` +
-   `Status: TODO`. Many reference "duplicates TASK-24H-XXXX — implement
-   once, close both"; check for a paired ID before starting one.
+   fallback than `0705`'s case; verify carefully in its own dedicated pass.
+   This is the one remaining AI-doable task, deliberately deferred rather
+   than rushed.
+
+**If a future session has no human playtest results and doesn't want to
+touch `TASK-24H-0706` alone**, the next productive step is a fresh,
+skeptical re-audit (the way session 4's and session 5's audit forks did) —
+re-check prior "done" claims against current source rather than assuming
+they still hold, the same pattern that found 7 real premise-was-wrong bugs
+across sessions 4-5. Do not invent new P2/P3 busywork tasks just to have
+something to do; if nothing is actually wrong, say so.
 
 ## 9. Do not do yet
 
@@ -507,22 +573,35 @@ Unchanged from prior sessions' list, plus:
 
 ```
 Read NEXT.md first, then skim docs/audit-24h-free-api.md's Executive
-Verdict (§1) for full context. plan.md has 182 new TASK-24H-* tasks; 120
-are DONE, 1 is OBSOLETE (grep "Status: DONE" near "TASK-24H" to see
-which), 0 P0 and 0 AI-doable P1 remain TODO (3 P1 left, TASK-24H-0401/
-1221/1222, are all human-only -- see docs/target-game-verification.md).
-Work through P2/P3
-tasks per section 8's "Next smallest tasks" list -- many explicitly
-duplicate another task ID ("implement once, close both"), check plan.md
-for that note before starting. Make small, verified improvements; batch
-closely-related tasks together. Run the exact verification commands each
-task specifies -- at minimum the standalone build's ctest (25/25), ideally
-also both target games' ctest, and for anything touching src/winmm.cpp,
-src/MidiMusic.cpp, or cross-thread code also the sanitizer builds (§6/§7
--- now just a plain `ctest`, no manual LD_PRELOAD). Do not touch anything
-listed in section 9. Do NOT stop/summarize while safe P0/P1/P2/P3 work
-remains -- continue autonomously (see §4's process notes). Consider an
-independent skeptical re-check of prior "done" claims before extending
-them further, the way session 4 did. After finishing, update this file
-and plan.md's task statuses.
+Verdict (§1) for full context. plan.md has 183 new TASK-24H-* tasks; 178
+are DONE, 1 is OBSOLETE. Only 5 remain TODO: TASK-24H-0401/0403/1221/1222
+(human-playtest-only -- see docs/target-game-verification.md; a Claude
+Code session cannot complete these) and TASK-24H-0706 (deliberately-
+deferred NormalizeMidiPath migration -- see section 8 for detail).
+
+The AI-doable backlog is exhausted. Do NOT invent new P2/P3 busywork tasks
+to have something to do. Your options, in order of preference:
+1. If TASK-24H-0706 is genuinely still open and unimplemented (check
+   plan.md first -- it may have been done in an intervening session), do
+   it carefully in its own pass per section 8's notes.
+2. Otherwise, run a fresh, independent, skeptical re-audit of prior "done"
+   claims against current source (git log may have moved since this file
+   was written) -- the pattern that found 7 real premise-was-wrong bugs
+   across sessions 4-5. Only act on what you actually find wrong; a clean
+   re-audit with nothing found is a valid, complete outcome -- report it
+   as such rather than manufacturing new work.
+3. If the user has given a new, different instruction (a new feature,
+   bugfix, or investigation request), that takes priority over anything
+   in this file -- this backlog was for a specific 24-hour stabilization
+   effort, already complete.
+
+Do NOT stop/summarize while safe, AI-doable work genuinely remains --
+continue autonomously. But do not manufacture busywork once it's actually
+exhausted, either -- that also violates the spirit of the same instruction.
+Run the exact verification commands each task specifies -- at minimum the
+standalone build's ctest (26/26), ideally also both target games' ctest,
+and for anything touching src/winmm.cpp, src/MidiMusic.cpp, or cross-thread
+code also the sanitizer builds (§6/§7 -- now just a plain `ctest`, no
+manual LD_PRELOAD). Do not touch anything listed in section 9. After
+finishing, update this file and plan.md's task statuses.
 ```
