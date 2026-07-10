@@ -20,8 +20,10 @@
  * - CD audio (lpstrDeviceType="cdaudio") is gracefully declined.
  * - MCI_NOTIFY: when the song ends, MM_MCINOTIFY is posted to the callback HWND.
  *
- * SoundFont lookup order (first found wins):
- *   1. FREE_API_SOUNDFONT environment variable
+ * SoundFont lookup order (first found wins), each tried both relative to the
+ * process's current working directory and relative to the executable's own
+ * directory (via SDL_GetBasePath()):
+ *   1. FREE_API_SOUNDFONT environment variable (CWD-relative only, or absolute)
  *   2. assets/soundfont/default.sf2
  *   3. soundfont/default.sf2
  *   If none found, MCI_OPEN succeeds but playback is silent with a debug warning.
@@ -103,20 +105,44 @@ static const char* kSfCandidates[] = {
     nullptr
 };
 
+static tsf* TryLoadSoundFont(const std::string& path)
+{
+    if (path.empty()) return nullptr;
+
+    tsf* sf = tsf_load_filename(path.c_str());
+    if (sf) {
+        MIDI_LOG("SoundFont loaded from: %s", path.c_str());
+    } else {
+        MIDI_LOG("SoundFont not found at: %s", path.c_str());
+    }
+    return sf;
+}
+
 static tsf* LoadSoundFont()
 {
     kSfCandidates[0] = SDL_getenv("FREE_API_SOUNDFONT");
 
+    // Pass 1: as-is, resolved against the process's current working
+    // directory (matches historical behavior; lets a developer `cd`
+    // somewhere with their own soundfont/ dir and have it just work).
     for (int i = 0; kSfCandidates[i] != nullptr; ++i) {
-        const char* path = kSfCandidates[i];
-        if (!path || path[0] == '\0') continue;
-
-        tsf* sf = tsf_load_filename(path);
-        if (sf) {
-            MIDI_LOG("SoundFont loaded from: %s", path);
+        if (tsf* sf = TryLoadSoundFont(kSfCandidates[i])) {
             return sf;
         }
-        MIDI_LOG("SoundFont not found at: %s", path);
+    }
+
+    // Pass 2: relative to the executable's own directory. The CWD a process
+    // is launched with varies by launcher (IDE run configs, Steam's "Start
+    // In" on a non-Steam-game shortcut, a plain `./exe` from elsewhere) and
+    // is often NOT the executable's directory, so this is what actually
+    // makes a bundled default.sf2 work "out of the box" regardless of how
+    // the game is launched.
+    if (const char* basePath = SDL_GetBasePath()) {
+        for (int i = 1; kSfCandidates[i] != nullptr; ++i) {
+            if (tsf* sf = TryLoadSoundFont(std::string(basePath) + kSfCandidates[i])) {
+                return sf;
+            }
+        }
     }
 
     SDL_Log("[midi] WARNING: No SoundFont found. Music will be silent. "  // sdl-log-gating: intentional (always-visible startup warning)
