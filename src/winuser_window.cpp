@@ -185,6 +185,23 @@ BOOL WINAPI DestroyWindow(HWND hWnd)
         return FALSE;
     }
 
+    // Guard against double-destroy: every other teardown function in this
+    // codebase (DeleteObject/DeleteDC/FreeApiDestroySurfaceDC/KillTimer/
+    // timeKillEvent/_lclose/...) safely no-ops on an already-torn-down
+    // handle instead of touching it again. This one didn't, and a real,
+    // ordinary play sequence can post WM_CLOSE twice for the same hwnd
+    // (e.g. planetblupi's WM_PHASE_BYE quit-confirmation screen posts it
+    // from more than one place without changing phase first), so a stale
+    // non-null hWnd here isn't just a theoretical input -- it's the second
+    // dispatch of a real double-post. g_windowProcedures is populated for
+    // every window CreateWindowExA successfully creates and erased right
+    // here on destroy, so "not present" reliably means "already destroyed
+    // (or never a real window)".
+    const auto procIt = g_windowProcedures.find(hWnd);
+    if (procIt == g_windowProcedures.end()) {
+        return FALSE;
+    }
+
     // Real Win32 semantics: DestroyWindow synchronously sends WM_DESTROY to
     // the window's own procedure before the window is actually torn down.
     // Both target games rely on this to run their own WM_DESTROY handler
@@ -192,8 +209,7 @@ BOOL WINAPI DestroyWindow(HWND hWnd)
     // game objects) before quitting -- without this dispatch, that cleanup
     // never ran and the timer could keep firing after WinMain's message
     // loop had already exited.
-    const auto procIt = g_windowProcedures.find(hWnd);
-    if (procIt != g_windowProcedures.end() && procIt->second) {
+    if (procIt->second) {
         procIt->second(hWnd, WM_DESTROY, 0, 0);
     }
 

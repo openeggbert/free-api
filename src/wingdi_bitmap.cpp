@@ -8,6 +8,22 @@
 
 using namespace FreeApi::Internal;
 
+namespace {
+
+// Reused across CreateBitmap/DeleteObject calls so repeatedly creating and
+// deleting a same-or-smaller-sized bitmap (e.g. planetblupi's minimap,
+// CreateBitmap(DIMMAPX=128, DIMMAPY=128, ...) called every frame while the
+// level editor is open, decmap.cpp) doesn't heap-allocate/free a fresh
+// pixel buffer on every call. DeleteObject swaps a about-to-be-freed
+// bitmap's buffer in here instead of letting it go straight to the
+// allocator; CreateBitmap swaps it back out as its starting point. Safe
+// across threads via thread_local -- both games only ever call GDI
+// functions from their single main thread (MixerThread/FreeApiMmTimerBridge,
+// the only background threads in this codebase, never touch GDI).
+thread_local std::vector<uint8_t> g_bitmapPixelScratch;
+
+} // namespace
+
 extern "C" {
 
 HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy, UINT fuLoad)
@@ -101,6 +117,13 @@ BOOL WINAPI DeleteObject(HGDIOBJ ho)
                             g_diagCompatBitmapPixelCapacityHighWaterBytes,
                             -static_cast<int64_t>(bitmap->pixels.capacity()));
     }
+    // Hand this buffer's capacity to the reuse scratch instead of letting
+    // it go straight to the allocator -- see g_bitmapPixelScratch's comment
+    // above. Whatever was previously sitting in the scratch (if anything)
+    // ends up in bitmap->pixels below and is freed normally by `delete`;
+    // exactly one buffer's worth of capacity is kept at a time, so this
+    // can't accumulate unboundedly.
+    bitmap->pixels.swap(g_bitmapPixelScratch);
     // TASK-24H-1229: clear the magic tag before delete so a double-delete
     // of the same (now-freed) handle fails AsCompatBitmap's validation
     // instead of risking a double-free against stale-but-still-tagged memory.
@@ -150,6 +173,12 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
     // exceeds roughly 536,870,911. Not reachable by either game's real,
     // small, fixed bitmap dimensions; purely defensive.
     bitmap->pitch        = static_cast<int>(static_cast<int64_t>(nWidth) * 4);
+    // Start from whatever buffer DeleteObject last handed back (see
+    // g_bitmapPixelScratch's comment) instead of a freshly-allocated empty
+    // vector -- resize() below only needs to actually allocate if the
+    // reused buffer's capacity is smaller than this request.
+    bitmap->pixels.swap(g_bitmapPixelScratch);
+    bitmap->pixels.clear();
     bitmap->pixels.resize(static_cast<size_t>(nWidth) * static_cast<size_t>(nHeight) * 4u, 0);
     if (FreeApiDiagnosticsFastEnabled()) {
         AdjustDiagLiveBytes(g_diagCompatBitmapPixelCapacityBytes,
@@ -183,14 +212,23 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
             // "no unrelated/game-specific special-casing" scope rules.
             const uint8_t* src = static_cast<const uint8_t*>(lpBits);
             uint8_t* dst = bitmap->pixels.data();
+            // TASK-24H-1231-sibling: widen through size_t, matching the
+            // pitch computation above -- a plain `y * nWidth + x` int
+            // multiplication is the same signed-overflow UB class fixed
+            // there, just at the per-pixel-index site instead of the pitch
+            // site. Not reachable by either game's real, small, fixed
+            // bitmap dimensions (planetblupi's minimap is always
+            // DIMMAPX=DIMMAPY=128); purely defensive.
             for (int y = 0; y < nHeight; ++y) {
+                const size_t rowBase = static_cast<size_t>(y) * static_cast<size_t>(nWidth);
                 for (int x = 0; x < nWidth; ++x) {
-                    uint8_t idx = src[y * nWidth + x];
+                    const size_t idxPos = rowBase + static_cast<size_t>(x);
+                    uint8_t idx = src[idxPos];
                     // Expand to RGBA: treat index as greyscale placeholder
-                    dst[(y * nWidth + x) * 4 + 0] = idx;
-                    dst[(y * nWidth + x) * 4 + 1] = idx;
-                    dst[(y * nWidth + x) * 4 + 2] = idx;
-                    dst[(y * nWidth + x) * 4 + 3] = 0xFF;
+                    dst[idxPos * 4 + 0] = idx;
+                    dst[idxPos * 4 + 1] = idx;
+                    dst[idxPos * 4 + 2] = idx;
+                    dst[idxPos * 4 + 3] = 0xFF;
                 }
             }
         } else if (nBitCount == 16) {
@@ -198,15 +236,17 @@ HBITMAP WINAPI CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitCoun
             const uint16_t* src = static_cast<const uint16_t*>(lpBits);
             uint8_t* dst = bitmap->pixels.data();
             for (int y = 0; y < nHeight; ++y) {
+                const size_t rowBase = static_cast<size_t>(y) * static_cast<size_t>(nWidth);
                 for (int x = 0; x < nWidth; ++x) {
-                    uint16_t px = src[y * nWidth + x];
+                    const size_t idxPos = rowBase + static_cast<size_t>(x);
+                    uint16_t px = src[idxPos];
                     uint8_t r = static_cast<uint8_t>(((px >> 11) & 0x1F) * 255 / 31);
                     uint8_t g = static_cast<uint8_t>(((px >> 5)  & 0x3F) * 255 / 63);
                     uint8_t b = static_cast<uint8_t>(((px >> 0)  & 0x1F) * 255 / 31);
-                    dst[(y * nWidth + x) * 4 + 0] = r;
-                    dst[(y * nWidth + x) * 4 + 1] = g;
-                    dst[(y * nWidth + x) * 4 + 2] = b;
-                    dst[(y * nWidth + x) * 4 + 3] = 0xFF;
+                    dst[idxPos * 4 + 0] = r;
+                    dst[idxPos * 4 + 1] = g;
+                    dst[idxPos * 4 + 2] = b;
+                    dst[idxPos * 4 + 3] = 0xFF;
                 }
             }
         } else if (nBitCount == 32) {

@@ -166,7 +166,14 @@ BOOL WINAPI SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue)
     if (!lpName) {
         return FALSE;
     }
-    return SDL_SetEnvironmentVariable(SDL_GetEnvironment(), lpName, lpValue ? lpValue : "", true) ? TRUE : FALSE;
+    // Real Win32 deletes the variable when lpValue is NULL rather than
+    // setting it to an empty string -- zero call sites in either target
+    // game (test-infrastructure-only), found by this session's
+    // correctness audit.
+    if (!lpValue) {
+        return SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), lpName) ? TRUE : FALSE;
+    }
+    return SDL_SetEnvironmentVariable(SDL_GetEnvironment(), lpName, lpValue, true) ? TRUE : FALSE;
 }
 
 HRSRC WINAPI FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType)

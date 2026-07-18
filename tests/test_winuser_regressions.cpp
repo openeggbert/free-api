@@ -436,6 +436,48 @@ static void TestDestroyWindowDispatchesWmDestroySynchronously()
     DrainMessages();
 }
 
+// DestroyWindow previously had no guard against being called twice on the
+// same (now-stale, but still non-null) hwnd -- found by this session's
+// memory-safety audit. A real, ordinary play sequence can trigger exactly
+// this: planetblupi's WM_PHASE_BYE quit-confirmation screen posts WM_CLOSE
+// from more than one place without changing phase first (event.cpp), so a
+// single VK_ESCAPE keydown there posts WM_CLOSE twice for the same hwnd,
+// and WM_CLOSE is not coalesced (only WM_MOUSEMOVE/WM_TIMER are). The first
+// DestroyWindow call really tears the window down; the second, stale call
+// used to fall through to SDL_GetWindowID/SDL_DestroyWindow on an
+// already-freed SDL_Window -- masked only by SDL3's own object-validity
+// registry, not by anything free-api did. Verifies the second call is now
+// rejected before touching SDL at all.
+static void TestDestroyWindowRejectsSecondCallOnSameHwnd()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = DestroyTrackingWndProc;
+    wc.lpszClassName = "RegTest_DoubleDestroy";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowExA(0, "RegTest_DoubleDestroy", "Test",
+                                 WS_POPUPWINDOW | WS_VISIBLE,
+                                 0, 0, 320, 240,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the double-destroy test");
+    if (!hwnd) return;
+
+    DrainMessages();
+
+    g_destroyReceived = false;
+    BOOL firstDestroy = DestroyWindow(hwnd);
+    Check(firstDestroy == TRUE, "first DestroyWindow call succeeds and tears the window down");
+    Check(g_destroyReceived, "first DestroyWindow call dispatches WM_DESTROY");
+
+    g_destroyReceived = false;
+    BOOL secondDestroy = DestroyWindow(hwnd);
+    Check(secondDestroy == FALSE,
+          "second DestroyWindow call on the same (now-stale) hwnd is rejected, not a double-destroy");
+    Check(!g_destroyReceived,
+          "second DestroyWindow call does not re-dispatch WM_DESTROY (the window procedure is already gone)");
+}
+
 // TASK-24H-0301: positive proof that only lpfnWndProc is retained by
 // RegisterClassA -- re-registers the SAME class name with a full,
 // differently-populated WNDCLASSA (different hIcon/hCursor/hbrBackground/
@@ -1599,6 +1641,7 @@ int main()
     TestGetActiveWindowFallsBackBeforeFocusIsSet();
     TestDefWindowProcHandlesWmClose();
     TestDestroyWindowDispatchesWmDestroySynchronously();
+    TestDestroyWindowRejectsSecondCallOnSameHwnd();
     TestRegisterClassADiscardsNonWndprocFields();
     TestDispatchMessageARoutesNullHwndToSoleRegisteredWindow();
     TestPeekMessageNoRemoveAndRemove();

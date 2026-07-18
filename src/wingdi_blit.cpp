@@ -155,24 +155,24 @@ COLORREF WINAPI GetPixel(HDC hdc, int x, int y)
 {
     CompatDC* dc = AsCompatDC(reinterpret_cast<void*>(hdc));
     if (!dc) {
-        return 0;
+        return CLR_INVALID;
     }
 
     const uint8_t* pixel = nullptr;
     if (dc->kind == CompatDcKind::Surface) {
         if (x < 0 || y < 0 || x >= dc->surfaceWidth || y >= dc->surfaceHeight || !dc->surfacePixels) {
-            return 0;
+            return CLR_INVALID;
         }
         pixel = dc->surfacePixels + static_cast<size_t>(y) * static_cast<size_t>(dc->surfacePitch) + static_cast<size_t>(x) * 4u;
     } else if (dc->selectedBitmap) {
         if (x < 0 || y < 0 || x >= dc->selectedBitmap->width || y >= dc->selectedBitmap->height) {
-            return 0;
+            return CLR_INVALID;
         }
         pixel = dc->selectedBitmap->pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(dc->selectedBitmap->pitch) + static_cast<size_t>(x) * 4u;
     }
 
     if (!pixel) {
-        return 0;
+        return CLR_INVALID;
     }
 
     return RGB(pixel[0], pixel[1], pixel[2]);
@@ -182,24 +182,24 @@ COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color)
 {
     CompatDC* dc = AsCompatDC(reinterpret_cast<void*>(hdc));
     if (!dc) {
-        return color;
+        return CLR_INVALID;
     }
 
     uint8_t* pixel = nullptr;
     if (dc->kind == CompatDcKind::Surface) {
         if (x < 0 || y < 0 || x >= dc->surfaceWidth || y >= dc->surfaceHeight || !dc->surfacePixels) {
-            return color;
+            return CLR_INVALID;
         }
         pixel = dc->surfacePixels + static_cast<size_t>(y) * static_cast<size_t>(dc->surfacePitch) + static_cast<size_t>(x) * 4u;
     } else if (dc->selectedBitmap) {
         if (x < 0 || y < 0 || x >= dc->selectedBitmap->width || y >= dc->selectedBitmap->height) {
-            return color;
+            return CLR_INVALID;
         }
         pixel = dc->selectedBitmap->pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(dc->selectedBitmap->pitch) + static_cast<size_t>(x) * 4u;
     }
 
     if (!pixel) {
-        return color;
+        return CLR_INVALID;
     }
 
     // COLORREF layout is 0x00BBGGRR; surface pixel layout is RGBA.

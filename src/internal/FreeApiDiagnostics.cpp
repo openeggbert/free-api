@@ -51,18 +51,27 @@ void FreeApiDiagSnapshot(const char* tag);
 
 bool FreeApiDiagnosticsEnabled()
 {
-    static int cached = -1;
-    if (cached < 0) {
+    // C++11 guarantees thread-safe, exactly-once initialization of a
+    // function-local static -- unlike the previous `static int cached = -1;
+    // if (cached < 0) {...}` pattern, this can't race two threads into both
+    // seeing "not yet cached" and both running the one-time side effects
+    // below (registering the atexit handler twice, double-logging
+    // "startup"). Found by this session's correctness audit; no real
+    // concurrent call path exists today (gated behind an opt-in env var,
+    // and MixerThread/FreeApiMmTimerBridge never call into diagnostics),
+    // so this is a latent-risk fix, not a live bug fix.
+    static const bool cached = [] {
         const char* direct = SDL_getenv("FREE_DIRECT_DIAGNOSTICS");
         const char* api    = SDL_getenv("FREE_API_DIAGNOSTICS");
-        cached = ((direct && *direct && std::strcmp(direct, "0") != 0)
-               || (api && *api && std::strcmp(api, "0") != 0)) ? 1 : 0;
-        if (cached) {
+        const bool enabled = (direct && *direct && std::strcmp(direct, "0") != 0)
+                           || (api && *api && std::strcmp(api, "0") != 0);
+        if (enabled) {
             std::atexit([]() { FreeApiDiagSnapshot("atexit"); });
             FreeApiDiagSnapshot("startup");
         }
-    }
-    return cached != 0;
+        return enabled;
+    }();
+    return cached;
 }
 
 // See the doc comment on this function's declaration
@@ -75,12 +84,12 @@ bool FreeApiDiagnosticsFastEnabled()
 
 bool FreeApiGdiDebugEnabled()
 {
-    static int cached = -1;
-    if (cached < 0) {
+    // See FreeApiDiagnosticsEnabled's comment above -- same fix, same reason.
+    static const bool cached = [] {
         const char* v = SDL_getenv("FREE_API_DEBUG_GDI");
-        cached = (v && v[0] == '1') ? 1 : 0;
-    }
-    return cached != 0;
+        return v && v[0] == '1';
+    }();
+    return cached;
 }
 
 long FreeApiReadRssKB()

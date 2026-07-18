@@ -62,11 +62,13 @@
 
 static bool midiDebugEnabled()
 {
-    static int cached = -1;
-    if (cached < 0) {
-        cached = SDL_getenv("FREE_API_DEBUG_MIDI") ? 1 : 0;
-    }
-    return cached != 0;
+    // Thread-safe, exactly-once init via a function-local static (C++11
+    // guarantee) -- see FreeApiDiagnosticsEnabled's comment
+    // (src/internal/FreeApiDiagnostics.cpp) for why this replaced a plain
+    // `static int cached = -1;` read-check-write, a sibling of that same
+    // fix found while grepping for the pattern.
+    static const bool cached = SDL_getenv("FREE_API_DEBUG_MIDI") != nullptr;
+    return cached;
 }
 
 #define MIDI_LOG(fmt, ...) \
@@ -557,6 +559,18 @@ static void MixerThread()
  */
 static bool EnsureMidiBackend()
 {
+    // Every other MidiState mutation in this file locks GetMidiState().mtx;
+    // this one didn't. Not exploitable today -- MCI_OPEN (this function's
+    // only caller) always runs synchronously on each target game's single
+    // main thread, and this function itself starts MixerThread rather than
+    // racing against an already-running one -- but consistent locking
+    // matters here too, since a second caller could be added later without
+    // re-deriving that reasoning. Found by this session's architectural-
+    // risk audit. Safe to lock unconditionally: the only call site
+    // (MCI_OPEN's handler, below) does not hold this mutex when it calls
+    // in.
+    std::lock_guard<std::mutex> lk(GetMidiState().mtx);
+
     if (GetMidiState().device != 0) return true; /* already open */
     if (GetMidiState().backendInitFailed) return false; /* already failed once; don't re-log */
 
@@ -608,8 +622,17 @@ static bool EnsureMidiBackend()
  */
 UINT MidiMusicGetNumDevs()
 {
-    /* Attempt a lightweight init check without allocating the full backend. */
-    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) return 0;
+    /* Attempt a lightweight init check without allocating the full backend.
+     * SDL_WasInit-first, matching EnsureJoystickSubsystem's (src/winmm.cpp)
+     * established pattern -- an unconditional SDL_InitSubSystem here grows
+     * SDL's internal per-subsystem refcount (a single byte) on every call
+     * with no matching SDL_QuitSubSystem. This function is called on every
+     * real music-change (CSound::PlayMusic -> InitMidiVolume in both
+     * games), not just at startup, so an extended play session can
+     * plausibly repeat this often enough to matter -- the same bug class
+     * that overflowed the refcount past 255 and hit SDL's own assertion in
+     * timeSetEvent (src/winmm.cpp) before that call site got this guard. */
+    if (!SDL_WasInit(SDL_INIT_AUDIO) && !SDL_InitSubSystem(SDL_INIT_AUDIO)) return 0;
     return 1;
 }
 

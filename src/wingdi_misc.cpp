@@ -25,6 +25,16 @@ UINT WINAPI GetSystemPaletteEntries(HDC hdc, UINT iStartIndex, UINT nEntries, LP
         return 0;
     }
 
+    // A real system palette (always an 8-bit-or-less hardware palette
+    // device) never has more than 256 entries -- clamp here rather than
+    // trusting an arbitrary caller-supplied nEntries unconditionally
+    // (found by this session's edge-case audit). Both real call sites in
+    // free-eggbert/planetblupi already pass exactly 256, matching a
+    // fixed-size PALETTEENTRY[256] buffer, so this is a no-op for them.
+    if (nEntries > 256u) {
+        nEntries = 256u;
+    }
+
     PALETTEENTRY* entries = reinterpret_cast<PALETTEENTRY*>(lppe);
     for (UINT i = 0; i < nEntries; ++i) {
         UINT value       = (iStartIndex + i) & 0xFFu;

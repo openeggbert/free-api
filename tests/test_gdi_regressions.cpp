@@ -445,12 +445,15 @@ static void TestGetSetPixelRoundTripOnMemoryDcWithSelectedBitmap()
     Check(GetRValue(untouched) == 0 && GetGValue(untouched) == 0 && GetBValue(untouched) == 0,
           "SetPixel does not affect other pixels on the same selected bitmap");
 
-    // Out-of-bounds safety, matching the Surface-DC-kind contract.
+    // Out-of-bounds safety, matching the Surface-DC-kind contract. Real
+    // Win32 GetPixel/SetPixel both document CLR_INVALID as their failure
+    // return value (found by this session's memory-safety audit -- this
+    // codebase previously returned 0/the input color instead).
     COLORREF oobRead = GetPixel(memDc, w, h);
-    Check(oobRead == 0, "GetPixel out-of-bounds on a Memory DC returns 0, not garbage/crash");
+    Check(oobRead == CLR_INVALID, "GetPixel out-of-bounds on a Memory DC returns CLR_INVALID, not garbage/crash");
     COLORREF oobWriteAttempt = RGB(0xAA, 0xBB, 0xCC);
     COLORREF oobSetReturn = SetPixel(memDc, -1, -1, oobWriteAttempt);
-    Check(oobSetReturn == oobWriteAttempt, "SetPixel out-of-bounds on a Memory DC returns the passed color without crashing");
+    Check(oobSetReturn == CLR_INVALID, "SetPixel out-of-bounds on a Memory DC returns CLR_INVALID without crashing");
 
     // Found by AddressSanitizer's LeakSanitizer while verifying TASK-24H-1229:
     // this test never cleaned up its bitmap/DC, a genuine resource leak.
