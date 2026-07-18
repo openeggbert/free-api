@@ -20,6 +20,55 @@
 #include <chrono>
 #include <thread>
 #include <cstdio>
+#include <string>
+
+namespace {
+
+// Encodes a single decoded Unicode code point as UTF-8 into `out`.
+void AppendUtf8CodePoint(std::string& out, uint32_t codepoint)
+{
+    if (codepoint <= 0x7Fu) {
+        out += static_cast<char>(codepoint);
+    } else if (codepoint <= 0x7FFu) {
+        out += static_cast<char>(0xC0u | (codepoint >> 6));
+        out += static_cast<char>(0x80u | (codepoint & 0x3Fu));
+    } else if (codepoint <= 0xFFFFu) {
+        out += static_cast<char>(0xE0u | (codepoint >> 12));
+        out += static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu));
+        out += static_cast<char>(0x80u | (codepoint & 0x3Fu));
+    } else {
+        out += static_cast<char>(0xF0u | (codepoint >> 18));
+        out += static_cast<char>(0x80u | ((codepoint >> 12) & 0x3Fu));
+        out += static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu));
+        out += static_cast<char>(0x80u | (codepoint & 0x3Fu));
+    }
+}
+
+// Decodes a null-terminated UTF-16 string (WCHAR = uint16_t code units,
+// matching real Win32 semantics) into UTF-8, resolving surrogate pairs. An
+// unpaired surrogate is emitted as the Unicode replacement character rather
+// than silently corrupting the byte stream.
+std::string Utf16ToUtf8(const WCHAR* text)
+{
+    std::string out;
+    while (*text) {
+        uint32_t codepoint = *text++;
+        if (codepoint >= 0xD800u && codepoint <= 0xDBFFu) {
+            if (*text >= 0xDC00u && *text <= 0xDFFFu) {
+                const uint32_t low = *text++;
+                codepoint = 0x10000u + ((codepoint - 0xD800u) << 10) + (low - 0xDC00u);
+            } else {
+                codepoint = 0xFFFDu; // unpaired high surrogate
+            }
+        } else if (codepoint >= 0xDC00u && codepoint <= 0xDFFFu) {
+            codepoint = 0xFFFDu; // unpaired low surrogate
+        }
+        AppendUtf8CodePoint(out, codepoint);
+    }
+    return out;
+}
+
+} // namespace
 
 extern "C" {
 
@@ -69,9 +118,8 @@ void WINAPI OutputDebugStringA(LPCSTR lpOutputString) {
 
 void WINAPI OutputDebugStringW(LPCWSTR lpOutputString) {
     if (lpOutputString) {
-        while (*lpOutputString) {
-            printf("%c", (char)*lpOutputString++);
-        }
+        const std::string utf8 = Utf16ToUtf8(lpOutputString);
+        printf("%s", utf8.c_str());
     }
 }
 
