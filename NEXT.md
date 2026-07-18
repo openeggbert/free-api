@@ -2,8 +2,10 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `3a0a493` on `develop` (2026-07-09), working tree
-clean, pushed to `origin/develop`.
+state as of commit `471621c` on `develop` (2026-07-18), plus this same
+day's static-analysis fixes (`include/handleapi.h`, `include/winuser.h`,
+this file) which were pending commit as of writing — check `git log -1`
+to see if they've landed yet.
 
 **Before trusting any number in this file, re-verify it** — this file
 has gone stale faster than expected before. Quick checks:
@@ -11,11 +13,20 @@ has gone stale faster than expected before. Quick checks:
 `grep -c '^Status: DONE' plan.md` (done count), `grep -c add_test
 CMakeLists.txt` (test count), `git log -1 --oneline` (current commit).
 
-See [`plan.md`](plan.md) for the full task backlog,
-[`audit.md`](audit.md) for the current deep audit,
+See [`plan.md`](plan.md) for the full task backlog and
 [`docs/quality-assessment.md`](docs/quality-assessment.md) for an
 independent code-quality review, and `git log` for full commit history —
 this file intentionally does not repeat what those already record.
+**`audit.md` no longer exists** — it was a point-in-time deep-audit
+document; its 6 findings were all fixed and it was deleted on 2026-07-18
+once nothing in it remained open (see `git log` around that date). The
+`todo/` directory (`Embedded_Resources_FreeAPI.md`,
+`free-api-performance-todo.md`) was deleted the same day for the same
+reason — one was a deliberately-deferred design doc with no evidenced
+need, the other's one open item was profiled and shown not worth doing.
+A sibling `../freeapiissues.md` file (outside this repo, in the shared
+`openeggbert/` directory) existed briefly and was also fully resolved and
+deleted.
 
 ## 1. Project summary
 
@@ -26,9 +37,10 @@ can compile and run on Linux/macOS/Web/Android without Microsoft
 Windows:
 
 * **Free Eggbert** (`../free-eggbert`, top-level CMake project
-  `SPEEDY_BLUPI_WINDOWS`)
+  `SPEEDY_BLUPI_WINDOWS`) — has a real, working Android port (Gradle/NDK
+  project under `../free-eggbert/android/`, see its `ANDROID.md`).
 * **Planet Blupi** (`../planetblupi`, top-level CMake project
-  `PLANET_BLUPI_WINDOWS`)
+  `PLANET_BLUPI_WINDOWS`) — same, `../planetblupi/android/`.
 
 **Main goal:** source-level compatibility for exactly these two games —
 not Wine, not a general WinAPI reimplementation, not a platform for
@@ -40,12 +52,13 @@ enforced by `cmake/CheckPublicSurfaceBaseline.cmake` (see §6).
 
 **Current development phase: maintenance / stabilization.** The entire
 AI-doable backlog (`plan.md`, both task-ID namespaces) is closed — see
-§2 for the exact numbers. Recent work has shifted from bug-fixing to
-verification-in-depth: a `gcov` coverage sweep, a `cppcheck`+`clang-tidy`
-static-analysis pass, a 3-way maintainability/architecture review, and an
-independent code-quality assessment. Remaining open items are either
-human-only (real-hardware playtests) or contingent on a future audit
-finding something new.
+§2 for the exact numbers. Recent work has been a mix of targeted bug
+fixes found by re-reading real game call sites (MIDI SoundFont lookup,
+path normalization, mixer-thread pacing) and documentation cleanup
+(deleting several stale audit/TODO documents whose findings had all
+already been resolved). Remaining open items are either human-only (real-
+hardware playtests) or contingent on a future audit finding something
+new.
 
 **Important architectural decisions:**
 
@@ -69,27 +82,28 @@ finding something new.
 * `FREE_API_SANITIZE` CMake option (`thread`/`address`, off by default)
   runs the test suite under ThreadSanitizer/AddressSanitizer with no
   manual `LD_PRELOAD` needed — see `docs/cmake-options.md`.
+* Android support is real and already works (not speculative future
+  work) — `src/winmain_bridge.cpp` has an `SDL_main` entry point and APK
+  asset extraction. Web/Emscripten status is comparatively unverified —
+  no `__EMSCRIPTEN__`-gated code exists in `free-api` itself, though
+  `../free-eggbert` has its own `web_persistence.cpp`.
 
 ## 2. Current status
 
-**Build status** (last fully verified at commit `1d0e3f4`; commit
-`3a0a493` only added a markdown doc, no source changed, so this still
-holds):
+**Build status** (fully verified at commit `471621c`, 2026-07-18):
 * Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): configures, builds,
   **29/29** tests pass.
-* As a subdirectory of `../free-eggbert` (Ninja), including the
-  `free-api`+`free-direct` diamond dependency: 29/29.
-* As a subdirectory of `../planetblupi` (Make): 29/29.
-* `../free-direct` standalone: configures, builds, links cleanly against
-  `include/free_api_bridge.h`.
-* Same 29-test suite passes under both `-DFREE_API_SANITIZE=thread` and
-  `=address` (LeakSanitizer included, enabled by default).
+* `test_winuser_regressions` fails some checks under this sandbox's
+  default Wayland display — a confirmed environment artifact, not a code
+  bug; passes under `SDL_VIDEODRIVER=dummy` or real X11/Xvfb (this is how
+  the 29/29 above was verified).
+* The other build configurations (as a subdirectory of `../free-eggbert`/
+  `../planetblupi`, both sanitizer builds) were not re-verified in this
+  session — re-run the commands in §7 before trusting them.
 
-**Test status:** 29 CTest entries, 29/29 passing in all three build
-modes and both sanitizer builds. `test_winuser_regressions` fails 6
-checks under this sandbox's default Wayland display — a confirmed
-environment artifact, not a code bug; passes under
-`SDL_VIDEODRIVER=dummy` or real X11/Xvfb.
+**Task backlog status** (`plan.md`): 220 tasks total — **215 DONE, 1
+OBSOLETE, 4 TODO**. The 4 open tasks are all human-only playtests (see
+§5/§8, item 4) — nothing AI-doable remains in the formal backlog.
 
 **CLI/tools/apps/libraries available:** `free-api` is a library
 (`libfree-api.a`), not a standalone CLI/app. The 29 test binaries
@@ -97,89 +111,121 @@ environment artifact, not a code bug; passes under
 exercises one subsystem in isolation (GDI, MCI/MIDI, winuser messages,
 file I/O, joystick, timers, etc.) and can be run directly. The two real
 end-to-end demos are the target games themselves: `SPEEDY_BLUPI_WINDOWS`
-(`../free-eggbert`) and `PLANET_BLUPI_WINDOWS` (`../planetblupi`), both
-build and link cleanly; actual on-screen/audio behavior is only
-human-verifiable (see §5/§8).
+(`../free-eggbert`) and `PLANET_BLUPI_WINDOWS` (`../planetblupi`).
 
-**Recently implemented (this round, see §3 for detail):**
-`docs/quality-assessment.md` (independent quality review),
-`tests/test_midi_soundfont_rendering.cpp` (first real TinySoundFont
-rendering-path test), gated GDI diagnostic counters behind
-`FreeApiDiagnosticsFastEnabled()`, marker-comment-based SDL log-gating
-allowlist, `tests/support/MidiFixtures.hpp` fixture consolidation.
+**Recently implemented (this round, see §3 for detail):** fixed MIDI
+SoundFont lookup to also try the executable's own directory; fixed
+`NormalizeMidiPath` corrupting genuinely-absolute MCI element paths;
+fixed `MixerThread` rendering audio far faster than real time; fixed
+`OutputDebugStringW` to do a real UTF-16→UTF-8 conversion instead of
+truncating each `wchar_t`; deleted `audit.md`, `todo/*.md`, and the
+sibling `../freeapiissues.md` after verifying every finding in them was
+either already fixed, confirmed unreachable by both games' real code
+paths, or (for the one genuinely open perf question) profiled and shown
+not worth doing.
 
 **What does NOT work / known gaps:** MCI digital-video/AVI is
 permanently out of scope (by design). `CreateBitmap`'s 8-bit indexed
 path is greyscale-only. Four tasks need a human with real display/audio
-hardware — see §5/§8.
+hardware — see §5/§8. Web/Emscripten build readiness is unverified (see
+§1's architectural-decisions note).
 
 ## 3. Recent changes
 
 Most recent first. Full per-task detail: `plan.md`; full commit detail:
 `git log`.
 
-* `3a0a493` — Added `docs/quality-assessment.md`: independent review of
-  WinAPI semantic fidelity, code craftsmanship, test depth, and
-  architecture. No source changes.
-* `1d0e3f4` — Maintainability sweep: closed 5 tasks that had been
-  silently dormant in the original `TASK-0001`–`0012` namespace
-  (`0001` undocumented `SetRect`/`IntersectRect`/`UnionRect` — now in
-  `docs/supported-apis.md`; `0004` gated GDI diagnostic counters behind
-  `FreeApiDiagnosticsFastEnabled()` in `src/wingdi_dc.cpp`,
-  `src/wingdi_bitmap.cpp`, `src/internal/FreeApiGdi.cpp`, deliberately
-  leaving 4 test-critical counters ungated; `0005` added explanatory
-  single-window-assumption comments to
-  `src/internal/FreeApiWindowRegistry.hpp`/`FreeApiMessageQueue.hpp`;
-  `0008` was a false-TODO, already done under a different ID; `0010`
-  added a missing `LoadImageA` regression test). Rewrote
-  `tests/test_sdl_log_gating.cpp`'s allowlist from a `{file, line}` set
-  to inline `// sdl-log-gating: intentional` marker comments (immune to
-  line-number drift). Consolidated 3 hand-duplicated copies of
-  `WriteMinimalMidi` into `tests/support/MidiFixtures.hpp` (new file).
-* `b890221` — Closed 3 gaps found by a `gcov` coverage sweep
-  (`TASK-24H-1251`–`1253`): added
-  `tests/test_midi_soundfont_rendering.cpp` (new file, first test to
-  exercise the real TinySoundFont rendering path via a
-  programmatically-built minimal SF2 fixture) — building it found and
-  fixed a real heap-buffer-overflow in vendored `external/tsf.h`
-  (missing trailing guard-samples) and reproduced/worked around an
-  already-known `SDL_Quit()`-ordering SEGV; added
-  `TestGlobalMemoryStatusPopulatesPlausibleValues` and
-  `TestGetActiveWindowFallsBackBeforeFocusIsSet` to
-  `tests/test_winuser_regressions.cpp`.
-* `85ba871` — Documentation refresh after two audit rounds: corrected
-  stale test counts and sanitizer-option descriptions in
-  `docs/cmake-options.md`/`docs/testing.md`, cross-referenced the
-  automated public-surface-baseline check in
-  `docs/public-surface-audit.md`, rewrote `README.md`'s status section.
-* `a8cf266` and earlier — see `git log` / `plan.md`'s "Deep Audit
-  Follow-up" sections for the two full ground-up audit rounds
-  (`TASK-24H-1229`–`1250`) that preceded this round: a GDI handle
-  double-free fix, a MIDI static-destruction-order race fix
-  (`GetMidiState()` Meyer's-singleton pattern), an automated
-  public-surface-baseline CTest guard, and LeakSanitizer enabled by
-  default (blanket `detect_leaks=0` removed).
+* *(pending commit)* — Re-ran static analysis (§8 task 1, first run since
+  `1d0e3f4`): `cppcheck --enable=warning,performance,portability,style
+  --check-level=exhaustive` on `src`/`include` (with `-I /usr/local/include`
+  added for SDL3 so `SDL_PRIs64` doesn't false-positive as an unknown
+  macro) came back with only cosmetic `style`-level findings in
+  `free-api`'s own code (C-style casts in `%p` log format strings,
+  "use an STL algorithm" suggestions) — no errors/warnings/
+  performance/portability findings outside vendored `external/`
+  (TinySoundFont/TinyMidiLoader, out of scope). A `clang-tidy` pass over
+  a fresh `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` build (default checks,
+  `-header-filter='free-api/(src|include)/'` — the default header filter
+  hides warnings from any header, which is why the first pass without it
+  showed 0) found 2 real, if low-severity, issues and both were fixed:
+  `include/handleapi.h`'s header guard checked `FREE_API_HANDLEAPI_H` in
+  `#ifndef` but defined `FREE_API_WINDOWS_HANDLEAPI_H` — a typo that made
+  the guard never actually protect against double inclusion (silently
+  harmless today only because the file happens to declare nothing but an
+  idempotent function prototype); and a `/*`-in-comment false-trigger in
+  `include/winuser.h`'s `LoadStringA` Doxygen comment (literal text
+  `resource/*.rc`, reworded to avoid the false nested-comment warning, no
+  meaning change). Re-verified 29/29 tests pass after both fixes.
+* `471621c` — Fixed `OutputDebugStringW` (`src/winbase.cpp`) to perform a
+  real UTF-16→UTF-8 conversion (surrogate-pair aware, replacement
+  character for unpaired surrogates) instead of truncating each
+  `wchar_t` to `char`. Currently unreachable by either target game
+  (neither defines `UNICODE`, so their `OutputDebugString` calls resolve
+  to the `A` variant) but was cheap and correct to fix regardless.
+* `12bbd0c` — Deleted `todo/free-api-performance-todo.md`. Walked through
+  every item with the user: all P0/P1 items verified fixed in current
+  source, P2 test/profiling items verified present, and the one
+  genuinely open item (`std::vector<uint8_t>` → `uint32_t` pixel
+  buffers) was benchmarked against the real `StretchBlt` code paths —
+  the dominant 1:1-blit path goes through `memcpy` (element type
+  irrelevant) and the scaled path's theoretical 2x speedup only applies
+  to blits that are rare and small in real gameplay. Not worth the
+  byte-ordering/18-call-site risk the original TODO flagged.
+* `3935a1f` — Deleted `audit.md` (all 6 proposed tasks verified
+  implemented — `TASK-24H-1245`–`1250`) and
+  `todo/Embedded_Resources_FreeAPI.md` (a deliberately-deferred WinAPI
+  resource-emulation design doc; source-level verification against
+  `free-eggbert`/`planetblupi` showed none of its 4 resource types
+  (STRINGTABLE/BITMAP/CURSOR-ICON/WAVE) need it — STRINGTABLE already has
+  its own narrow extractor, BITMAP resources never existed even in the
+  original `.rc` files, WAVE loading is dead code, and CURSOR/ICON data
+  is visually inconsequential since both games hide the OS cursor and
+  draw their own sprite).
+* `76c55ea` — Fixed MIDI SoundFont lookup (`LoadSoundFont()`) to also try
+  the executable's own directory via `SDL_GetBasePath()`, not just the
+  process's current working directory, so a bundled `default.sf2` is
+  found regardless of how the game is launched (IDE run config, Steam
+  "Start In" shortcut, plain `./exe` invocation).
+* `3635439` — Fixed `NormalizeMidiPath` corrupting genuinely-absolute MCI
+  element paths built by `CSound::PlayMusic` via
+  `GetCurrentDirectory()+strcat()` when the process's real working
+  directory is itself absolute (e.g. launched from an IDE) — the old
+  logic unconditionally stripped a leading slash assuming a Windows
+  `"\User"`-style CWD-relative path, breaking genuinely-rooted paths.
+* `10d58c2` — Fixed `MixerThread` rendering PCM far faster than real time
+  (no backpressure — `SDL_PutAudioStreamData` is non-blocking, so
+  without a cap the mixer pegged a CPU core and `active->timeMs` (and
+  therefore the `MM_MCINOTIFY` "song finished" notification) ran far
+  ahead of what was actually audible).
+* `94dc8a4` and earlier — see `git log` / `plan.md` for the full audit
+  history (`TASK-24H-1229`–`1253` and earlier namespaces) that preceded
+  this round.
 
 ## 4. Current blocker / main problem
 
-**No blocker.** All build configurations work, 29/29 tests pass
-everywhere (default and both sanitizer builds). Working tree is clean;
-`develop` is pushed and matches `origin/develop` at `3a0a493`.
+**No blocker.** Standalone build works, 29/29 tests pass (verified under
+`SDL_VIDEODRIVER=dummy`/`SDL_AUDIODRIVER=dummy`). Working tree is clean;
+`develop` is pushed and matches `origin/develop` at `471621c`.
 
 ## 5. Known bugs and limitations
 
 * **Incomplete (by design, evidence-backed):** `StretchBlt` only
   supports `SRCCOPY` (`src/wingdi_blit.cpp`); `mciGetDeviceIDA` ignores
-  `lpszDevice` and always returns `1` (`src/winmm.cpp:368-372`, safe
-  because both games only ever open one MCI device); `_lopen` ignores
-  `iReadWrite` and always opens read-only (`src/winbase_file.cpp:43-69`);
-  `CreateBitmap`'s 8-bit indexed path is greyscale-only (only reached by
-  planetblupi's minimap in fullscreen mode); no real `WM_ACTIVATEAPP(0)`
-  delivery or true blocking `WaitMessage` — all documented, evidenced,
-  permanent decisions, see `docs/out-of-scope.md`.
+  `lpszDevice` and always returns `1` (`src/winmm.cpp`, safe because both
+  games only ever open one MCI device); `_lopen` ignores `iReadWrite` and
+  always opens read-only (`src/winbase_file.cpp`); `CreateBitmap`'s
+  8-bit indexed path is greyscale-only (only reached by planetblupi's
+  minimap in fullscreen mode); no real `WM_ACTIVATEAPP(0)` delivery or
+  true blocking `WaitMessage` — all documented, evidenced, permanent
+  decisions, see `docs/out-of-scope.md`.
 * **Documented, not fixed (real but unreachable by evidenced call
-  sites):** `FreeApiDestroySurfaceDC`/`AsCompatDC` segfaults on a
-  genuinely garbage, never-allocated pointer instead of returning
+  sites):** `CloseHandle` (`src/winbase.cpp`) is an unconditional
+  `return TRUE;` stub — confirmed zero call sites in either target game;
+  the only place either game creates handles that would need it
+  (`CreateMutex`/`CreateThread` in `free-eggbert/src/blupi.cpp`) is
+  itself guarded by an `#if THREAD` that's never defined, so that branch
+  never compiles in. `FreeApiDestroySurfaceDC`/`AsCompatDC` segfaults on
+  a genuinely garbage, never-allocated pointer instead of returning
   `FALSE` safely; `CompatDC::selectedBitmap`'s dangling-pointer risk —
   both traced and confirmed unreachable by either game's real code paths
   (`docs/out-of-scope.md`).
@@ -188,8 +234,9 @@ everywhere (default and both sanitizer builds). Working tree is clean;
   bridge exception into the internal `FreeApi::Platform::ReadRssKB()`
   symbol directly — see `docs/scope.md`.
 * **Confirmed environment artifact, not a code bug:**
-  `test_winuser_regressions` fails 6 checks under this sandbox's default
-  Wayland display; passes under `SDL_VIDEODRIVER=dummy` or real X11/Xvfb.
+  `test_winuser_regressions` fails some checks under this sandbox's
+  default Wayland display; passes under `SDL_VIDEODRIVER=dummy` or real
+  X11/Xvfb.
 * **Needs human verification** (all four formally tracked, acceptance
   criteria in `docs/target-game-verification.md`): `MK_SHIFT`
   drag-select (`TASK-24H-0401`), `MK_CONTROL` level-editor flood-fill
@@ -199,13 +246,17 @@ everywhere (default and both sanitizer builds). Working tree is clean;
   human judgment call.
 * **By design, not a bug:** MCI digital-video/AVI is permanently
   declined (no evidenced call site in either game).
+* **Unverified, not confirmed broken or working:** Web/Emscripten build
+  readiness — no `__EMSCRIPTEN__`-gated code found in `free-api` itself;
+  would need fresh scoping if ever prioritized (see §1).
 
 ## 6. Architecture notes
 
 * **Main modules:** `src/wingdi_*.cpp` (GDI — device contexts, bitmaps,
   blitting), `src/winmm.cpp`/`src/MidiMusic.cpp` (MCI/MIDI/joystick/
   timers), `src/winuser_*.cpp` (windows, messages, input),
-  `src/winbase_*.cpp` (files, paths, process/env), `src/internal/*`
+  `src/winbase_*.cpp` (files, paths, process/env), `src/winmain_bridge.cpp`
+  (entry point — desktop `main`/Android `SDL_main`), `src/internal/*`
   (SDL3 bridging, window/message-queue registries, path normalization —
   never exposed via public headers).
 * **Data flow:** target-game code calls WinAPI-shaped functions declared
@@ -220,6 +271,18 @@ everywhere (default and both sanitizer builds). Working tree is clean;
     `GetMidiState()` (Meyer's singleton) — the language guarantees
     destruction order relative to other statics; do not revert to a
     plain namespace-scope static.
+  - `MidiMusicSendCommand`'s `MCI_PLAY` handler captures MM_MCINOTIFY
+    notify data under `GetMidiState().mtx` and posts it
+    (`PostMessageA`) only after releasing the lock — do not restructure
+    this back to posting while the mutex is held (see the lock-order
+    comment on `GetMidiState().mtx`'s declaration).
+  - `MixerThread` paces rendering to the audio stream's actual drain
+    rate (`kMaxQueuedBlocksAhead`) — do not remove this cap; without it
+    the mixer thread renders far ahead of real time (fixed in `10d58c2`).
+  - `NormalizeMidiPath`/`NormalizeFilesystemPath` try a genuinely-absolute
+    path as-is before falling through to CWD-relative normalization — do
+    not revert to unconditionally stripping a leading slash (fixed in
+    `3635439`).
   - `src/internal/FreeApiWindowRegistry.hpp`'s 5 globals and
     `FreeApiMessageQueue.hpp`'s `g_mouseButtons` are deliberately
     unsynchronized — safe only under the documented single-live-window,
@@ -284,44 +347,42 @@ No lint/formatter is configured in this repository. See
 The AI-doable P0–P3 backlog in `plan.md` is fully closed. These are the
 next concrete, bounded, single-session tasks, in priority order:
 
-1. **Re-run static analysis at current HEAD.** Goal: confirm `cppcheck`
-   and `clang-tidy` are still clean after the 2 commits since the last
-   run. Files: none expected to change unless something is found.
-   Verify: `cppcheck --enable=warning,performance,portability,style
-   --check-level=exhaustive src include` and a `clang-tidy` pass over
-   `compile_commands.json` from a `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
-   build; expect zero new findings.
-2. **Re-run the `gcov` coverage sweep.** Goal: confirm the previously
-   measured 72.1% weighted `src/**` coverage figure still holds after
-   `test_midi_soundfont_rendering` and the other Session-7 test
-   additions, and check whether any function is still at 0%. Files:
-   none expected unless a real gap is found. Verify:
-   `-DCMAKE_CXX_FLAGS="--coverage -O0"
-   -DCMAKE_EXE_LINKER_FLAGS="--coverage"` build, `ctest`, then `gcov -o
-   <objdir> <file>.cpp` per translation unit.
-3. **Skeptical re-audit of the highest-churn files.** Goal:
-   independently re-verify `src/wingdi_dc.cpp`, `src/wingdi_bitmap.cpp`,
-   `src/internal/FreeApiGdi.cpp` (all touched by the diagnostic-counter
-   gating change) against current source rather than assuming the
-   `DONE` status still holds. Files: the three above plus their tests
-   in `tests/test_gdi_regressions.cpp`. Verify: full `ctest` in all 5
-   build configurations (standalone, both target games, `build-tsan`,
+1. **Re-run the `gcov` coverage sweep.** Goal: confirm the previously
+   measured 72.1% weighted `src/**` coverage figure still holds, and
+   check whether any function is still at 0%. Files: none expected
+   unless a real gap is found. Verify: `-DCMAKE_CXX_FLAGS="--coverage
+   -O0" -DCMAKE_EXE_LINKER_FLAGS="--coverage"` build, `ctest`, then
+   `gcov -o <objdir> <file>.cpp` per translation unit.
+2. **Skeptical re-audit of the highest-churn files.** Goal:
+   independently re-verify `src/MidiMusic.cpp` (MCI_PLAY lock-order fix,
+   `MixerThread` pacing fix) and `src/internal/FreeApiPath.cpp`
+   (`NormalizeMidiPath` absolute-path fix) against current source, since
+   these are the files touched by this round's real bug fixes. Files:
+   the two above plus their tests. Verify: full `ctest` in all 5 build
+   configurations (standalone, both target games, `build-tsan`,
    `build-asan`) — expect 29/29 in every one.
-4. **Human playtest pass (not AI-doable).** Goal: complete the 4
+3. **Human playtest pass (not AI-doable).** Goal: complete the 4
    remaining `TODO` tasks (`TASK-24H-0401`/`0403`/`1221`/`1222`) via the
    single checklist at `docs/target-game-verification.md`. Requires a
    human with a real display and audio backend.
 
-If tasks 1–3 all come back clean and no human playtest is available, the
+If tasks 1–2 both come back clean and no human playtest is available, the
 next productive step is a fresh, independent, skeptical full-codebase
 re-audit (the pattern that has found real gaps every time it's been run
 historically — see `git log` / `plan.md` for precedent). Do not invent
 speculative new tasks just to have something to do.
 
+**Static analysis (`cppcheck`+`clang-tidy`) was just re-run and is clean
+(see §3) — when it's time to re-run it again, remember `clang-tidy`'s
+default header filter hides warnings from any header, including this
+project's own `include/*.h`; use `-header-filter='free-api/(src|include)/'`
+or real findings (like the `handleapi.h` guard bug this pass found) will
+be silently suppressed.**
+
 ## 9. Do not do yet
 
-* No broad refactor of the GDI diagnostic-counter gating scheme just
-  added — it was implemented carefully to avoid breaking
+* No broad refactor of the GDI diagnostic-counter gating scheme — it was
+  implemented carefully to avoid breaking
   `tests/test_gdi_regressions.cpp`'s leak-detection reads; see §6.
 * No unrelated cleanup or speculative architecture changes while the
   backlog is closed — if nothing concrete is broken, prefer the
@@ -334,18 +395,21 @@ speculative new tasks just to have something to do.
   `cmake/known-public-symbols.txt` and `docs/scope.md` compatibility
   rules first.
 * Do not revert any of these specific, evidenced fixes without a
-  deliberate, re-justified decision (all have a `plan.md`/`docs/*`
-  entry explaining why):
+  deliberate, re-justified decision (all have a `plan.md`/`docs/*`/git
+  history entry explaining why):
   - `GetMidiState()` (`src/MidiMusic.cpp`) back to a plain
     `static MidiState g_midi;`.
   - `ASAN_OPTIONS=detect_leaks=0` (`CMakeLists.txt`) — use a scoped
     `LSAN_OPTIONS=suppressions=<file>` instead if ever needed.
   - `ResolveJoystick`'s bounds check (`src/winmm.cpp`) to comparing
     `static_cast<int>(uJoyID) < count`.
-  - `g_debugInput` (`src/internal/FreeApiMessageQueue.{hpp,cpp}`) to a
-    plain `bool`.
-  - `tests/test_sdl_log_gating.cpp`'s marker-comment allowlist back to a
-    `{file, line}` set.
+  - `MidiMusicSendCommand`'s `MCI_PLAY` handler back to calling
+    `PostMessageA` while `GetMidiState().mtx` is held.
+  - `MixerThread`'s render-ahead cap (`kMaxQueuedBlocksAhead`).
+  - `NormalizeMidiPath`/`NormalizeFilesystemPath`'s absolute-path-first
+    check back to unconditionally stripping a leading slash.
+  - `OutputDebugStringW`'s UTF-16→UTF-8 conversion back to a raw
+    per-`wchar_t` cast.
   - The 4 GDI counters (`g_diagCompatDcs(Ever)`/`g_diagCompatBitmaps(Ever)`)
     to being gated behind `FreeApiDiagnosticsFastEnabled()`.
 * Do not re-copy `WriteMinimalMidi`'s fixture bytes into a new test file
@@ -359,6 +423,12 @@ speculative new tasks just to have something to do.
 * Do not dispatch a fork/subagent to edit files on this repo while
   making direct edits yourself in parallel — read-only parallel research
   forks are fine; concurrent *writes* are not.
+* Do not re-add `audit.md`, `todo/Embedded_Resources_FreeAPI.md`,
+  `todo/free-api-performance-todo.md`, or `../freeapiissues.md` as
+  living documents — all were deliberately deleted on 2026-07-18 once
+  every finding in them was resolved (fixed, confirmed unreachable, or
+  profiled and rejected). If a genuinely new problem is found, open a
+  fresh, narrowly-scoped note rather than reviving one of these.
 
 ## 10. Resume prompt
 

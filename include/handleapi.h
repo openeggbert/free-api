@@ -2,7 +2,7 @@
 // Created by robertvokac on 5/3/26.
 //
 
-#ifndef FREE_API_HANDLEAPI_H
+#ifndef FREE_API_WINDOWS_HANDLEAPI_H
 #define FREE_API_WINDOWS_HANDLEAPI_H
 
 #include <minwindef.h>
