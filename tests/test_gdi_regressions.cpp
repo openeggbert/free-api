@@ -777,6 +777,50 @@ static void TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimen
     remove(fixturePath);
 }
 
+// LoadImageA's cx/cy != 0 branch (src/internal/FreeApiGdi.cpp's
+// ScaleCompatBitmap) had zero test coverage -- found by this session's gcov
+// sweep. Not currently reached by either target game: both free-eggbert's
+// and planetblupi's real DDLoadBitmap call sites (ddutil.cpp) always pass
+// dx=dy=0 to LoadImageA (free-eggbert pixmap.cpp:791,851; planetblupi
+// pixmap.cpp:593), so this is defensive-completeness coverage for a real,
+// reachable-via-the-public-API code path, not a known-used-behavior gap --
+// same category as TestGetObjectARejectsDegenerateArguments above. Also
+// exercises the pitch-overflow-cast fix already applied to this exact
+// function (see git history around "CreateCompatBitmapFromSurface and
+// ScaleCompatBitmap").
+static void TestLoadImageAWithNonZeroCxCyScalesViaScaleCompatBitmap()
+{
+    const int srcWidth = 8, srcHeight = 6;
+    const std::vector<uint8_t> bmpBytes = MakeMinimalBmp(srcWidth, srcHeight);
+
+    const char* fixturePath = "test_gdi_fixture_scaled.blp";
+    FILE* f = fopen(fixturePath, "wb");
+    Check(f != nullptr, "test fixture file opens for writing (scaled-load test)");
+    if (f) {
+        fwrite(bmpBytes.data(), 1, bmpBytes.size(), f);
+        fclose(f);
+    }
+
+    const int targetWidth = 4, targetHeight = 3;
+    HANDLE h = LoadImageA(nullptr, fixturePath, IMAGE_BITMAP, targetWidth, targetHeight, LR_LOADFROMFILE);
+    Check(h != nullptr, "LoadImageA with non-zero cx/cy succeeds and scales via ScaleCompatBitmap");
+
+    if (h) {
+        HBITMAP hbm = reinterpret_cast<HBITMAP>(h);
+        BITMAP bm{};
+        int written = GetObjectA(hbm, sizeof(bm), &bm);
+        Check(written == sizeof(BITMAP), "GetObjectA reports a full BITMAP struct for a scaled LoadImageA bitmap");
+        Check(bm.bmWidth == targetWidth && bm.bmHeight == targetHeight,
+              "GetObjectA reports the scaled cx/cy dimensions, not the original fixture's srcWidth/srcHeight");
+        Check(bm.bmWidthBytes == targetWidth * 4,
+              "the scaled bitmap's pitch matches its new (scaled) width, not the original");
+
+        DeleteObject(hbm);
+    }
+
+    remove(fixturePath);
+}
+
 // TASK-0010: planetblupi's real DDLoadBitmap (ddutil.cpp:90) calls
 // LoadImageA with LR_CREATEDIBSECTION alone (no LR_LOADFROMFILE) as a
 // resource-load attempt that's expected to fail and fall through to the
@@ -1105,6 +1149,7 @@ int main()
     TestGetObjectARejectsDegenerateArguments();
     TestGetObjectAReturnsActualBytesCopiedNotAlwaysFullSize();
     TestLoadImageADecodesNonBmpExtensionAndGetObjectAReportsCorrectDimensions();
+    TestLoadImageAWithNonZeroCxCyScalesViaScaleCompatBitmap();
     TestLoadImageARejectsResourceLoadWithoutLoadFromFile();
     TestLoadImageASuccessPathIsQuietByDefault();
     TestLoadImageAWithLeadingBackslashRootedPathStaysRelativeToCwd();

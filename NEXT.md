@@ -2,11 +2,10 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `3bb0fd6` on `develop` (2026-07-18), plus a
-skeptical re-audit of this round's `MidiMusic.cpp`/`FreeApiPath.cpp`
-fixes and a full 5-configuration test run performed the same day, which
-were pending commit as of writing — check `git log -1` to see if they've
-landed yet.
+state as of commit `59dacc3` on `develop` (2026-07-18), plus a `gcov`
+coverage sweep and two new regression tests it motivated, performed the
+same day, which were pending commit as of writing — check `git log -1`
+to see if they've landed yet.
 
 **Before trusting any number in this file, re-verify it** — this file
 has gone stale faster than expected before. Quick checks:
@@ -92,7 +91,9 @@ new.
 ## 2. Current status
 
 **Build status** (fully verified at commit `3bb0fd6`, 2026-07-18, all 5
-configurations, all under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`):
+configurations, all under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`;
+29-count predates the 2 test cases §3 describes adding, which landed in
+existing binaries so the total test *count* is unaffected):
 * Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): **29/29**.
 * As a subdirectory of `../free-eggbert` (Ninja): **29/29**.
 * As a subdirectory of `../planetblupi` (Make): **29/29**.
@@ -103,9 +104,19 @@ configurations, all under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`):
   environment artifact, not a code bug; the 29/29 figures above were all
   obtained under `SDL_VIDEODRIVER=dummy`.
 
+**Test coverage** (`gcov`, weighted across `src/**.cpp` with executable
+lines, re-measured 2026-07-18 in a `--coverage -O0` build): **78.53%**
+(1357/1728 lines), up from a previously recorded 72.1% — see §3 for what
+changed. One file remains at 0% (`src/platform/PlatformProcessInfo.cpp`,
+10 lines) by design: it's only reached through `FreeApiDiagSnapshot`,
+which is gated behind the opt-in `FREE_API_DIAGNOSTICS`/
+`FREE_DIRECT_DIAGNOSTICS` env vars that the standard test run doesn't
+set — diagnostic/observability code, not game logic, left untested
+rather than adding an env-var-manipulating test for it.
+
 **Task backlog status** (`plan.md`): 220 tasks total — **215 DONE, 1
 OBSOLETE, 4 TODO**. The 4 open tasks are all human-only playtests (see
-§5/§8, item 4) — nothing AI-doable remains in the formal backlog.
+§5/§8) — nothing AI-doable remains in the formal backlog.
 
 **CLI/tools/apps/libraries available:** `free-api` is a library
 (`libfree-api.a`), not a standalone CLI/app. The 29 test binaries
@@ -137,7 +148,26 @@ hardware — see §5/§8. Web/Emscripten build readiness is unverified (see
 Most recent first. Full per-task detail: `plan.md`; full commit detail:
 `git log`.
 
-* *(pending commit)* — Skeptical re-audit of this round's real bug fixes
+* *(pending commit)* — Re-ran the `gcov` coverage sweep (§8 task 1):
+  weighted `src/**` coverage is now 78.53% (1357/1728 lines), up from a
+  previously recorded 72.1%. Investigating the two lowest-coverage files
+  found two real, actionable gaps and fixed both with new regression
+  tests: `ScaleCompatBitmap` (`src/internal/FreeApiGdi.cpp`, exercised by
+  `LoadImageA`'s `cx`/`cy` != 0 branch) had zero coverage — added
+  `TestLoadImageAWithNonZeroCxCyScalesViaScaleCompatBitmap` to
+  `tests/test_gdi_regressions.cpp` (`FreeApiGdi.cpp` coverage
+  47%→87%); this session's own `Utf16ToUtf8`/`OutputDebugStringW` fix
+  (see the `59dacc3`-and-earlier entry below) had been verified only with
+  an ad hoc throwaway script, not a real test — added
+  `TestOutputDebugStringWConvertsUtf16ToUtf8AndIsNullSafe` to
+  `tests/test_winuser_regressions.cpp` (`winbase.cpp` coverage
+  37%→87%), asserting the exact UTF-8 byte sequence for a BMP character
+  (€) and a surrogate-pair-encoded astral character (🙂). Both new test
+  cases landed in existing test binaries, so the total test *count*
+  (29) is unchanged; re-verified 29/29 after adding them. The one
+  remaining 0%-coverage file (`PlatformProcessInfo.cpp`) was left as-is
+  — see §2 for why.
+* `59dacc3` — Skeptical re-audit of this round's real bug fixes
   (§8 task 2): independently re-read `NormalizeMidiPath`
   (`src/MidiMusic.cpp:296-380`, the two-phase absolute-path-then-CWD-
   relative logic) and the MCI_PLAY lock-order + `MixerThread` backpressure
@@ -150,7 +180,7 @@ Most recent first. Full per-task detail: `plan.md`; full commit detail:
   `../planetblupi` subdirectory, `build-tsan`, `build-asan`), all
   **29/29** under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` — see §2
   for the updated per-configuration figures.
-* *(pending commit)* — Re-ran static analysis (§8 task 1, first run since
+* `3bb0fd6` — Re-ran static analysis (§8 task 1, first run since
   `1d0e3f4`): `cppcheck --enable=warning,performance,portability,style
   --check-level=exhaustive` on `src`/`include` (with `-I /usr/local/include`
   added for SDL3 so `SDL_PRIs64` doesn't false-positive as an unknown
@@ -359,25 +389,23 @@ No lint/formatter is configured in this repository. See
 
 ## 8. Next smallest tasks
 
-The AI-doable P0–P3 backlog in `plan.md` is fully closed. These are the
-next concrete, bounded, single-session tasks, in priority order:
+The AI-doable P0–P3 backlog in `plan.md` is fully closed. Every item this
+file's own "next smallest tasks" list has proposed across this round
+(static analysis, skeptical re-audit, gcov sweep) has now been completed
+— see §3 for each. Only one task remains, and it is not AI-doable:
 
-1. **Re-run the `gcov` coverage sweep.** Goal: confirm the previously
-   measured 72.1% weighted `src/**` coverage figure still holds, and
-   check whether any function is still at 0%. Files: none expected
-   unless a real gap is found. Verify: `-DCMAKE_CXX_FLAGS="--coverage
-   -O0" -DCMAKE_EXE_LINKER_FLAGS="--coverage"` build, `ctest`, then
-   `gcov -o <objdir> <file>.cpp` per translation unit.
-2. **Human playtest pass (not AI-doable).** Goal: complete the 4
+1. **Human playtest pass (not AI-doable).** Goal: complete the 4
    remaining `TODO` tasks (`TASK-24H-0401`/`0403`/`1221`/`1222`) via the
    single checklist at `docs/target-game-verification.md`. Requires a
    human with a real display and audio backend.
 
-If task 1 comes back clean and no human playtest is available, the next
-productive step is a fresh, independent, skeptical full-codebase
-re-audit (the pattern that has found real gaps every time it's been run
-historically — see `git log` / `plan.md` for precedent). Do not invent
-speculative new tasks just to have something to do.
+With no human playtest available, the next productive step is a fresh,
+independent, skeptical full-codebase re-audit (the pattern that has
+found real gaps every time it's been run historically — see `git log` /
+`plan.md` for precedent, and this round's own gcov sweep, which found 2
+real testing gaps). Do not invent speculative new tasks just to have
+something to do — if a fresh re-audit also comes back clean, say so
+plainly rather than manufacturing busywork.
 
 **Static analysis (`cppcheck`+`clang-tidy`) was just re-run and is clean
 (see §3) — when it's time to re-run it again, remember `clang-tidy`'s

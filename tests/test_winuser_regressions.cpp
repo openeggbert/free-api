@@ -1491,6 +1491,57 @@ static void TestOutputDebugStringAPrintsToStdoutAndIsNullSafe()
     Check(strstr(captured, "Failed to create sound buffer\n") != nullptr,
           "OutputDebugStringA actually prints its argument's exact text to stdout, matching both games' real call shape");
 }
+
+// OutputDebugStringW (src/winbase.cpp) was fixed to perform a real UTF-16
+// -> UTF-8 conversion (previously it truncated each wchar_t to char) but
+// had zero test coverage -- found by this session's gcov sweep. Reuses
+// TestOutputDebugStringAPrintsToStdoutAndIsNullSafe's dup2-based stdout
+// capture technique; see that test's comment for why the temp file path
+// must be relative, not absolute.
+static void TestOutputDebugStringWConvertsUtf16ToUtf8AndIsNullSafe()
+{
+    Check(true, "OutputDebugStringW(nullptr) does not crash (exercised below, before any assertion could run if it did)");
+    OutputDebugStringW(nullptr);
+
+    // "Hi <euro-sign><slightly-smiling-face>" -- covers a plain-ASCII run, a
+    // BMP character requiring a 3-byte UTF-8 encoding (U+20AC), and an
+    // astral character requiring a UTF-16 surrogate pair decoded into a
+    // 4-byte UTF-8 encoding (U+1F642).
+    const WCHAR text[] = {'H', 'i', ' ', 0x20AC, 0xD83D, 0xDE42, 0};
+
+    char tmpPath[] = "free-api-odsw-test-XXXXXX"; // relative to CWD -- see comment above
+    int tmpFd = mkstemp(tmpPath);
+    Check(tmpFd >= 0, "temp file created to capture OutputDebugStringW's real stdout output");
+    if (tmpFd < 0) return;
+
+    fflush(stdout);
+    int savedStdoutFd = dup(STDOUT_FILENO);
+    Check(savedStdoutFd >= 0, "original stdout fd saved for restoration");
+
+    fflush(stdout);
+    dup2(tmpFd, STDOUT_FILENO);
+    OutputDebugStringW(text);
+    fflush(stdout);
+
+    dup2(savedStdoutFd, STDOUT_FILENO);
+    close(savedStdoutFd);
+    close(tmpFd);
+
+    FILE* readBack = fopen(tmpPath, "r");
+    char captured[256] = {0};
+    if (readBack) {
+        fgets(captured, sizeof(captured), readBack);
+        fclose(readBack);
+    }
+    remove(tmpPath);
+
+    // Expected UTF-8 bytes for "Hi €\U0001F642": 'H' 'i' ' ' then the
+    // 3-byte encoding of U+20AC (0xE2 0x82 0xAC) then the 4-byte encoding
+    // of U+1F642 (0xF0 0x9F 0x99 0x82).
+    const char expected[] = "Hi \xE2\x82\xAC\xF0\x9F\x99\x82";
+    Check(strcmp(captured, expected) == 0,
+          "OutputDebugStringW converts UTF-16 to UTF-8 correctly, including a BMP character and a surrogate-pair-encoded astral character");
+}
 #endif
 
 // TASK-24H-1226: SetWindowTextA (src/winuser_window.cpp) is real, live
@@ -1572,6 +1623,7 @@ int main()
     TestWsprintfAFormatsAndHandlesEdgeCases();
 #if !defined(_WIN32)
     TestOutputDebugStringAPrintsToStdoutAndIsNullSafe();
+    TestOutputDebugStringWConvertsUtf16ToUtf8AndIsNullSafe();
 #endif
     TestSetWindowTextASetsRealWindowTitle();
 
