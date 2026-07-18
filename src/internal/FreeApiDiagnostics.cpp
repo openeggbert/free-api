@@ -51,27 +51,37 @@ void FreeApiDiagSnapshot(const char* tag);
 
 bool FreeApiDiagnosticsEnabled()
 {
-    // C++11 guarantees thread-safe, exactly-once initialization of a
-    // function-local static -- unlike the previous `static int cached = -1;
-    // if (cached < 0) {...}` pattern, this can't race two threads into both
-    // seeing "not yet cached" and both running the one-time side effects
-    // below (registering the atexit handler twice, double-logging
-    // "startup"). Found by this session's correctness audit; no real
-    // concurrent call path exists today (gated behind an opt-in env var,
-    // and MixerThread/FreeApiMmTimerBridge never call into diagnostics),
-    // so this is a latent-risk fix, not a live bug fix.
-    static const bool cached = [] {
+    // NOTE: deliberately NOT a magic-static (`static const bool cached =
+    // [](){...}();`) -- that was tried and immediately caused a real,
+    // 100%-reproducible startup crash (SIGABRT / __gnu_cxx::recursive_init_error)
+    // whenever diagnostics are enabled. The reason: this function's own
+    // one-time init work calls FreeApiDiagSnapshot("startup"), and
+    // FreeApiDiagSnapshot's very first line calls back into
+    // FreeApiDiagnosticsEnabled() -- a same-thread reentrant call into a
+    // function-local static that is still being initialized. The C++11
+    // thread-safe-init guard treats that as undefined behavior, and
+    // libstdc++ concretely throws/terminates on it. A plain atomic doesn't
+    // have that "in progress" guard state -- storing `value` into `cached`
+    // *before* the recursive call (matching the original plain-int
+    // version's ordering) lets the reentrant call see the already-computed
+    // result and return immediately, same as before this was ever "fixed"
+    // for the (real but far lower severity) data race the previous
+    // audit found.
+    static std::atomic<int> cached{-1};
+    int value = cached.load(std::memory_order_acquire);
+    if (value < 0) {
         const char* direct = SDL_getenv("FREE_DIRECT_DIAGNOSTICS");
         const char* api    = SDL_getenv("FREE_API_DIAGNOSTICS");
         const bool enabled = (direct && *direct && std::strcmp(direct, "0") != 0)
                            || (api && *api && std::strcmp(api, "0") != 0);
+        value = enabled ? 1 : 0;
+        cached.store(value, std::memory_order_release);
         if (enabled) {
             std::atexit([]() { FreeApiDiagSnapshot("atexit"); });
             FreeApiDiagSnapshot("startup");
         }
-        return enabled;
-    }();
-    return cached;
+    }
+    return value != 0;
 }
 
 // See the doc comment on this function's declaration
