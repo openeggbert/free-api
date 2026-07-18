@@ -2,10 +2,11 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `471621c` on `develop` (2026-07-18), plus this same
-day's static-analysis fixes (`include/handleapi.h`, `include/winuser.h`,
-this file) which were pending commit as of writing — check `git log -1`
-to see if they've landed yet.
+state as of commit `3bb0fd6` on `develop` (2026-07-18), plus a
+skeptical re-audit of this round's `MidiMusic.cpp`/`FreeApiPath.cpp`
+fixes and a full 5-configuration test run performed the same day, which
+were pending commit as of writing — check `git log -1` to see if they've
+landed yet.
 
 **Before trusting any number in this file, re-verify it** — this file
 has gone stale faster than expected before. Quick checks:
@@ -90,16 +91,17 @@ new.
 
 ## 2. Current status
 
-**Build status** (fully verified at commit `471621c`, 2026-07-18):
-* Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): configures, builds,
-  **29/29** tests pass.
+**Build status** (fully verified at commit `3bb0fd6`, 2026-07-18, all 5
+configurations, all under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`):
+* Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): **29/29**.
+* As a subdirectory of `../free-eggbert` (Ninja): **29/29**.
+* As a subdirectory of `../planetblupi` (Make): **29/29**.
+* `-DFREE_API_SANITIZE=thread`: **29/29**.
+* `-DFREE_API_SANITIZE=address` (LeakSanitizer included): **29/29**.
 * `test_winuser_regressions` fails some checks under this sandbox's
-  default Wayland display — a confirmed environment artifact, not a code
-  bug; passes under `SDL_VIDEODRIVER=dummy` or real X11/Xvfb (this is how
-  the 29/29 above was verified).
-* The other build configurations (as a subdirectory of `../free-eggbert`/
-  `../planetblupi`, both sanitizer builds) were not re-verified in this
-  session — re-run the commands in §7 before trusting them.
+  default Wayland display (no `SDL_VIDEODRIVER` override) — a confirmed
+  environment artifact, not a code bug; the 29/29 figures above were all
+  obtained under `SDL_VIDEODRIVER=dummy`.
 
 **Task backlog status** (`plan.md`): 220 tasks total — **215 DONE, 1
 OBSOLETE, 4 TODO**. The 4 open tasks are all human-only playtests (see
@@ -135,6 +137,19 @@ hardware — see §5/§8. Web/Emscripten build readiness is unverified (see
 Most recent first. Full per-task detail: `plan.md`; full commit detail:
 `git log`.
 
+* *(pending commit)* — Skeptical re-audit of this round's real bug fixes
+  (§8 task 2): independently re-read `NormalizeMidiPath`
+  (`src/MidiMusic.cpp:296-380`, the two-phase absolute-path-then-CWD-
+  relative logic) and the MCI_PLAY lock-order + `MixerThread` backpressure
+  fix (`src/MidiMusic.cpp:392-535`) against current source, checking edge
+  cases (colliding real absolute paths, empty strings, paths with no `/`,
+  lock/notify ordering, the backpressure math at
+  `kMaxQueuedBlocksAhead=4`/`kBlockFrames=512`/`kThrottleSleepMs=5`) —
+  found no defects. Then ran the full test suite in all 5 build
+  configurations (standalone, `../free-eggbert` subdirectory,
+  `../planetblupi` subdirectory, `build-tsan`, `build-asan`), all
+  **29/29** under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` — see §2
+  for the updated per-configuration figures.
 * *(pending commit)* — Re-ran static analysis (§8 task 1, first run since
   `1d0e3f4`): `cppcheck --enable=warning,performance,portability,style
   --check-level=exhaustive` on `src`/`include` (with `-I /usr/local/include`
@@ -353,21 +368,13 @@ next concrete, bounded, single-session tasks, in priority order:
    unless a real gap is found. Verify: `-DCMAKE_CXX_FLAGS="--coverage
    -O0" -DCMAKE_EXE_LINKER_FLAGS="--coverage"` build, `ctest`, then
    `gcov -o <objdir> <file>.cpp` per translation unit.
-2. **Skeptical re-audit of the highest-churn files.** Goal:
-   independently re-verify `src/MidiMusic.cpp` (MCI_PLAY lock-order fix,
-   `MixerThread` pacing fix) and `src/internal/FreeApiPath.cpp`
-   (`NormalizeMidiPath` absolute-path fix) against current source, since
-   these are the files touched by this round's real bug fixes. Files:
-   the two above plus their tests. Verify: full `ctest` in all 5 build
-   configurations (standalone, both target games, `build-tsan`,
-   `build-asan`) — expect 29/29 in every one.
-3. **Human playtest pass (not AI-doable).** Goal: complete the 4
+2. **Human playtest pass (not AI-doable).** Goal: complete the 4
    remaining `TODO` tasks (`TASK-24H-0401`/`0403`/`1221`/`1222`) via the
    single checklist at `docs/target-game-verification.md`. Requires a
    human with a real display and audio backend.
 
-If tasks 1–2 both come back clean and no human playtest is available, the
-next productive step is a fresh, independent, skeptical full-codebase
+If task 1 comes back clean and no human playtest is available, the next
+productive step is a fresh, independent, skeptical full-codebase
 re-audit (the pattern that has found real gaps every time it's been run
 historically — see `git log` / `plan.md` for precedent). Do not invent
 speculative new tasks just to have something to do.
