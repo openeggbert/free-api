@@ -2,10 +2,8 @@
 
 Handoff document for resuming work on `free-api`, for either a future
 Claude Code session or a human developer. Reflects the actual repository
-state as of commit `59dacc3` on `develop` (2026-07-18), plus a `gcov`
-coverage sweep and two new regression tests it motivated, performed the
-same day, which were pending commit as of writing — check `git log -1`
-to see if they've landed yet.
+state as of commit `6ff92a6` on `develop` (2026-07-18) — check `git log
+-1` to confirm nothing has landed since.
 
 **Before trusting any number in this file, re-verify it** — this file
 has gone stale faster than expected before. Quick checks:
@@ -52,13 +50,16 @@ enforced by `cmake/CheckPublicSurfaceBaseline.cmake` (see §6).
 
 **Current development phase: maintenance / stabilization.** The entire
 AI-doable backlog (`plan.md`, both task-ID namespaces) is closed — see
-§2 for the exact numbers. Recent work has been a mix of targeted bug
-fixes found by re-reading real game call sites (MIDI SoundFont lookup,
-path normalization, mixer-thread pacing) and documentation cleanup
-(deleting several stale audit/TODO documents whose findings had all
-already been resolved). Remaining open items are either human-only (real-
-hardware playtests) or contingent on a future audit finding something
-new.
+§2 for the exact numbers. This round's work: targeted bug fixes from
+re-reading real game call sites, documentation cleanup (deleting several
+stale audit/TODO documents), a from-scratch independent 5-lens re-audit
+(correctness/performance/memory-safety/edge-cases/architectural-risk)
+that found and fixed 9 real issues, then **two self-inflicted regressions
+from that audit round, both found by direct user report and fixed same
+day** — see §3's `89e820a`/`4f3ea29`/`6ff92a6` entries and §9's new
+lessons before touching this code again. Remaining open items are either
+human-only (real-hardware playtests) or contingent on a future audit
+finding something new.
 
 **Important architectural decisions:**
 
@@ -90,10 +91,10 @@ new.
 
 ## 2. Current status
 
-**Build status** (fully verified at commit `3bb0fd6`, 2026-07-18, all 5
+**Build status** (fully verified at commit `6ff92a6`, 2026-07-18, all 5
 configurations, all under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`;
-29-count predates the 2 test cases §3 describes adding, which landed in
-existing binaries so the total test *count* is unaffected):
+the 29-count has stayed constant all round — every new test case landed
+in an existing binary, no new test binaries were added):
 * Standalone (`-DFREE_API_USE_SYSTEM_SDL3=ON`): **29/29**.
 * As a subdirectory of `../free-eggbert` (Ninja): **29/29**.
 * As a subdirectory of `../planetblupi` (Make): **29/29**.
@@ -118,6 +119,18 @@ rather than adding an env-var-manipulating test for it.
 OBSOLETE, 4 TODO**. The 4 open tasks are all human-only playtests (see
 §5/§8) — nothing AI-doable remains in the formal backlog.
 
+**Real-binary memory baseline** (measured 2026-07-18, `SPEEDY_BLUPI_WINDOWS`
+headless under `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`, steady-state
+`/proc/[pid]/status` `VmRSS` a few hundred ms after startup): **~46.6MB**.
+This number matters — commit `89e820a` briefly regressed it to ~50.1MB
+(fixed same day by `6ff92a6`, see §3) via a mechanism that was easy to
+miss in code review and only surfaced under real measurement. If a future
+change to `src/wingdi_*.cpp` is suspected of affecting memory, re-measure
+against this baseline rather than assuming; the method is in `6ff92a6`'s
+commit message (tick-based `/proc/[pid]/stat` sampling + `VmRSS` timeline,
+*not* `ps`'s cumulative-average `%CPU`, which is misleadingly noisy right
+after process start).
+
 **CLI/tools/apps/libraries available:** `free-api` is a library
 (`libfree-api.a`), not a standalone CLI/app. The 29 test binaries
 (`build/test_*`) are the closest thing to runnable demos/examples — each
@@ -127,15 +140,17 @@ end-to-end demos are the target games themselves: `SPEEDY_BLUPI_WINDOWS`
 (`../free-eggbert`) and `PLANET_BLUPI_WINDOWS` (`../planetblupi`).
 
 **Recently implemented (this round, see §3 for detail):** fixed MIDI
-SoundFont lookup to also try the executable's own directory; fixed
-`NormalizeMidiPath` corrupting genuinely-absolute MCI element paths;
-fixed `MixerThread` rendering audio far faster than real time; fixed
-`OutputDebugStringW` to do a real UTF-16→UTF-8 conversion instead of
-truncating each `wchar_t`; deleted `audit.md`, `todo/*.md`, and the
-sibling `../freeapiissues.md` after verifying every finding in them was
-either already fixed, confirmed unreachable by both games' real code
-paths, or (for the one genuinely open perf question) profiled and shown
-not worth doing.
+SoundFont lookup, `NormalizeMidiPath`'s absolute-path corruption, and
+`MixerThread`'s real-time pacing; deleted `audit.md`/`todo/*.md`/the
+sibling `../freeapiissues.md` once every finding in them was resolved;
+re-ran static analysis, a skeptical re-audit, and a `gcov` coverage
+sweep (all clean/fixed); ran a from-scratch independent 5-lens re-audit
+that fixed 9 real issues (`89e820a`) — **two of which turned out to be
+real regressions** (a startup crash whenever diagnostics are enabled,
+and a ~3.5MB RAM increase in `free-eggbert`), both caught by the user
+running the actual game (not by any of the 29 automated tests) and fixed
+same day (`4f3ea29`, `6ff92a6`). See §8 for what that implies about
+verifying future changes.
 
 **What does NOT work / known gaps:** MCI digital-video/AVI is
 permanently out of scope (by design). `CreateBitmap`'s 8-bit indexed
@@ -148,7 +163,71 @@ hardware — see §5/§8. Web/Emscripten build readiness is unverified (see
 Most recent first. Full per-task detail: `plan.md`; full commit detail:
 `git log`.
 
-* *(pending commit)* — Re-ran the `gcov` coverage sweep (§8 task 1):
+* `6ff92a6` — Fixed a real RAM regression `89e820a` introduced (found by
+  the user reporting `free-eggbert` using more memory, not by any
+  automated check): `89e820a`'s `CreateBitmap` pooling swapped a
+  `thread_local` scratch pixel buffer with the one being freed inside
+  `DeleteObject` — but `DeleteObject` is the shared teardown point for
+  *every* `CompatBitmap`, not just ones `CreateBitmap` made, including
+  every bitmap `LoadImageA`/`CreateCompatBitmapFromSurface` creates
+  (`free-eggbert`'s real sprite-loading path — `CreateBitmap`'s raw-bits
+  API has zero call sites there; it's `planetblupi`-only). The scratch
+  buffer permanently retained whichever bitmap either game deleted last —
+  for `free-eggbert`, often a multi-megabyte sprite sheet, held for the
+  rest of the process instead of freed. Diagnosed by building `free-api`
+  at the pre-session commit (`76c55ea`) vs current HEAD, running both
+  real game binaries headless with a tick-based `/proc/[pid]/stat` CPU
+  sampler and a `VmRSS` timeline (not `ps`'s noisy cumulative `%CPU`):
+  RSS was flat over time in both builds (no leak growing during the run —
+  a one-time startup difference, not an ongoing leak) but consistently
+  ~46.6MB before vs ~50.1MB after across 5 alternating trials; CPU usage
+  was not actually different (the "CPU also seems higher" part of the
+  user's report was `ps`'s startup-transient artifact, not real). File-by-
+  file bisection across `89e820a`'s changes localized it to
+  `src/wingdi_bitmap.cpp` alone. Fixed by removing the pooling entirely
+  (not scoping it more narrowly) — `planetblupi`'s minimap (the only real
+  `CreateBitmap` caller, always a fixed 128x128) never had solid profiling
+  evidence this mattered for FPS in the first place. Re-verified 29/29 in
+  all 5 configurations and real `free-eggbert` RSS back to ~46.6MB.
+* `4f3ea29` — Fixed a real startup SIGABRT regression `89e820a`
+  introduced (found by the user's IDE crashing on launch — their run
+  config sets `FREE_API_DIAGNOSTICS`/`FREE_DIRECT_DIAGNOSTICS`, not by
+  any automated check): `89e820a`'s fix for `FreeApiDiagnosticsEnabled`'s
+  data race replaced a plain `static int cached = -1;` with a magic-static
+  (`static const bool cached = [](){...}();`). That broke real startup
+  100% of the time whenever diagnostics are enabled: the initializer
+  lambda calls `FreeApiDiagSnapshot("startup")`, whose first line calls
+  back into `FreeApiDiagnosticsEnabled()` — a same-thread reentrant call
+  into a function-local static still being initialized, which C++11
+  treats as undefined behavior and libstdc++ concretely throws
+  `__gnu_cxx::recursive_init_error`/aborts on. Reverted to a manually-
+  managed `std::atomic<int>`, storing the value *before* the recursive
+  call (matching the original plain-int version's ordering, which is
+  exactly what made it tolerate this same reentrancy) — fixes the real
+  data race without reintroducing the crash. Reproduced standalone and
+  verified end-to-end: both real game binaries now start cleanly with
+  diagnostics enabled (previously crashed on `CreateWindowExA` every
+  time).
+* `89e820a` — Fixed all 9 findings from a from-scratch, independent
+  5-lens re-audit (5 parallel agents, no shared context, distinct
+  analytical lenses: correctness/performance/memory-safety/edge-cases/
+  architectural-risk — see git history for the full findings list). One
+  finding (`MidiMusicGetNumDevs`'s missing `SDL_WasInit` guard) was
+  independently found by two of the five lenses, a stronger-confidence
+  signal. Notable fixes: `DestroyWindow` (`src/winuser_window.cpp`) had
+  no guard against being called twice on the same stale-but-non-null
+  hwnd — `planetblupi`'s `WM_PHASE_BYE` quit-confirmation screen posts
+  `WM_CLOSE` twice for one `VK_ESCAPE`, and the second, stale
+  `DestroyWindow` call used to fall through to
+  `SDL_GetWindowID`/`SDL_DestroyWindow` on an already-freed `SDL_Window`,
+  masked only by SDL3's own object-validity registry, not by anything
+  free-api did; `planetblupi/include/def.h`+`src/blupi.cpp` (a sibling
+  repo, not free-api itself) fixed windowed-mode being ~24px too short
+  (missing the `_LEGACY` guard `free-eggbert`'s equivalent code already
+  had). **Two of these 9 fixes caused real regressions, both caught by
+  the user and fixed same day — see the `4f3ea29`/`6ff92a6` entries above
+  and §9's new lessons.**
+* `d39c925` — Re-ran the `gcov` coverage sweep (§8 task 1):
   weighted `src/**` coverage is now 78.53% (1357/1728 lines), up from a
   previously recorded 72.1%. Investigating the two lowest-coverage files
   found two real, actionable gaps and fixed both with new regression
@@ -250,7 +329,7 @@ Most recent first. Full per-task detail: `plan.md`; full commit detail:
 
 **No blocker.** Standalone build works, 29/29 tests pass (verified under
 `SDL_VIDEODRIVER=dummy`/`SDL_AUDIODRIVER=dummy`). Working tree is clean;
-`develop` is pushed and matches `origin/develop` at `471621c`.
+`develop` is pushed and matches `origin/develop` at `6ff92a6`.
 
 ## 5. Known bugs and limitations
 
@@ -312,6 +391,34 @@ Most recent first. Full per-task detail: `plan.md`; full commit detail:
   - GDI handles (`CompatDC`/`CompatBitmap`) use an in-struct magic-number
     tag, cleared before `delete`, to make double-free detectable rather
     than a silent use-after-free.
+  - `DestroyWindow` (`src/winuser_window.cpp`) checks
+    `g_windowProcedures.find(hWnd)` and returns `FALSE` before touching
+    SDL if the hwnd isn't a currently-tracked window — do not remove this
+    guard (fixed in `89e820a`; a real double-`WM_CLOSE` sequence in
+    `planetblupi` reaches it).
+  - `DeleteObject` (`src/wingdi_bitmap.cpp`) is the **shared teardown
+    point for every `CompatBitmap`**, regardless of which function
+    created it (`CreateBitmap`'s raw-bits path — `planetblupi`-only,
+    zero call sites in `free-eggbert` — and `LoadImageA`/
+    `CreateCompatBitmapFromSurface`, `free-eggbert`'s real sprite-loading
+    path, both end up here). A perf "optimization" scoped to only one
+    creator function (e.g. `CreateBitmap`) can still change behavior for
+    *every* bitmap if it touches this shared function — see `6ff92a6`'s
+    commit message for the real regression this caused. Do not add a
+    cross-call reuse/pooling mechanism to `CreateBitmap`/`DeleteObject`
+    again without checking its effect using the real `free-eggbert`
+    binary, not just `planetblupi`'s (the only real `CreateBitmap`
+    caller).
+  - Do not use a magic-static (`static const T x = [](){...}();`) to fix
+    a data race in a function whose own initializer can call back into
+    itself, directly or transitively (`FreeApiDiagnosticsEnabled` →
+    `FreeApiDiagSnapshot` → `FreeApiDiagnosticsEnabled` is exactly this
+    shape) — C++11's thread-safe-init guard treats same-thread reentrancy
+    during initialization as undefined behavior, and libstdc++ concretely
+    aborts on it (`4f3ea29` was a real 100%-reproducible startup crash
+    from exactly this). Use a manually-managed `std::atomic` instead,
+    storing the computed value *before* any call that might recurse back
+    in.
   - `MidiMusic.cpp`'s `g_midi` is a function-local static via
     `GetMidiState()` (Meyer's singleton) — the language guarantees
     destruction order relative to other statics; do not revert to a
@@ -391,8 +498,12 @@ No lint/formatter is configured in this repository. See
 
 The AI-doable P0–P3 backlog in `plan.md` is fully closed. Every item this
 file's own "next smallest tasks" list has proposed across this round
-(static analysis, skeptical re-audit, gcov sweep) has now been completed
-— see §3 for each. Only one task remains, and it is not AI-doable:
+(static analysis, skeptical re-audit, gcov sweep, and — the round after
+that — a from-scratch 5-lens re-audit, `89e820a`) has now been completed
+— see §3 for each. **That last audit round also produced two real
+regressions** (`4f3ea29`, `6ff92a6`), both caught only by the user
+actually running the real game, not by `ctest`. Only one formally tracked
+task remains, and it is not AI-doable:
 
 1. **Human playtest pass (not AI-doable).** Goal: complete the 4
    remaining `TODO` tasks (`TASK-24H-0401`/`0403`/`1221`/`1222`) via the
@@ -402,17 +513,28 @@ file's own "next smallest tasks" list has proposed across this round
 With no human playtest available, the next productive step is a fresh,
 independent, skeptical full-codebase re-audit (the pattern that has
 found real gaps every time it's been run historically — see `git log` /
-`plan.md` for precedent, and this round's own gcov sweep, which found 2
-real testing gaps). Do not invent speculative new tasks just to have
-something to do — if a fresh re-audit also comes back clean, say so
-plainly rather than manufacturing busywork.
+`plan.md` for precedent). **But this round's lesson matters more than
+finding a 6th audit round to run:** every fix proposed by an audit —
+especially anything touching a *shared* function (a teardown/cleanup
+path, a lazily-initialized cache, anything more than one caller depends
+on) — needs verification against a **real running game binary**
+(`SPEEDY_BLUPI_WINDOWS`/`PLANET_BLUPI_WINDOWS`, not just `test_*`), not
+only `ctest`'s 29 targeted unit tests. Both this round's regressions
+(a startup crash, a real RAM increase) passed all 29 tests in all 5
+configurations cleanly; neither was visible without actually running the
+game. If real-hardware time is available, spend it launching the real
+game and watching `top`/`VmRSS` for a few seconds before declaring a fix
+done, not only on the four formally-tracked human-playtest tasks above.
+Do not invent speculative new tasks just to have something to do — if a
+fresh re-audit also comes back clean, say so plainly rather than
+manufacturing busywork.
 
-**Static analysis (`cppcheck`+`clang-tidy`) was just re-run and is clean
-(see §3) — when it's time to re-run it again, remember `clang-tidy`'s
-default header filter hides warnings from any header, including this
-project's own `include/*.h`; use `-header-filter='free-api/(src|include)/'`
-or real findings (like the `handleapi.h` guard bug this pass found) will
-be silently suppressed.**
+**Static analysis (`cppcheck`+`clang-tidy`) was re-run in this round and
+was clean (see §3) — when it's time to re-run it again, remember
+`clang-tidy`'s default header filter hides warnings from any header,
+including this project's own `include/*.h`; use
+`-header-filter='free-api/(src|include)/'` or real findings (like the
+`handleapi.h` guard bug that pass found) will be silently suppressed.**
 
 ## 9. Do not do yet
 
@@ -447,6 +569,19 @@ be silently suppressed.**
     per-`wchar_t` cast.
   - The 4 GDI counters (`g_diagCompatDcs(Ever)`/`g_diagCompatBitmaps(Ever)`)
     to being gated behind `FreeApiDiagnosticsFastEnabled()`.
+  - `DestroyWindow`'s already-torn-down guard (`src/winuser_window.cpp`).
+  - `FreeApiDiagnosticsEnabled`/`FreeApiGdiDebugEnabled`/`midiDebugEnabled`'s
+    `std::atomic`-based lazy-init pattern back to a magic-static — see §6's
+    new invariant on why that specific pattern caused a real crash here.
+* Do not re-add a cross-call reuse/pooling buffer to
+  `CreateBitmap`/`DeleteObject` (`src/wingdi_bitmap.cpp`) — this was tried
+  once (`89e820a`) and caused a real RAM regression in `free-eggbert`
+  because `DeleteObject` is shared by every bitmap creator, not just
+  `CreateBitmap` (fixed in `6ff92a6`; see §6 for the full mechanism). If
+  this is ever revisited, it needs to be scoped to bitmaps `CreateBitmap`
+  itself created (e.g. a flag on `CompatBitmap`), not the shared
+  `DeleteObject` path, and verified against real `free-eggbert` RSS, not
+  just `ctest`.
 * Do not re-copy `WriteMinimalMidi`'s fixture bytes into a new test file
   — include `tests/support/MidiFixtures.hpp` instead.
 * Do not touch `joystick`, MCI digital-video, DirectDraw, DirectSound,
