@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GDI — Bitmaps &amp; DCs — Free API Reference</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="api-reference.html" class="active">API Reference</a>
+      <a href="integration.html">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<div class="api-subnav">
+  <div class="api-subnav-inner">
+    <a href="api-reference.html">Index</a>
+    <a href="api-types.html">Types &amp; Handles</a>
+    <a href="api-winuser.html">Window &amp; Input</a>
+    <a href="api-wingdi.html" class="active">GDI</a>
+    <a href="api-winbase.html">System &amp; Files</a>
+    <a href="api-io.html">File I/O</a>
+    <a href="api-mmsystem.html">Multimedia</a>
+  </div>
+</div>
+
+<main class="main">
+
+  <section style="padding-bottom:0;border:none;">
+    <div class="section-label">wingdi.h</div>
+    <h1 class="section-title">GDI — Bitmaps &amp; Device Contexts</h1>
+    <p class="section-sub">
+      Free API implements a minimal GDI subset sufficient for games that pre-render
+      everything into off-screen bitmaps and blit them to the window each frame.
+      Real GDI drawing primitives (lines, rectangles, text, brushes, pens) are
+      not implemented.
+    </p>
+
+    <div class="callout warn">
+      <strong>What is NOT implemented</strong>
+      TextOut, DrawText, LineTo, Rectangle, FillRect, PatBlt, BitBlt (use StretchBlt
+      with equal src/dst size), real palette management, DIB sections, CreateDIBitmap,
+      CreateDIBSection, regions, clipping, font objects.
+    </div>
+  </section>
+
+  <!-- ── How GDI works in Free API ── -->
+  <section id="overview">
+    <div class="section-label">Architecture</div>
+    <h2 class="section-title">How GDI is backed in Free API</h2>
+
+    <div class="arch-diagram">
+      <pre>
+<span class="hl">LoadImageA("sprites.bmp")</span>
+    │   SDL_LoadBMP → SDL_ConvertSurface(RGBA32)
+    ▼
+<span class="hl2">HBITMAP</span>  — wraps an SDL_Surface (RGBA32, heap-allocated)
+
+<span class="hl">CreateCompatibleDC(NULL)</span>
+    │   allocates an internal DC record
+    ▼
+<span class="hl2">HDC (memory)</span>  — has a "selected bitmap" slot (initially empty)
+
+<span class="hl">SelectObject(hdcMem, hBmp)</span>
+    │   attaches the bitmap to the DC
+    ▼
+<span class="hl2">HDC (memory)</span>  ← points to HBITMAP's SDL_Surface pixels
+
+<span class="hl">StretchBlt(hdcDst, ...)</span>
+    │   nearest-neighbour copy from src SDL_Surface → dst SDL_Surface
+    ▼
+<span class="hl2">SDL_RenderTexture</span>  displayed on screen next frame
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Loading bitmaps ── -->
+  <section id="load">
+    <div class="section-label">Loading</div>
+    <h2 class="section-title">Loading bitmaps from disk</h2>
+
+    <h3 style="font-size:.95rem;margin-bottom:8px;">LoadImageA</h3>
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>
+HANDLE WINAPI LoadImageA(
+    HINSTANCE hInst,   <span class="cm">// ignored (pass NULL)</span>
+    LPCSTR    name,    <span class="cm">// file path when LR_LOADFROMFILE is set</span>
+    UINT      type,    <span class="cm">// must be IMAGE_BITMAP (0)</span>
+    int       cx,      <span class="cm">// desired width (0 = use natural size)</span>
+    int       cy,      <span class="cm">// desired height (0 = use natural size)</span>
+    UINT      fuLoad   <span class="cm">// must include LR_LOADFROMFILE</span>
+);
+<span class="cm">// Returns HBITMAP cast to HANDLE, or NULL on error.</span>
+      </pre>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0 16px;">
+      Only <code>IMAGE_BITMAP + LR_LOADFROMFILE</code> is implemented.
+      Resource loading (without <code>LR_LOADFROMFILE</code>) always returns NULL.
+      The file is loaded via <code>SDL_LoadBMP</code> and converted to RGBA32 internally.
+      Paths are normalised (backslashes → slashes, drive letter removed) before
+      the file is opened, so Windows-style paths work on Linux.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Flag constant</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>IMAGE_BITMAP</code></td><td>0</td><td>Required — load as bitmap.</td></tr>
+          <tr><td><code>LR_LOADFROMFILE</code></td><td>0x0010</td><td>Required — load from file path, not resource.</td></tr>
+          <tr><td><code>LR_CREATEDIBSECTION</code></td><td>0x2000</td><td>Accepted but ignored — Free API always creates an RGBA32 surface.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — load a BMP file</div>
+      <pre>
+<span class="cm">// Load from a relative path (backslash or slash both work)</span>
+HBITMAP hBackground = (HBITMAP)LoadImageA(
+    NULL,
+    <span class="st">"data\\background.bmp"</span>,   <span class="cm">// or "data/background.bmp"</span>
+    IMAGE_BITMAP,
+    0, 0,                       <span class="cm">// 0,0 = keep natural size</span>
+    LR_LOADFROMFILE);
+
+<span class="kw">if</span> (!hBackground) {
+    OutputDebugString(<span class="st">"Failed to load background.bmp"</span>);
+    <span class="kw">return</span> FALSE;
+}
+
+<span class="cm">// Load and scale to a specific size</span>
+HBITMAP hIcon = (HBITMAP)LoadImageA(
+    NULL, <span class="st">"data\\icon.bmp"</span>,
+    IMAGE_BITMAP, 32, 32,
+    LR_LOADFROMFILE);
+      </pre>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:20px 0 8px;">CreateBitmap</h3>
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>
+HBITMAP WINAPI CreateBitmap(
+    int         nWidth,   <span class="cm">// bitmap width in pixels</span>
+    int         nHeight,  <span class="cm">// bitmap height in pixels</span>
+    UINT        nPlanes,  <span class="cm">// colour planes (1 for RGB)</span>
+    UINT        nBitCount,<span class="cm">// bits per pixel (8, 16, 24, or 32)</span>
+    const void* lpBits    <span class="cm">// initial pixel data, or NULL for blank</span>
+);
+      </pre>
+    </div>
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0 16px;">
+      Creates an SDL3 RGBA32 surface. If <code>lpBits</code> is not NULL, raw pixel
+      data is copied and converted from the specified bit-depth. A blank (all-zero) surface
+      is created when <code>lpBits</code> is NULL. Supported <code>nBitCount</code> values:
+      8 (treated as 8-bit indexed, palette not applied), 16 (RGB565), 24 (RGB), 32 (RGBA).
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">C++ — create a blank bitmap for off-screen rendering</div>
+      <pre>
+<span class="cm">// Create a 320×200 blank canvas</span>
+HBITMAP hCanvas = CreateBitmap(320, 200, 1, 32, NULL);
+HDC     hdcCanvas = CreateCompatibleDC(NULL);
+HGDIOBJ hOld = SelectObject(hdcCanvas, hCanvas);
+
+<span class="cm">// ... draw into hdcCanvas via SetPixel, StretchBlt, etc. ...</span>
+
+<span class="cm">// Cleanup</span>
+SelectObject(hdcCanvas, hOld);
+DeleteDC(hdcCanvas);
+DeleteObject(hCanvas);
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Device Contexts ── -->
+  <section id="dc">
+    <div class="section-label">Device Contexts</div>
+    <h2 class="section-title">Memory DCs — CreateCompatibleDC, SelectObject, DeleteDC</h2>
+    <p class="section-sub">
+      A device context (DC) is a drawing surface handle. In Free API, DCs come in
+      two flavours: memory DCs (off-screen) and the window surface DC.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>CreateCompatibleDC(HDC hdc)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Allocates a new memory DC. The <code>hdc</code> parameter is ignored (no real compatibility with an existing DC). The new DC has no bitmap selected until <code>SelectObject</code> is called.</td>
+          </tr>
+          <tr>
+            <td><code>SelectObject(HDC hdc, HGDIOBJ h)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Selects a bitmap (HBITMAP) into a memory DC and returns the previously selected object. Only bitmaps are supported — brushes, pens, and fonts are not.</td>
+          </tr>
+          <tr>
+            <td><code>DeleteDC(HDC hdc)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Releases the internal DC record. Does NOT free any bitmap that was selected into it — call <code>DeleteObject(hBmp)</code> separately.</td>
+          </tr>
+          <tr>
+            <td><code>DeleteObject(HGDIOBJ ho)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Frees the underlying SDL3 surface. Do not call while the object is still selected in a DC. Returns TRUE on success.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — correct DC / bitmap lifecycle</div>
+      <pre>
+<span class="cm">// ── Create ──</span>
+HBITMAP hBmp   = (HBITMAP)LoadImageA(NULL, <span class="st">"map.bmp"</span>,
+                     IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+HDC     hdcMem = CreateCompatibleDC(NULL);
+HGDIOBJ hOld   = SelectObject(hdcMem, hBmp);   <span class="cm">// select in</span>
+
+<span class="cm">// ── Use ──</span>
+StretchBlt(hdcDest, 0, 0, 800, 600,
+           hdcMem,  0, 0, 320, 200, SRCCOPY);
+
+<span class="cm">// ── Cleanup (always in this order) ──</span>
+SelectObject(hdcMem, hOld);  <span class="cm">// restore previous selection first</span>
+DeleteDC(hdcMem);            <span class="cm">// release DC</span>
+DeleteObject(hBmp);          <span class="cm">// free surface</span>
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Blitting ── -->
+  <section id="blit">
+    <div class="section-label">Blitting</div>
+    <h2 class="section-title">StretchBlt — copying and scaling bitmaps</h2>
+
+    <div class="code-block">
+      <div class="code-header">Signature</div>
+      <pre>
+BOOL WINAPI StretchBlt(
+    HDC   hdcDest,            <span class="cm">// destination DC</span>
+    int   xDest, int yDest,   <span class="cm">// destination top-left</span>
+    int   wDest, int hDest,   <span class="cm">// destination size</span>
+    HDC   hdcSrc,             <span class="cm">// source DC (must have bitmap selected)</span>
+    int   xSrc,  int ySrc,    <span class="cm">// source top-left</span>
+    int   wSrc,  int hSrc,    <span class="cm">// source size</span>
+    DWORD rop                 <span class="cm">// raster op — only SRCCOPY supported</span>
+);
+      </pre>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0;">
+      <strong>Supported:</strong> SRCCOPY from a memory DC (with a bitmap selected) to
+      the window surface DC, or between two memory DCs.
+      Scaling uses nearest-neighbour interpolation.
+    </p>
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0 16px;">
+      <strong>Not supported:</strong> raster operations other than SRCCOPY, alpha-blending,
+      colour-key transparency, mirroring (negative width/height), or blitting to DCs
+      that have no bitmap selected.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">C++ — common blit patterns</div>
+      <pre>
+<span class="cm">// 1. Copy a sprite (no scaling)</span>
+StretchBlt(
+    hdcWindow, dstX, dstY, 64, 64,
+    hdcSprites, spriteSheetX, spriteSheetY, 64, 64,
+    SRCCOPY);
+
+<span class="cm">// 2. Scale up a 320×200 game canvas to fill an 800×600 window</span>
+StretchBlt(
+    hdcWindow, 0, 0, 800, 600,
+    hdcCanvas,  0, 0, 320, 200,
+    SRCCOPY);
+
+<span class="cm">// 3. Copy a sub-region (source tile from a tileset)</span>
+<span class="kw">int</span> tileCol = 3, tileRow = 2;
+<span class="kw">int</span> TILE = 32;
+StretchBlt(
+    hdcDest, screenX, screenY, TILE, TILE,
+    hdcTiles, tileCol * TILE, tileRow * TILE, TILE, TILE,
+    SRCCOPY);
+      </pre>
+    </div>
+
+    <div class="callout">
+      <strong>SRCCOPY constant</strong>
+      <code>SRCCOPY</code> is defined as <code>0x00CC0020</code>. It is the only raster
+      operation code that does anything in Free API. All others are silently accepted but
+      fall back to a plain copy.
+    </div>
+  </section>
+
+  <!-- ── Pixel operations ── -->
+  <section id="pixels">
+    <div class="section-label">Pixel operations</div>
+    <h2 class="section-title">GetPixel / SetPixel &amp; colour macros</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function / Macro</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>GetPixel(HDC hdc, int x, int y)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Reads the RGB colour at pixel (x, y) from the selected SDL3 surface. Returns <code>CLR_INVALID</code> (0xFFFFFFFF) if out of bounds or no bitmap selected.</td>
+          </tr>
+          <tr>
+            <td><code>SetPixel(HDC hdc, int x, int y, COLORREF color)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Writes an RGB colour to pixel (x, y) in the selected surface. Returns the colour actually written, or CLR_INVALID on error.</td>
+          </tr>
+          <tr>
+            <td><code>RGB(r, g, b)</code></td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Macro that packs three byte values into a <code>COLORREF</code>: <code>(r) | (g &lt;&lt; 8) | (b &lt;&lt; 16)</code>.</td>
+          </tr>
+          <tr>
+            <td><code>GetRValue(col)</code> / <code>GetGValue(col)</code> / <code>GetBValue(col)</code></td>
+            <td><span class="badge badge-implemented">IMPLEMENTED</span></td>
+            <td>Extract the red, green, or blue component from a COLORREF.</td>
+          </tr>
+          <tr>
+            <td><code>CLR_INVALID</code></td>
+            <td><span class="badge badge-header">HEADER_ONLY</span></td>
+            <td>0xFFFFFFFF — sentinel returned when a pixel operation fails.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — pixel reading and writing</div>
+      <pre>
+<span class="cm">// Read a pixel</span>
+COLORREF col = GetPixel(hdcMem, 10, 20);
+<span class="kw">if</span> (col != CLR_INVALID) {
+    BYTE r = GetRValue(col);
+    BYTE g = GetGValue(col);
+    BYTE b = GetBValue(col);
+}
+
+<span class="cm">// Write pixels — simple flood-fill loop</span>
+<span class="kw">for</span> (<span class="kw">int</span> y = 0; y &lt; 16; y++) {
+    <span class="kw">for</span> (<span class="kw">int</span> x = 0; x &lt; 16; x++) {
+        SetPixel(hdcCanvas, x, y, RGB(255, 0, 0));  <span class="cm">// red square</span>
+    }
+}
+
+<span class="cm">// Colour constant examples</span>
+COLORREF red    = RGB(255,   0,   0);
+COLORREF green  = RGB(  0, 255,   0);
+COLORREF blue   = RGB(  0,   0, 255);
+COLORREF white  = RGB(255, 255, 255);
+COLORREF black  = RGB(  0,   0,   0);
+COLORREF yellow = RGB(255, 255,   0);
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── GDI information ── -->
+  <section id="info">
+    <div class="section-label">GDI information</div>
+    <h2 class="section-title">GetObjectA, GetDeviceCaps &amp; palette</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>GetObjectA(HANDLE h, int c, LPVOID pv)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>When <code>h</code> is an HBITMAP and <code>pv</code> points to a <code>BITMAP</code> struct (<code>c = sizeof(BITMAP)</code>), fills width, height, planes, bitsPerPixel and bits pointer from the underlying SDL surface. Returns the byte count filled, or 0 on error.</td>
+          </tr>
+          <tr>
+            <td><code>GetDeviceCaps(HDC hdc, int index)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Returns 256 when <code>index == SIZEPALETTE</code>; returns 0 for all other indices. Many games use SIZEPALETTE to determine colour depth.</td>
+          </tr>
+          <tr>
+            <td><code>GetSystemPaletteEntries(HDC, start, count, entries)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Fills <code>PALETTEENTRY</code> array with a grayscale ramp (R=G=B=index). Satisfies palette-aware games that expect 256 entries.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — query bitmap dimensions</div>
+      <pre>
+BITMAP bm;
+<span class="kw">if</span> (GetObjectA(hBmp, <span class="kw">sizeof</span>(bm), &amp;bm)) {
+    printf(<span class="st">"Width=%ld Height=%ld BPP=%d\n"</span>,
+           bm.bmWidth, bm.bmHeight, bm.bmBitsPixel);
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── GDI structures ── -->
+  <section id="structs">
+    <div class="section-label">GDI structures</div>
+    <h2 class="section-title">Data structures</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Structure</th><th>Status</th><th>Fields &amp; Notes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>BITMAP</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td><code>bmType, bmWidth, bmHeight, bmWidthBytes, bmPlanes, bmBitsPixel, bmBits</code>. Filled by <code>GetObjectA</code>.</td>
+          </tr>
+          <tr>
+            <td><code>BITMAPINFOHEADER</code></td>
+            <td><span class="badge badge-stub">STUB</span></td>
+            <td>Standard BMP info header layout. Declared for compilation compatibility with code that reads .BMP files manually.</td>
+          </tr>
+          <tr>
+            <td><code>BITMAPFILEHEADER</code></td>
+            <td><span class="badge badge-stub">STUB</span></td>
+            <td>14-byte BMP file header. Declared for compilation compatibility.</td>
+          </tr>
+          <tr>
+            <td><code>RGBQUAD</code></td>
+            <td><span class="badge badge-stub">STUB</span></td>
+            <td>4-byte BGR+reserved colour entry used in BMP palette tables.</td>
+          </tr>
+          <tr>
+            <td><code>PALETTEENTRY</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td><code>peRed, peGreen, peBlue, peFlags</code>. Used by <code>GetSystemPaletteEntries</code>. Also shared with DirectDraw compatibility code.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API — MIT License · <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+  <p style="margin-top:8px;"><a href="api-winuser.html">← Window &amp; Input</a> &nbsp;·&nbsp; <a href="api-winbase.html">System &amp; Files →</a></p>
+</footer>
+</body>
+</html>

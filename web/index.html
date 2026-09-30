@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Free API — Minimal WinAPI Compatibility Layer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html" class="active">Overview</a>
+      <a href="api-reference.html">API Reference</a>
+      <a href="integration.html">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- Hero -->
+  <section class="hero" style="padding-bottom:0;border:none;">
+    <div class="hero-badge">Open Source · MIT License · C++20</div>
+    <h1>Bring legacy Win32 games<br>to <em>every platform</em></h1>
+    <p class="hero-sub">
+      Free API is a minimal, SDL3-backed reimplementation of a Win32 / WinAPI subset
+      (~1998 era). Drop it in place of <code>windows.h</code> and your old game
+      compiles and runs on Linux, macOS, Android, and the Web — without Wine.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="integration.html">Get Started</a>
+      <a class="btn btn-outline" href="api-reference.html">API Reference</a>
+      <a class="btn btn-outline" href="https://github.com/openeggbert/free-api">GitHub</a>
+    </div>
+
+    <div class="arch-diagram" style="max-width:560px;margin:48px auto 0;">
+      <pre>
+  <span class="hl3">Legacy game source code</span>  (Speedy Blupi, Planet Blupi, …)
+           │
+           │  <span class="cm">#include &lt;windows.h&gt;, &lt;mmsystem.h&gt;, …</span>
+           ▼
+  <span class="hl">Free API</span>  (include/ + src/)
+           │
+           │  SDL3 · POSIX · TinySoundFont · TinyMidiLoader
+           ▼
+  <span class="hl2">Linux · macOS · Windows · Android · Web (Emscripten)</span>
+      </pre>
+    </div>
+  </section>
+
+  <!-- What is Free API -->
+  <section id="what-is">
+    <div class="section-label">About</div>
+    <h2 class="section-title">What is Free API?</h2>
+    <p class="section-sub">
+      Free API is <em>not</em> Wine, <em>not</em> a full WinAPI emulator, and
+      <em>not</em> a general-purpose compatibility layer. It is a deliberately
+      small, readable C++20 library that covers exactly what classic games like
+      <strong>Speedy Blupi</strong> and <strong>Planet Blupi</strong> need to
+      compile and run natively on non-Windows platforms.
+    </p>
+
+    <div class="two-col">
+      <div>
+        <h3 style="margin-bottom:12px;font-size:1rem;">Design principles</h3>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:10px;">
+          <li style="display:flex;gap:10px;align-items:flex-start;">
+            <span style="color:var(--accent);font-size:1.1rem;flex-shrink:0;">▸</span>
+            <span><strong>WinAPI-like public headers</strong> — <code>windows.h</code>, <code>mmsystem.h</code>, <code>io.h</code>, <code>direct.h</code> and more, drop-in compatible.</span>
+          </li>
+          <li style="display:flex;gap:10px;align-items:flex-start;">
+            <span style="color:var(--accent);font-size:1.1rem;flex-shrink:0;">▸</span>
+            <span><strong>SDL3 as the sole backend</strong> — windowing, events, timers, and audio all route through SDL3; no OS-specific code leaks into the public API.</span>
+          </li>
+          <li style="display:flex;gap:10px;align-items:flex-start;">
+            <span style="color:var(--accent);font-size:1.1rem;flex-shrink:0;">▸</span>
+            <span><strong>Minimalism</strong> — only what is actually needed is implemented. Three stubs beat one wrong abstraction.</span>
+          </li>
+          <li style="display:flex;gap:10px;align-items:flex-start;">
+            <span style="color:var(--accent);font-size:1.1rem;flex-shrink:0;">▸</span>
+            <span><strong>Hackable</strong> — all implementation in a handful of <code>.cpp</code> files; adding support for a new API takes minutes, not weeks.</span>
+          </li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="margin-bottom:12px;font-size:1rem;">Target games</h3>
+        <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:16px;">
+          The primary targets are <strong>Speedy Blupi</strong> and
+          <strong>Planet Blupi</strong> — classic 1990s Windows games whose source
+          code has since been released. Both depend on a small, well-defined
+          WinAPI subset that Free API fully covers.
+        </p>
+        <div class="callout info">
+          <strong>Note</strong>
+          Free API is equally applicable to any other legacy Win32 game or
+          application that uses a similar 1998-era API surface.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Status vocabulary -->
+  <section id="status">
+    <div class="section-label">Status vocabulary</div>
+    <h2 class="section-title">Implementation status tags</h2>
+    <p class="section-sub">Every public symbol in Free API carries a status annotation so you always know how complete a given function is.</p>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Tag</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge badge-implemented">IMPLEMENTED</span></td><td>Useful, non-trivial implementation for the target subset. Behaves like real Windows for the relevant call patterns.</td></tr>
+          <tr><td><span class="badge badge-partial">PARTIAL</span></td><td>Works for a narrow subset of flags or formats; may differ from real Windows in edge cases.</td></tr>
+          <tr><td><span class="badge badge-stub">STUB</span></td><td>Placeholder: compiles, returns a fixed value or does nothing. Safe to call but has no real effect.</td></tr>
+          <tr><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Macro, typedef, or inline function in a header; no <code>.cpp</code> needed.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Feature overview -->
+  <section id="features">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">What Free API covers</h2>
+    <p class="section-sub">A curated subset of Win32 APIs sufficient for 1990s-era games and applications.</p>
+
+    <div class="feature-grid">
+
+      <div class="feature-card">
+        <div class="feature-icon">🪟</div>
+        <h3>Windowing</h3>
+        <p>Full window lifecycle — <code>RegisterClassA</code>, <code>CreateWindowExA</code>, <code>ShowWindow</code>, <code>DestroyWindow</code> — backed by an SDL3 window.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📨</div>
+        <h3>Message Loop</h3>
+        <p>WinAPI-compatible message queue with <code>PeekMessageA</code>, <code>GetMessageA</code>, <code>DispatchMessageA</code>, <code>PostMessageA</code>, <code>PostQuitMessage</code>, and <code>WaitMessage</code>.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🖱️</div>
+        <h3>Mouse Input</h3>
+        <p>SDL3 mouse events translated to <code>WM_MOUSEMOVE</code>, <code>WM_LBUTTONDOWN/UP</code>, <code>WM_RBUTTONDOWN/UP</code>, <code>WM_MBUTTONDOWN/UP</code> with full <code>MK_*</code> modifier flags.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">⌨️</div>
+        <h3>Keyboard Input</h3>
+        <p>Full VK_* key set: A–Z, 0–9, arrows, function keys F1–F12, Escape, Enter, Space, Tab, Backspace, Delete, Insert, Page Up/Down, Home, End, Shift, Ctrl, Alt.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🎵</div>
+        <h3>MIDI / MCI Music</h3>
+        <p>MIDI playback via TinySoundFont + TinyMidiLoader over SDL3 audio. Supports <code>MCI_OPEN</code>, <code>MCI_PLAY</code>, <code>MCI_CLOSE</code>, <code>midiOutSetVolume</code>. Requires a SoundFont .sf2 file.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">⏱️</div>
+        <h3>Multimedia Timers</h3>
+        <p><code>timeSetEvent</code> / <code>timeKillEvent</code> implemented with SDL3 timers. Periodic callbacks fire on a private thread; <code>PostMessage</code> from a timer callback is thread-safe.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🖼️</div>
+        <h3>GDI Bitmap Subset</h3>
+        <p>Memory DCs, bitmap loading (<code>LoadImageA</code> / BMP via SDL_image), <code>SelectObject</code>, <code>StretchBlt</code> with nearest-neighbour scaling, <code>GetPixel</code> / <code>SetPixel</code>.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📁</div>
+        <h3>File / Path Helpers</h3>
+        <p>POSIX wrappers for <code>_lopen/_lread/_lclose</code>, <code>_findfirst/_findnext/_findclose</code>, <code>CreateDirectoryA</code>, <code>DeleteFileA</code>, <code>_chdir/_getcwd/_mkdir</code>.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🔄</div>
+        <h3>fopen Path Normaliser</h3>
+        <p>Transparent wrapper that converts Windows backslash paths and drive letters to POSIX paths. Applied automatically when any C++ file includes <code>&lt;windows.h&gt;</code>.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🚀</div>
+        <h3>WinMain Bridge</h3>
+        <p><code>FREE_API_IMPLEMENT_WINMAIN()</code> macro creates a standard <code>main()</code> that calls a <code>WinMain</code>-style entry point — zero source changes required.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🛠️</div>
+        <h3>System Utilities</h3>
+        <p><code>GetTickCount</code>, <code>Sleep</code>, <code>OutputDebugString</code>, <code>GetSystemMetrics</code>, <code>GlobalMemoryStatus</code>, <code>GetLastError</code> / <code>SetLastError</code>.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🔡</div>
+        <h3>CRT Extras</h3>
+        <p>Legacy CRT helpers: <code>wsprintfA</code> (vsnprintf-based), memory macros <code>ZeroMemory</code> / <code>CopyMemory</code> / <code>FillMemory</code>, <code>RGB()</code> colour macro.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Platform support -->
+  <section id="platforms">
+    <div class="section-label">Platforms</div>
+    <h2 class="section-title">Platform support</h2>
+    <p class="section-sub">Because Free API routes everything through SDL3, it inherits SDL3's broad platform reach.</p>
+    <div class="platform-grid">
+      <div class="platform-card">
+        <div class="icon">🐧</div>
+        <h4>Linux</h4>
+        <p class="status"><span class="badge badge-implemented">Supported</span></p>
+      </div>
+      <div class="platform-card">
+        <div class="icon">🍎</div>
+        <h4>macOS</h4>
+        <p class="status"><span class="badge badge-implemented">Supported</span></p>
+      </div>
+      <div class="platform-card">
+        <div class="icon">🪟</div>
+        <h4>Windows</h4>
+        <p class="status"><span class="badge badge-partial">Supported*</span></p>
+      </div>
+      <div class="platform-card">
+        <div class="icon">📱</div>
+        <h4>Android</h4>
+        <p class="status"><span class="badge badge-partial">Supported</span></p>
+      </div>
+      <div class="platform-card">
+        <div class="icon">🌐</div>
+        <h4>Web (Emscripten)</h4>
+        <p class="status"><span class="badge badge-partial">Supported†</span></p>
+      </div>
+    </div>
+    <p style="margin-top:18px;font-size:.8rem;color:var(--text-dim);">
+      * On Windows, Free API routes through SDL3 rather than WinMM for MIDI (native WinMM not used).<br>
+      † Web audio may require a user gesture before playback starts due to browser autoplay policy.
+    </p>
+  </section>
+
+  <!-- Quick build -->
+  <section id="build">
+    <div class="section-label">Build</div>
+    <h2 class="section-title">Building Free API</h2>
+    <p class="section-sub">Free API uses CMake and SDL3. The simplest build:</p>
+
+    <div class="code-block">
+      <div class="code-header">bash</div>
+      <pre>
+<span class="cm"># Clone the repository</span>
+git clone https://github.com/openeggbert/free-api.git
+<span class="kw">cd</span> free-api
+
+<span class="cm"># Configure (tests enabled by default on non-Emscripten builds)</span>
+cmake -B build -DFREE_API_BUILD_TESTS=ON
+
+<span class="cm"># Build</span>
+cmake --build build
+
+<span class="cm"># Run tests</span>
+ctest --test-dir build
+      </pre>
+    </div>
+
+    <div class="callout">
+      <strong>SDL3 dependency</strong>
+      Free API expects SDL3, SDL3_image and SDL3_mixer targets to be available.
+      When building as part of the <em>free-eggbert</em> super-project, the vendored
+      SDL is set up automatically via <code>ThirdPartySDL.cmake</code>.
+    </div>
+
+    <h3 style="margin:32px 0 12px;font-size:1rem;">Web / Emscripten build</h3>
+    <div class="code-block">
+      <div class="code-header">bash</div>
+      <pre>
+emcmake cmake -B build-web -DFREE_API_BUILD_TESTS=OFF
+cmake --build build-web
+      </pre>
+    </div>
+
+    <h3 style="margin:32px 0 12px;font-size:1rem;">Android build</h3>
+    <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:12px;">
+      Android is supported when SDL3 is configured for Android. Package your SoundFont
+      .sf2 in <code>assets/soundfont/default.sf2</code> inside the APK.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API is an open-source project by the <a href="https://github.com/openeggbert">OpenEggbert</a> community &mdash; MIT License.</p>
+  <p style="margin-top:8px;"><a href="index.html">Overview</a> &nbsp;·&nbsp; <a href="api-reference.html">API Reference</a> &nbsp;·&nbsp; <a href="integration.html">Integration Guide</a> &nbsp;·&nbsp; <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+</footer>
+
+</body>
+</html>

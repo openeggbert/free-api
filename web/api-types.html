@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Types &amp; Handles — Free API Reference</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="api-reference.html" class="active">API Reference</a>
+      <a href="integration.html">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<div class="api-subnav">
+  <div class="api-subnav-inner">
+    <a href="api-reference.html">Index</a>
+    <a href="api-types.html" class="active">Types &amp; Handles</a>
+    <a href="api-winuser.html">Window &amp; Input</a>
+    <a href="api-wingdi.html">GDI</a>
+    <a href="api-winbase.html">System &amp; Files</a>
+    <a href="api-io.html">File I/O</a>
+    <a href="api-mmsystem.html">Multimedia</a>
+  </div>
+</div>
+
+<main class="main">
+
+  <section style="padding-bottom:0;border:none;">
+    <div class="section-label">minwindef.h · windef.h · winnt.h</div>
+    <h1 class="section-title">Types &amp; Handles</h1>
+    <p class="section-sub">
+      Fundamental Win32 scalar types, opaque handle types, calling-convention macros,
+      and pointer-width integers. These are the building blocks used by every other
+      part of the API.
+    </p>
+  </section>
+
+  <!-- ── Scalar types ── -->
+  <section id="scalars">
+    <div class="section-label">minwindef.h</div>
+    <h2 class="section-title">Scalar types</h2>
+    <p class="section-sub">
+      Win32 defines its own set of type aliases so that the same code compiles
+      unchanged on 16-bit, 32-bit, and 64-bit targets. Free API mirrors them exactly.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>Underlying type</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>BOOL</code></td><td><code>int</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Win32 boolean. Use <code>TRUE</code> / <code>FALSE</code> macros (1 / 0). Functions may return any non-zero value for TRUE.</td></tr>
+          <tr><td><code>BYTE</code></td><td><code>unsigned char</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>8-bit unsigned.</td></tr>
+          <tr><td><code>WORD</code></td><td><code>unsigned short</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>16-bit unsigned.</td></tr>
+          <tr><td><code>DWORD</code></td><td><code>unsigned long</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>32-bit unsigned. Used extensively for flags, lengths, and IDs.</td></tr>
+          <tr><td><code>UINT</code></td><td><code>unsigned int</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Platform-width unsigned integer.</td></tr>
+          <tr><td><code>INT</code></td><td><code>int</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Platform-width signed integer.</td></tr>
+          <tr><td><code>LONG</code></td><td><code>long</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Always 32-bit on Windows; may be 64-bit on LP64 Linux — use <code>LONG</code> only for Win32 struct compatibility.</td></tr>
+          <tr><td><code>FLOAT</code></td><td><code>float</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Single-precision float alias.</td></tr>
+          <tr><td><code>TRUE</code> / <code>FALSE</code></td><td>macro (1 / 0)</td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Standard BOOL values.</td></tr>
+          <tr><td><code>MAX_PATH</code></td><td>macro (260)</td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Maximum path length in characters. POSIX <code>PATH_MAX</code> may differ but 260 is safe for file names passed to Free API.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">String / buffer pointer types</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>Underlying type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>LPSTR</code></td><td><code>char*</code></td><td>Pointer to mutable ANSI string.</td></tr>
+          <tr><td><code>LPCSTR</code></td><td><code>const char*</code></td><td>Pointer to constant ANSI string. Most Free API functions accept LPCSTR for path/name arguments.</td></tr>
+          <tr><td><code>LPWSTR</code></td><td><code>wchar_t*</code></td><td>Wide string — declared but not used by Free API (no Unicode implementation).</td></tr>
+          <tr><td><code>LPCWSTR</code></td><td><code>const wchar_t*</code></td><td>Wide constant string — declared for compilation only.</td></tr>
+          <tr><td><code>LPVOID</code></td><td><code>void*</code></td><td>Generic pointer.</td></tr>
+          <tr><td><code>LPCVOID</code></td><td><code>const void*</code></td><td>Pointer to read-only memory.</td></tr>
+          <tr><td><code>LPBYTE</code></td><td><code>BYTE*</code></td><td>Byte buffer pointer.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:24px 0 10px;">Geometry types</h3>
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>Fields</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>RECT</code> / <code>LPRECT</code></td><td><code>LONG left, top, right, bottom</code></td><td>Axis-aligned rectangle. Used by <code>GetClientRect</code>, <code>IntersectRect</code>, etc.</td></tr>
+          <tr><td><code>POINT</code> / <code>LPPOINT</code></td><td><code>LONG x, y</code></td><td>Screen or client coordinates. Used by <code>GetCursorPos</code>, <code>ClientToScreen</code>, etc.</td></tr>
+          <tr><td><code>SIZE</code></td><td><code>LONG cx, cy</code></td><td>Width/height pair.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — typical usage of scalar types</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+
+<span class="cm">// DWORD for counts, flags, and IDs</span>
+DWORD flags = MCI_OPEN_TYPE | MCI_OPEN_ELEMENT;
+DWORD tick  = GetTickCount();
+
+<span class="cm">// BOOL return values — test with != FALSE, not == TRUE</span>
+BOOL ok = CreateDirectoryA(<span class="st">"saves"</span>, NULL);
+<span class="kw">if</span> (ok != FALSE) { <span class="cm">/* directory created */</span> }
+
+<span class="cm">// RECT filled by the API</span>
+RECT rc;
+GetClientRect(hwnd, &amp;rc);
+<span class="kw">int</span> width  = rc.right  - rc.left;
+<span class="kw">int</span> height = rc.bottom - rc.top;
+
+<span class="cm">// POINT for cursor position</span>
+POINT pt;
+GetCursorPos(&amp;pt);          <span class="cm">// screen coords</span>
+ScreenToClient(hwnd, &amp;pt);  <span class="cm">// convert to window-client coords</span>
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Handle types ── -->
+  <section id="handles">
+    <div class="section-label">windef.h</div>
+    <h2 class="section-title">Opaque handle types</h2>
+    <p class="section-sub">
+      Win32 uses opaque handles to refer to kernel objects. Free API maps each handle
+      type to an internal registry entry backed by SDL3 objects.
+    </p>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>Free API backing</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>HWND</code></td>
+            <td>Internal window registry (SDL windowID)</td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Returned by <code>CreateWindowExA</code>. Maps to exactly one SDL window. Valid until <code>DestroyWindow</code> is called. <code>HWND_DESKTOP</code> is defined as <code>((HWND)0)</code>.</td>
+          </tr>
+          <tr>
+            <td><code>HDC</code></td>
+            <td>Internal DC record (pointer to SDL surface)</td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Either a memory DC (<code>CreateCompatibleDC</code>) or a surface DC. Only SRCCOPY blitting between these two types is implemented.</td>
+          </tr>
+          <tr>
+            <td><code>HBITMAP</code></td>
+            <td>SDL3 surface (RGBA32)</td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Returned by <code>LoadImageA</code> and <code>CreateBitmap</code>. Must be freed with <code>DeleteObject</code>.</td>
+          </tr>
+          <tr>
+            <td><code>HGDIOBJ</code></td>
+            <td>Generic GDI handle (HBITMAP or other)</td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Used as parameter/return type of <code>SelectObject</code> and <code>DeleteObject</code>. Cast freely between <code>HBITMAP</code> and <code>HGDIOBJ</code>.</td>
+          </tr>
+          <tr>
+            <td><code>HINSTANCE</code> / <code>HMODULE</code></td>
+            <td>NULL</td>
+            <td><span class="badge badge-stub">STUB</span></td>
+            <td>Always NULL. Target games pass it to <code>CreateWindowExA</code> / <code>RegisterClassA</code> where it is ignored by Free API.</td>
+          </tr>
+          <tr>
+            <td><code>HMENU</code></td>
+            <td>NULL</td>
+            <td><span class="badge badge-stub">STUB</span></td>
+            <td>Menus are not implemented. Pass NULL wherever HMENU is needed.</td></tr>
+          <tr>
+            <td><code>HICON</code> / <code>HCURSOR</code></td>
+            <td>NULL</td>
+            <td><span class="badge badge-stub">STUB</span></td>
+            <td><code>LoadIconA</code> and <code>LoadCursorA</code> return NULL. Games that test the result before use will not crash.</td>
+          </tr>
+          <tr>
+            <td><code>HBRUSH</code></td>
+            <td>NULL</td>
+            <td><span class="badge badge-stub">STUB</span></td>
+            <td>Background brush in <code>WNDCLASSA.hbrBackground</code> is stored but not used during window painting.</td>
+          </tr>
+          <tr>
+            <td><code>HANDLE</code></td>
+            <td>Generic opaque handle</td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Base handle type. Alias for <code>void*</code>. Used by <code>LoadImageA</code> return type.</td>
+          </tr>
+          <tr>
+            <td><code>HRSRC</code> / <code>HGLOBAL</code></td>
+            <td>NULL</td>
+            <td><span class="badge badge-stub">STUB</span></td>
+            <td>Win32 resource handles. All resource functions (<code>FindResourceA</code>, <code>LoadResource</code>…) are stubs.</td>
+          </tr>
+          <tr>
+            <td><code>ATOM</code></td>
+            <td><code>typedef WORD</code></td>
+            <td><span class="badge badge-header">HEADER_ONLY</span></td>
+            <td>Returned by <code>RegisterClassA</code>. Free API always returns 1 (non-zero = success).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — handle lifecycle example</div>
+      <pre>
+<span class="cm">// Window handle — create → use → destroy</span>
+HWND hwnd = CreateWindowA(<span class="st">"MyClass"</span>, <span class="st">"Title"</span>,
+    WS_OVERLAPPEDWINDOW, 100, 100, 800, 600,
+    NULL, NULL, NULL, NULL);
+
+<span class="cm">// Bitmap handle — load → select into DC → use → cleanup</span>
+HBITMAP hBmp = (HBITMAP)LoadImageA(
+    NULL, <span class="st">"assets/sprites.bmp"</span>,
+    IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+
+HDC hdcMem  = CreateCompatibleDC(NULL);
+HGDIOBJ old = SelectObject(hdcMem, hBmp);
+
+<span class="cm">// ... use hdcMem for blitting ...</span>
+
+<span class="cm">// Always restore and clean up</span>
+SelectObject(hdcMem, old);
+DeleteDC(hdcMem);
+DeleteObject(hBmp);
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── Calling conventions ── -->
+  <section id="calling">
+    <div class="section-label">windef.h</div>
+    <h2 class="section-title">Calling conventions &amp; pointer-width integers</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Macro / Type</th><th>On non-MSVC</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>WINAPI</code></td><td>expands to nothing</td><td>Standard Win32 calling convention. Applied to all API function declarations.</td></tr>
+          <tr><td><code>WINAPIV</code></td><td>expands to nothing</td><td>Variadic variant (e.g. <code>wsprintfA</code>).</td></tr>
+          <tr><td><code>CALLBACK</code></td><td>expands to nothing</td><td>Marks user-supplied callbacks (WNDPROC, LPTIMECALLBACK).</td></tr>
+          <tr><td><code>WPARAM</code></td><td><code>uintptr_t</code></td><td>Unsigned pointer-width; first message parameter.</td></tr>
+          <tr><td><code>LPARAM</code></td><td><code>intptr_t</code></td><td>Signed pointer-width; second message parameter. Mouse coordinates packed as <code>(y&lt;&lt;16)|x</code>.</td></tr>
+          <tr><td><code>LRESULT</code></td><td><code>intptr_t</code></td><td>Return value of WNDPROC and DispatchMessageA.</td></tr>
+          <tr><td><code>DWORD_PTR</code></td><td><code>uintptr_t</code></td><td>DWORD stretched to pointer width. Used by MCI callback parameters.</td></tr>
+          <tr><td><code>UINT_PTR</code></td><td><code>uintptr_t</code></td><td>UINT stretched to pointer width. Used by timer IDs.</td></tr>
+          <tr><td><code>LONG_PTR</code></td><td><code>intptr_t</code></td><td>LONG stretched to pointer width.</td></tr>
+          <tr><td><code>ULONG_PTR</code></td><td><code>uintptr_t</code></td><td>ULONG stretched to pointer width.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <strong>lParam mouse coordinate packing</strong>
+      Mouse messages encode cursor position as <code>lParam = (y &lt;&lt; 16) | (x &amp; 0xFFFF)</code>.
+      Extract with the standard macros: <code>int x = LOWORD(lParam);</code> and <code>int y = HIWORD(lParam);</code>
+      (both defined in minwindef.h).
+    </div>
+  </section>
+
+  <!-- ── winnt types ── -->
+  <section id="winnt">
+    <div class="section-label">winnt.h</div>
+    <h2 class="section-title">String types, HRESULT &amp; COM basics</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Symbol</th><th>Underlying type</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>CHAR</code></td><td><code>char</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>ANSI character.</td></tr>
+          <tr><td><code>WCHAR</code></td><td><code>wchar_t</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Wide character. Unicode APIs not implemented.</td></tr>
+          <tr><td><code>TCHAR</code></td><td><code>char</code> (ANSI build)</td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Resolves to CHAR when UNICODE is not defined (default for Free API).</td></tr>
+          <tr><td><code>HRESULT</code></td><td><code>long</code></td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>COM result code. Negative = error, zero or positive = success.</td></tr>
+          <tr><td><code>S_OK</code></td><td>0x00000000</td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>COM success.</td></tr>
+          <tr><td><code>S_FALSE</code></td><td>0x00000001</td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>COM success with alternate result.</td></tr>
+          <tr><td><code>E_FAIL</code></td><td>0x80004005</td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>Generic COM failure.</td></tr>
+          <tr><td><code>GUID</code></td><td>struct {Data1,Data2,Data3,Data4}</td><td><span class="badge badge-header">HEADER_ONLY</span></td><td>128-bit globally unique identifier. Declared for compilation compatibility.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — HRESULT pattern</div>
+      <pre>
+<span class="cm">// HRESULT success test — use SUCCEEDED/FAILED macros</span>
+HRESULT hr = SomeComFunction();
+<span class="kw">if</span> (SUCCEEDED(hr)) {
+    <span class="cm">// ok — hr is S_OK (0) or S_FALSE (1)</span>
+} <span class="kw">else</span> {
+    <span class="cm">// error — hr has a negative value like E_FAIL</span>
+}
+
+<span class="cm">// Equivalent manual test</span>
+<span class="kw">if</span> (hr &gt;= 0) { <span class="cm">/* success */</span> }
+      </pre>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API — MIT License · <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+  <p style="margin-top:8px;"><a href="api-reference.html">API Index</a> &nbsp;·&nbsp; <a href="api-winuser.html">Next: Window &amp; Input →</a></p>
+</footer>
+</body>
+</html>

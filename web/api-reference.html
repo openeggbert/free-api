@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Reference — Free API</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="api-reference.html" class="active">API Reference</a>
+      <a href="integration.html">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<main class="main">
+
+  <section style="padding-bottom:0;border:none;">
+    <div class="section-label">API Reference</div>
+    <h1 class="section-title">API Reference Index</h1>
+    <p class="section-sub">
+      Free API exposes a subset of the Win32 API (~1998 era) backed by SDL3.
+      The reference is split by header file. Each page covers types, constants,
+      function signatures, behaviour notes, and working code examples.
+    </p>
+
+    <div class="callout">
+      <strong>Status legend</strong>
+      <span class="badge badge-implemented">IMPLEMENTED</span> — full working impl &nbsp;
+      <span class="badge badge-partial">PARTIAL</span> — limited subset &nbsp;
+      <span class="badge badge-stub">STUB</span> — compiles, no-op &nbsp;
+      <span class="badge badge-header">HEADER_ONLY</span> — macro / inline / typedef
+    </div>
+  </section>
+
+  <section style="border:none;padding-top:32px;">
+    <div class="feature-grid">
+
+      <a href="api-types.html" style="text-decoration:none;">
+        <div class="feature-card" style="cursor:pointer;">
+          <div class="feature-icon">🔢</div>
+          <h3>Types &amp; Handles</h3>
+          <p>Scalar types (BOOL, DWORD, WORD…), opaque handle types (HWND, HDC, HBITMAP…), calling-convention macros, pointer-width integers.<br><br>
+          <em>Headers: <code>minwindef.h</code> · <code>windef.h</code> · <code>winnt.h</code></em></p>
+        </div>
+      </a>
+
+      <a href="api-winuser.html" style="text-decoration:none;">
+        <div class="feature-card" style="cursor:pointer;">
+          <div class="feature-icon">🪟</div>
+          <h3>Window &amp; Input</h3>
+          <p>Window creation and lifecycle, the WinAPI message loop, keyboard (VK_* codes), mouse (MK_* flags), cursor control, user timers, geometry helpers.<br><br>
+          <em>Headers: <code>winuser.h</code> · <code>windows.h</code></em></p>
+        </div>
+      </a>
+
+      <a href="api-wingdi.html" style="text-decoration:none;">
+        <div class="feature-card" style="cursor:pointer;">
+          <div class="feature-icon">🖼️</div>
+          <h3>GDI — Bitmaps &amp; DCs</h3>
+          <p>Loading BMP files, memory DCs, bitmap blitting with <code>StretchBlt</code>, pixel-level read/write, colour macros, GDI object lifecycle.<br><br>
+          <em>Header: <code>wingdi.h</code></em></p>
+        </div>
+      </a>
+
+      <a href="api-winbase.html" style="text-decoration:none;">
+        <div class="feature-card" style="cursor:pointer;">
+          <div class="feature-icon">🛠️</div>
+          <h3>System &amp; File Utilities</h3>
+          <p>Timing (<code>GetTickCount</code>, <code>Sleep</code>), debug output, error codes, directory / file operations, memory macros, WinMain bridge, fopen path normaliser.<br><br>
+          <em>Headers: <code>winbase.h</code> · <code>synchapi.h</code> · <code>sysinfoapi.h</code> · <code>debugapi.h</code></em></p>
+        </div>
+      </a>
+
+      <a href="api-io.html" style="text-decoration:none;">
+        <div class="feature-card" style="cursor:pointer;">
+          <div class="feature-icon">📁</div>
+          <h3>Legacy File I/O &amp; Directory</h3>
+          <p>MSVC-style file search (<code>_findfirst/_findnext/_findclose</code>), low-level file access (<code>_lopen/_lread/_lclose</code>), directory helpers (<code>_chdir/_getcwd/_mkdir</code>), access() modes.<br><br>
+          <em>Headers: <code>io.h</code> · <code>direct.h</code></em></p>
+        </div>
+      </a>
+
+      <a href="api-mmsystem.html" style="text-decoration:none;">
+        <div class="feature-card" style="cursor:pointer;">
+          <div class="feature-icon">🎵</div>
+          <h3>Multimedia — MIDI, MCI &amp; Timers</h3>
+          <p>MIDI file playback via TinySoundFont + TinyMidiLoader over SDL3 audio, MCI command API, multimedia periodic timers, MIDI output volume control, SoundFont setup.<br><br>
+          <em>Headers: <code>mmsystem.h</code> · <code>digitalv.h</code></em></p>
+        </div>
+      </a>
+
+    </div>
+  </section>
+
+  <!-- Quick cross-reference -->
+  <section id="includes">
+    <div class="section-label">Include order</div>
+    <h2 class="section-title">Header include hierarchy</h2>
+    <p class="section-sub">Understanding which header pulls in what helps avoid double-include issues.</p>
+    <div class="arch-diagram">
+      <pre>
+<span class="hl">&lt;windows.h&gt;</span>          <span class="cm">← include this for almost everything</span>
+  ├── &lt;winuser.h&gt;      <span class="cm">← window, messages, input</span>
+  │     ├── &lt;minwindef.h&gt;
+  │     └── &lt;windef.h&gt;
+  ├── &lt;minwindef.h&gt;    <span class="cm">← scalar types</span>
+  ├── &lt;windef.h&gt;       <span class="cm">← handles, calling conventions</span>
+  ├── &lt;winnt.h&gt;        <span class="cm">← string types, HRESULT</span>
+  ├── &lt;synchapi.h&gt;     <span class="cm">← Sleep</span>
+  ├── &lt;sysinfoapi.h&gt;   <span class="cm">← GetTickCount</span>
+  ├── &lt;handleapi.h&gt;    <span class="cm">← CloseHandle (stub)</span>
+  ├── &lt;debugapi.h&gt;     <span class="cm">← OutputDebugString</span>
+  ├── &lt;winbase.h&gt;      <span class="cm">← file/dir/memory utilities</span>
+  ├── &lt;rpcndr.h&gt;       <span class="cm">← byte/small type aliases</span>
+  ├── &lt;wingdi.h&gt;       <span class="cm">← GDI bitmaps, DCs</span>
+  └── &lt;winerror.h&gt;     <span class="cm">← E_* / S_* error codes</span>
+
+<span class="hl2">&lt;mmsystem.h&gt;</span>         <span class="cm">← MIDI, MCI, timers (included by windows.h)</span>
+  └── &lt;mmiscapi2.h&gt;
+
+<span class="hl3">&lt;io.h&gt;</span>               <span class="cm">← legacy file search (include separately)</span>
+<span class="hl3">&lt;direct.h&gt;</span>           <span class="cm">← _chdir/_getcwd/_mkdir (include separately)</span>
+      </pre>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API — MIT License · <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+  <p style="margin-top:8px;"><a href="index.html">Overview</a> &nbsp;·&nbsp; <a href="api-reference.html">API Reference</a> &nbsp;·&nbsp; <a href="integration.html">Integration Guide</a></p>
+</footer>
+</body>
+</html>

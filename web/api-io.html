@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Legacy File I/O &amp; Directory — Free API Reference</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">Free <span>API</span></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="api-reference.html" class="active">API Reference</a>
+      <a href="integration.html">Integration Guide</a>
+    </nav>
+  </div>
+</header>
+
+<div class="api-subnav">
+  <div class="api-subnav-inner">
+    <a href="api-reference.html">Index</a>
+    <a href="api-types.html">Types &amp; Handles</a>
+    <a href="api-winuser.html">Window &amp; Input</a>
+    <a href="api-wingdi.html">GDI</a>
+    <a href="api-winbase.html">System &amp; Files</a>
+    <a href="api-io.html" class="active">File I/O</a>
+    <a href="api-mmsystem.html">Multimedia</a>
+  </div>
+</div>
+
+<main class="main">
+
+  <section style="padding-bottom:0;border:none;">
+    <div class="section-label">io.h · direct.h</div>
+    <h1 class="section-title">Legacy File I/O &amp; Directory Operations</h1>
+    <p class="section-sub">
+      MSVC CRT-compatible file search API (<code>_findfirst</code> / <code>_findnext</code> /
+      <code>_findclose</code>), POSIX access-mode constants, and directory navigation
+      helpers from <code>direct.h</code> (<code>_chdir</code>, <code>_getcwd</code>,
+      <code>_mkdir</code>).
+    </p>
+    <div class="callout warn">
+      <strong>Include separately</strong>
+      <code>&lt;io.h&gt;</code> and <code>&lt;direct.h&gt;</code> are <em>not</em>
+      pulled in by <code>&lt;windows.h&gt;</code>. Include them explicitly:
+      <code>#include &lt;io.h&gt;</code> and <code>#include &lt;direct.h&gt;</code>.
+    </div>
+  </section>
+
+  <!-- ── _finddata_t ── -->
+  <section id="finddata">
+    <div class="section-label">io.h</div>
+    <h2 class="section-title">_finddata_t — file search result</h2>
+    <p class="section-sub">
+      The structure filled by <code>_findfirst</code> and <code>_findnext</code> to
+      describe each matching file.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">Structure definition</div>
+      <pre>
+<span class="kw">struct</span> _finddata_t {
+    unsigned attrib;       <span class="cm">// file attributes (_A_NORMAL, _A_SUBDIR, …)</span>
+    time_t   time_create;  <span class="cm">// creation time (may be 0 if unavailable)</span>
+    time_t   time_access;  <span class="cm">// last access time</span>
+    time_t   time_write;   <span class="cm">// last modification time</span>
+    long     size;         <span class="cm">// file size in bytes</span>
+    char     name[260];    <span class="cm">// file name (without path), null-terminated</span>
+};
+
+<span class="pp">#define</span> _MAX_FNAME  260   <span class="cm">// maximum file name length including null</span>
+      </pre>
+    </div>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>attrib</code></td><td>Bitmask of file attributes. <code>_A_SUBDIR</code> (0x10) is set for directories. <code>_A_NORMAL</code> (0x00) for regular files.</td></tr>
+          <tr><td><code>time_create</code></td><td>File creation time as <code>time_t</code>. May be 0 on Linux (creation time not stored in most file systems).</td></tr>
+          <tr><td><code>time_access</code></td><td>Last access time.</td></tr>
+          <tr><td><code>time_write</code></td><td>Last modification time. Most reliable for sorting by recency.</td></tr>
+          <tr><td><code>size</code></td><td>File size in bytes. Only meaningful for regular files.</td></tr>
+          <tr><td><code>name</code></td><td>File name without directory path, null-terminated. Maximum 259 chars + null.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── _findfirst / _findnext / _findclose ── -->
+  <section id="findfirst">
+    <div class="section-label">io.h</div>
+    <h2 class="section-title">_findfirst / _findnext / _findclose</h2>
+
+    <div class="code-block">
+      <div class="code-header">Signatures</div>
+      <pre>
+intptr_t _findfirst(const char* filespec, struct _finddata_t* fileinfo);
+<span class="cm">// Returns a search handle, or -1 on failure (no match or error).</span>
+
+int _findnext(intptr_t handle, struct _finddata_t* fileinfo);
+<span class="cm">// Returns 0 on success (next file found), -1 when no more files.</span>
+
+int _findclose(intptr_t handle);
+<span class="cm">// Always call this to release the handle. Returns 0 on success.</span>
+      </pre>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0;">
+      <strong>Implementation:</strong> backed by POSIX <code>opendir</code> /
+      <code>readdir</code> and <code>fnmatch</code> for pattern matching.
+      The <code>filespec</code> path may use Windows backslashes — they are
+      normalised to slashes internally. Wildcard characters <code>*</code> and
+      <code>?</code> are supported in the file-name part.
+    </p>
+
+    <div class="callout warn">
+      <strong>STUB status</strong>
+      The current Free API marks <code>_findfirst</code>, <code>_findnext</code>, and
+      <code>_findclose</code> as STUB in <code>io.h</code> — they return -1/failure.
+      The implementation in <code>src/crt_io.cpp</code> wraps POSIX readdir. If you
+      need directory listing, test with a real build and check whether your target
+      platform has the implementation compiled in.
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — list all .blp files in a directory</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;io.h&gt;</span>
+
+<span class="kw">void</span> ListBlupiFiles(<span class="kw">const</span> <span class="kw">char</span>* dir)
+{
+    <span class="kw">char</span> pattern[MAX_PATH];
+    snprintf(pattern, <span class="kw">sizeof</span>(pattern), <span class="st">"%s/*.blp"</span>, dir);
+
+    <span class="kw">struct</span> _finddata_t fd;
+    intptr_t handle = _findfirst(pattern, &amp;fd);
+
+    <span class="kw">if</span> (handle == -1) {
+        OutputDebugString(<span class="st">"No .blp files found\n"</span>);
+        <span class="kw">return</span>;
+    }
+
+    <span class="kw">do</span> {
+        <span class="kw">if</span> (!(fd.attrib &amp; _A_SUBDIR)) {   <span class="cm">// skip sub-directories</span>
+            <span class="kw">char</span> msg[MAX_PATH + 16];
+            snprintf(msg, <span class="kw">sizeof</span>(msg), <span class="st">"  Found: %s (%ld bytes)\n"</span>,
+                     fd.name, fd.size);
+            OutputDebugString(msg);
+        }
+    } <span class="kw">while</span> (_findnext(handle, &amp;fd) == 0);
+
+    _findclose(handle);
+}
+      </pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — collect all level files into a vector</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;vector&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;string&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;io.h&gt;</span>
+
+std::vector&lt;std::string&gt; FindLevels(<span class="kw">const</span> <span class="kw">char</span>* basePath)
+{
+    std::vector&lt;std::string&gt; result;
+    <span class="kw">char</span> pattern[512];
+    snprintf(pattern, <span class="kw">sizeof</span>(pattern), <span class="st">"%s/level*.blp"</span>, basePath);
+
+    <span class="kw">struct</span> _finddata_t fd;
+    intptr_t h = _findfirst(pattern, &amp;fd);
+    <span class="kw">if</span> (h == -1) <span class="kw">return</span> result;
+
+    <span class="kw">do</span> {
+        <span class="kw">if</span> (!(fd.attrib &amp; _A_SUBDIR))
+            result.push_back(std::string(basePath) + <span class="st">"/"</span> + fd.name);
+    } <span class="kw">while</span> (_findnext(h, &amp;fd) == 0);
+
+    _findclose(h);
+    <span class="kw">return</span> result;
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── access() ── -->
+  <section id="access">
+    <div class="section-label">io.h — access modes</div>
+    <h2 class="section-title">access() / _access() — check file existence</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Constant</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>F_OK</code></td><td>0</td><td>File exists.</td></tr>
+          <tr><td><code>X_OK</code></td><td>1</td><td>Execute permission.</td></tr>
+          <tr><td><code>W_OK</code></td><td>2</td><td>Write permission.</td></tr>
+          <tr><td><code>R_OK</code></td><td>4</td><td>Read permission.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.875rem;margin:10px 0 16px;">
+      On non-Windows platforms, the system <code>access()</code> function is already
+      available. On Windows builds, Free API provides a forward declaration of
+      <code>_access()</code> that resolves against the MSVCRT.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">C++ — check file existence before loading</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;io.h&gt;</span>
+<span class="pp">#if defined(_WIN32)</span>
+<span class="pp">#  define file_exists(p) (_access((p), F_OK) == 0)</span>
+<span class="pp">#else</span>
+<span class="pp">#  define file_exists(p) (access((p), F_OK) == 0)</span>
+<span class="pp">#endif</span>
+
+<span class="kw">if</span> (file_exists(<span class="st">"saves/autosave.sav"</span>)) {
+    LoadGame(<span class="st">"saves/autosave.sav"</span>);
+}
+
+<span class="cm">// Check whether a SoundFont exists</span>
+<span class="kw">const</span> <span class="kw">char</span>* sf = <span class="st">"assets/soundfont/default.sf2"</span>;
+<span class="kw">if</span> (!file_exists(sf)) {
+    OutputDebugString(<span class="st">"WARNING: SoundFont not found — music will be silent\n"</span>);
+}
+      </pre>
+    </div>
+  </section>
+
+  <!-- ── direct.h ── -->
+  <section id="direct">
+    <div class="section-label">direct.h</div>
+    <h2 class="section-title">Directory navigation (_chdir, _getcwd, _mkdir)</h2>
+
+    <div class="api-table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>_chdir(const char* path)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Changes the current working directory. Wraps POSIX <code>chdir(path)</code>. Returns 0 on success, -1 on failure (sets errno). Path normalisation (backslash → slash) is applied.</td>
+          </tr>
+          <tr>
+            <td><code>_getcwd(char* buf, int maxlen)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Gets the current working directory into <code>buf</code> (up to <code>maxlen</code> chars). Wraps POSIX <code>getcwd</code>. Returns <code>buf</code> on success, NULL on failure.</td>
+          </tr>
+          <tr>
+            <td><code>_mkdir(const char* path)</code></td>
+            <td><span class="badge badge-partial">PARTIAL</span></td>
+            <td>Creates a directory with permissions 0755. Wraps POSIX <code>mkdir(path, 0755)</code>. Returns 0 on success, -1 on failure. Does not create intermediate directories.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — directory navigation</div>
+      <pre>
+<span class="pp">#include</span> <span class="st">&lt;windows.h&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;direct.h&gt;</span>
+
+<span class="cm">// Get and print current directory</span>
+<span class="kw">char</span> cwd[MAX_PATH];
+<span class="kw">if</span> (_getcwd(cwd, <span class="kw">sizeof</span>(cwd))) {
+    <span class="kw">char</span> msg[MAX_PATH + 16];
+    snprintf(msg, <span class="kw">sizeof</span>(msg), <span class="st">"Working dir: %s\n"</span>, cwd);
+    OutputDebugString(msg);
+}
+
+<span class="cm">// Navigate to the game data directory</span>
+<span class="kw">char</span> dataDir[MAX_PATH];
+snprintf(dataDir, <span class="kw">sizeof</span>(dataDir), <span class="st">"%s/data"</span>, cwd);
+
+<span class="kw">if</span> (_chdir(dataDir) != 0) {
+    OutputDebugString(<span class="st">"Cannot change to data directory\n"</span>);
+}
+
+<span class="cm">// Create a save sub-directory</span>
+<span class="kw">if</span> (_mkdir(<span class="st">"saves"</span>) != 0 &amp;&amp; errno != EEXIST) {
+    OutputDebugString(<span class="st">"Failed to create saves/\n"</span>);
+}
+      </pre>
+    </div>
+
+    <div class="callout">
+      <strong>Difference from CreateDirectoryA</strong>
+      <code>_mkdir</code> (from <code>direct.h</code>) and <code>CreateDirectoryA</code>
+      (from <code>winbase.h</code>) both create a single directory. The difference:
+      <code>_mkdir</code> returns an int and sets <code>errno</code>;
+      <code>CreateDirectoryA</code> returns BOOL and sets the Win32 last-error code.
+      Either may be used; <code>CreateDirectoryA</code> also normalises backslash paths.
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">C++ — ensure a directory tree exists</div>
+      <pre>
+<span class="cm">// Free API does not create parent directories automatically.
+// Create them one level at a time:</span>
+<span class="kw">void</span> EnsurePath(<span class="kw">const</span> <span class="kw">char</span>* path)
+{
+    <span class="kw">char</span> tmp[MAX_PATH];
+    snprintf(tmp, <span class="kw">sizeof</span>(tmp), <span class="st">"%s"</span>, path);
+    <span class="kw">for</span> (<span class="kw">char</span>* p = tmp + 1; *p; p++) {
+        <span class="kw">if</span> (*p == <span class="st">'/'</span> || *p == <span class="st">'\\'</span>) {
+            *p = <span class="st">'\0'</span>;
+            _mkdir(tmp);   <span class="cm">// ignore errors (dir may already exist)</span>
+            *p = <span class="st">'/'</span>;
+        }
+    }
+    _mkdir(tmp);
+}
+
+<span class="cm">// Usage:</span>
+EnsurePath(<span class="st">"saves/slot1/data"</span>);
+      </pre>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Free API — MIT License · <a href="https://github.com/openeggbert/free-api">GitHub</a></p>
+  <p style="margin-top:8px;"><a href="api-winbase.html">← System &amp; Files</a> &nbsp;·&nbsp; <a href="api-mmsystem.html">Multimedia →</a></p>
+</footer>
+</body>
+</html>
