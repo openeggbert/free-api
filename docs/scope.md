@@ -1,19 +1,26 @@
 # Free API — Scope Policy
 
 Free API is a narrow, source-level Win32/WinAPI compatibility layer for exactly
-two target games:
+three target games:
 
 * **Free Eggbert** (`../free-eggbert`)
 * **Planet Blupi** (`../planetblupi`)
+* **blupi_recon** (`../blupi_recon`): the matching reconstruction of Speedy
+  Blupi 1 (`src/`) and Speedy Blupi 2 / Speedy Eggbert 2 (`games/sb2/src/`),
+  compiled **unchanged** by its `freeapi/` build. Added on 2026-10-24 at the
+  owner's request. Its source may never be edited to suit Free API (it must
+  keep reproducing the original executables), so what it needs is met here or
+  in its build's own compatibility header (`freeapi/compat/msvc_crt.h`).
 
 Free API is **not** Wine, **not** a general Win32 SDK reimplementation, and
 **not** a platform for arbitrary 1998-era Windows games. It must stay small,
-tracking the union of what these two games actually call — nothing more.
+tracking the union of what these three games actually call — nothing more.
 
 ## The rule
 
 > **Every new public API (function, type, constant, or message) must cite a
-> real usage site — `file:line` — in `../free-eggbert` or `../planetblupi`.**
+> real usage site — `file:line` — in `../free-eggbert`, `../planetblupi` or
+> `../blupi_recon`.**
 > If it doesn't have one, it doesn't belong in Free API, no matter how common
 > or "obviously useful" it seems.
 

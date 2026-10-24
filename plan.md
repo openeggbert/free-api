@@ -6310,3 +6310,145 @@ Acceptance criteria:
 
 Out of scope:
 - Do not change `GetActiveWindow`'s fallback logic itself -- this task is test-coverage-only, no behavior gap was found.
+
+---
+
+## blupi_recon support (2026-10-24)
+
+The owner added a third target game: `../blupi_recon`, the matching
+reconstruction of Speedy Blupi 1 (`src/`) and Speedy Blupi 2 / Speedy
+Eggbert 2 (`games/sb2/src/`), built unchanged by its `freeapi/` CMake project
+(docs/scope.md, docs/target-games.md). Its source cannot be edited, so every
+gap below was closed here. Verified on branch `blupi-recon`: free-api 30/30
+tests in `build/` and in `../planetblupi/build`; blupi_recon's SB1, SB2 and
+Eggbert 2 builds reach the title, the world-1 hub and a mission with music
+(SB1's choose-player screen and SB2's title are pixel-identical to
+blupi_recon's oracle-verified SDL3 port, apart from the cursor).
+
+### TASK-BR-01: Name blupi_recon as the third target game
+Status: DONE -- docs/scope.md (target list and "The rule"), README.md,
+docs/target-games.md.
+Area: Docs
+Evidence: owner request, 2026-10-24.
+
+### TASK-BR-02: FREE_API_TARGET_GAME=blupi-recon and FREE_API_BLUPI_RECON_RC
+Status: DONE -- CMakeLists.txt selects the named script (default
+`../blupi_recon/src/res/blupi.rc`), CP1252, verify ID 100 ("training %d,
+time %d" for English scripts); `auto` maps project `BLUPI_RECON_FREEAPI`.
+VERIFY_TEXT/USED_IDS_FILE are now passed only when set (unchanged for the
+other two games). docs/cmake-options.md.
+Area: Build
+Evidence: blupi_recon src/res/*.rc and games/sb2/res/*.rc; LoadString call
+sites e.g. blupi_recon src/decblock.cpp, src/decor.cpp (CDecor), src/decmove.cpp.
+
+### TASK-BR-03: ExtractStringTable.cmake accepts numeric string IDs
+Status: DONE -- `123 "text"` lines need no header.
+Area: Build
+Evidence: blupi_recon src/res/blupi.rc:72 (`100 "training %d, time %d"`).
+Tests: `extract_string_table_numeric_ids_and_cp1252`.
+
+### TASK-BR-04: ExtractStringTable.cmake reads CP1252 scripts byte for byte
+Status: DONE -- `RC_ENCODING=CP1252` reads raw bytes (file(STRINGS) stops at
+bytes >= 0x80) and writes them as octal escapes; ';' in any script is
+written as `\073` so it no longer splits the entries list.
+Area: Build
+Evidence: blupi_recon src/res/sb1-blupi-fr.rc (accented text),
+src/res/sb1-eggbert-es.rc ID 3100 (contains ';').
+Tests: `extract_string_table_numeric_ids_and_cp1252`.
+
+### TASK-BR-05: NormalizeFilesystemPath resolves "." and ".." textually
+Status: DONE -- as Win32's GetFullPathName; a rooted path's ".." stays at the
+root. Lets "<CD path>..\image16\x.blp" work for a CD folder that does not
+exist.
+Area: File
+Evidence: blupi_recon src/misc.cpp:163 (AddCDPath).
+Tests: test_file_paths `TestDotSegmentsResolveTextually`.
+
+### TASK-BR-06: NormalizeFilesystemPath ignores case in every component (non-Windows)
+Status: DONE -- a component that does not exist as spelled is replaced by the
+directory entry matching it ignoring ASCII case; the rest of a path to a file
+being created stays as given. Generalises the fopen wrapper's basename
+fallback to folders, for every path entry point.
+Area: File
+Evidence: blupi_recon src/decor.cpp:288 ("data\\world%.3d.blp" for
+DATA/WORLD001.BLP), src/decor.cpp:438 (saves written to DATA/).
+Tests: test_file_paths `TestCaseInsensitiveFoldersForReadAndWrite`.
+
+### TASK-BR-07: `_timeb`/`_ftime` (Microsoft spellings) in sys/timeb.h
+Status: DONE.
+Area: CRT
+Evidence: blupi_recon src/blupi.cpp:593-608 (Benchmark).
+Tests: test_timeb.
+
+### TASK-BR-08: GetDriveTypeA and DRIVE_* (every drive DRIVE_FIXED)
+Status: DONE -- drive letters map onto the working directory, so there is no
+CD-ROM: Speedy Blupi 1.0 and 2 behave as without their CD and start with
+their own `-nocd` switch.
+Area: File
+Evidence: blupi_recon src/blupi.cpp:145-146 (ReadConfig).
+Tests: test_file_paths `TestDriveTypeAndCurrentDirectory`.
+
+### TASK-BR-09: GetCurrentDirectoryA returns "C:\"
+Status: DONE -- the working directory is the root of every drive here.
+Area: File
+Evidence: blupi_recon src/blupi.cpp:110 (Eggbert builds),
+games/sb2/src/blupi.cpp (ReadConfig).
+Tests: test_file_paths `TestDriveTypeAndCurrentDirectory`.
+
+### TASK-BR-10: JOYCAPSA, joyGetDevCapsA, JOY_RETURNALL
+Status: DONE -- name (szPname), 0..65535 axis ranges, axis and button
+counts, read from the live device list.
+Area: WinMM
+Evidence: blupi_recon src/event.cpp:802 (JOY_RETURNALL), src/event.cpp:2764-2772
+(input-device list).
+Tests: test_joystick_regressions `TestJoyGetDevCapsDescribesVirtualJoystick`.
+
+### TASK-BR-11: AdjustWindowRect reserves a menu bar for bMenu=TRUE
+Status: DONE -- top -= SM_CYCAPTION (the 1998 menu height); caption and
+borders stay identity. Both other games pass FALSE.
+Area: WinUser
+Evidence: blupi_recon src/blupi.cpp:708-709 (window was 640x456).
+Tests: test_winuser_regressions `TestAdjustWindowRectMenuReservesCaptionHeight`.
+
+### TASK-BR-12: _pgmptr uses backslashes on non-Windows hosts
+Status: DONE -- the games cut it at the last '\\' to find their folder.
+Area: Runtime
+Evidence: blupi_recon src/misc.cpp:129-135 and planetblupi src/misc.cpp
+(GetCurrentDir); free-eggbert accepts both.
+Tests: test_winmain_bridge `TestPgmptrUsesBackslashes`.
+
+### TASK-BR-13: mciSendCommandA restores a parameter block cut to 32 bits
+Status: DONE -- on 64-bit hosts a value below 2^32 that lies within 1 MiB
+above mciSendCommandA's frame once given the stack's upper half is that
+stack local.
+Area: WinMM
+Evidence: blupi_recon src/sound.cpp:654, 672 (`(DWORD)(LPVOID)&mciOpenParms`),
+games/sb2/src/sound.cpp:654-790.
+Tests: test_mci_sequences `TestTruncatedParameterBlockAndCallbackStillWork`.
+
+### TASK-BR-14: MCI notify window resolved from a handle cut to 32 bits
+Status: DONE -- FreeApi::Internal::ResolveWindowHandle matches a registered
+window by its low half.
+Area: WinMM
+Evidence: blupi_recon src/sound.cpp:668 (`mciPlayParms.dwCallback = (DWORD)hWnd`).
+Tests: test_winuser_regressions `TestResolveWindowHandleRecoversATruncatedHandle`,
+test_mci_sequences `TestTruncatedParameterBlockAndCallbackStillWork`.
+
+### TASK-BR-15: MCI_OPEN by device-type ID; MCI_STOP, MCI_FROM, MCI_TO, MCI_DEVTYPE_*, MCI_MAKE_TMSF; MCI_GENERIC_PARMS in mmsystem.h
+Status: DONE -- MCI_DEVTYPE_SEQUENCER opens the MIDI player, MCI_DEVTYPE_CD_AUDIO
+is declined like "cdaudio" (no longer taken for the avivideo probe).
+Area: WinMM
+Evidence: blupi_recon games/sb2/src/sound.cpp:649, 705-746, 777, 790.
+Tests: test_mci_sequences `TestOpenByDeviceTypeIdAndStop`.
+
+### TASK-BR-16: MCI_STOP stops a session's playback
+Status: DONE (TASK-24H-0908 had left it out for want of a call site).
+Area: WinMM
+Evidence: blupi_recon games/sb2/src/sound.cpp:790 (SuspendMusic).
+Tests: test_mci_sequences `TestOpenByDeviceTypeIdAndStop`.
+
+Not done (noted while testing): `test_midi_backend_failure` segfaults when
+`SDL_AUDIO_DRIVER=dummy` is set in the environment (it overrides the test's
+bogus `SDL_AUDIODRIVER`); reproduced on unmodified `develop`, so it predates
+this work. ResolveJoystick's per-index cache keeps a stale handle after a
+replug (joyGetDevCapsA avoids it; joyGetPosEx still uses it).

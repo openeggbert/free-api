@@ -26,6 +26,18 @@ A sibling `../freeapiissues.md` file (outside this repo, in the shared
 `openeggbert/` directory) existed briefly and was also fully resolved and
 deleted.
 
+## 0. blupi_recon support (2026-10-24, branch `blupi-recon`, not committed)
+
+A third target game, `../blupi_recon` (unchanged Speedy Blupi 1 and 2
+source), was added at the owner's request: plan.md section "blupi_recon
+support", TASK-BR-01..16. Build status: `build/` (standalone, system SDL3)
+configures and builds; `ctest` 30/30 passes (run without
+`SDL_AUDIO_DRIVER=dummy`, see the note at the end of that plan.md section);
+`../planetblupi/build` rebuilt, its free-api `ctest` 30/30 passes and the
+game reaches its title screen. `../free-eggbert` was not rebuilt (no build
+tree). blupi_recon's own `freeapi/` builds (SB1, SB2, Eggbert 2) run to a
+mission with music.
+
 ## 1. Project summary
 
 Free API is a small, SDL3-backed C++ static library that exposes a

@@ -1,6 +1,6 @@
 # Free API — Target Games
 
-Free API exists to serve exactly two games. This document describes each,
+Free API exists to serve exactly three games. This document describes each,
 where it lives, and how it consumes Free API. See [`docs/scope.md`](scope.md)
 for the scope policy and [`plan.md`](../plan.md) for the full evidence-based
 usage audit.
@@ -120,3 +120,28 @@ editor's entry button is hidden unless `m_bPrivate` is true
 5. Hold Ctrl and click (or drag) over the decor-placement area to test the
    flood-fill (`ArrangeFill`) behavior — see `TASK-24H-0403` for the actual
    playtest steps and where to record the result.
+
+## blupi_recon
+
+* Repo: `../blupi_recon`, the matching decompilation of Speedy Blupi 1
+  (`src/`, 19 TUs) and of Speedy Blupi 2 / Speedy Eggbert 2
+  (`games/sb2/src/`). Added on 2026-10-24 at the owner's request.
+* Built by `../blupi_recon/freeapi/CMakeLists.txt` (project
+  `BLUPI_RECON_FREEAPI`, which `FREE_API_TARGET_GAME=auto` recognises), one
+  game per build directory (`-DBLUPI_GAME=sb1|sb2`). It sets
+  `FREE_API_TARGET_GAME=blupi-recon` and names the resource script in
+  `FREE_API_BLUPI_RECON_RC` (`src/res/*.rc`, `games/sb2/res/*.rc`: numeric
+  string IDs, cp1252).
+* The source is **never edited** for Free API: it must keep compiling to the
+  original machine code with MSVC 5. Everything it needs comes from Free API
+  and Free Direct (with `FREE_DIRECT_HONOR_DISPLAY_BPP`), plus the build's
+  own forced include `freeapi/compat/msvc_crt.h` (the VC5 `rand` generator
+  and a `FILE` with VC5's `_flag`).
+* 64-bit hosts: the 1998 sources pass MCI parameter blocks and the callback
+  window through 32-bit `DWORD` casts (`src/sound.cpp:654-672`); Free API
+  restores both (plan.md TASK-BR-13/14).
+* Run it from the game's folder with the executable beside the data
+  (`DATA/`, `IMAGE08/`, `IMAGE16/`, `SOUND/`); Speedy Blupi 1.0 and 2 need
+  their own `-nocd` switch (there is no CD-ROM drive, plan.md TASK-BR-08).
+* Own docs: `../blupi_recon/freeapi/README.md`.
+

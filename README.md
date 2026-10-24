@@ -28,8 +28,9 @@ WinAPI (subset ~1998)
 
 ## Scope
 
-Free API targets exactly two games — **Free Eggbert** and **Planet Blupi** —
-and implements only the WinAPI subset those two games actually use. It is not
+Free API targets exactly three games — **Free Eggbert**, **Planet Blupi** and
+**blupi_recon** (the unchanged matching reconstruction of Speedy Blupi 1 and 2,
+added 2026-10-24) — and implements only the WinAPI subset they actually use. It is not
 Wine and not a general Win32 SDK reimplementation. See
 [`docs/scope.md`](docs/scope.md) for the scope policy and [`plan.md`](plan.md)
 for the full usage audit.
