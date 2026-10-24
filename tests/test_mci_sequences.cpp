@@ -490,6 +490,81 @@ static void TestMidiOpenFindsUppercaseFixtureViaLowercaseName()
     DestroyWindow(hwnd);
 }
 
+// blupi_recon's CSound::PlayMusic (src/sound.cpp:651-673) passes its stack
+// parameter blocks and its window as (DWORD) casts, which a 64-bit build
+// cuts to their low halves: the open must still fill wDeviceID, and the
+// end-of-song notification must reach the window.
+static void TestTruncatedParameterBlockAndCallbackStillWork()
+{
+    HWND hwnd = MakeTestWindow("RegTest_MciTruncated");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds for the truncated-pointer test");
+    if (!hwnd) return;
+
+    const std::string path = "test_mci_truncated_fixture.mid";
+    Check(WriteMinimalMidi(path), "MIDI fixture file is written for the truncated-pointer test");
+
+    MCI_OPEN_PARMSA openParms{};
+    openParms.lpstrDeviceType = const_cast<LPSTR>("sequencer");
+    openParms.lpstrElementName = const_cast<LPSTR>(path.c_str());
+    const DWORD_PTR openLow = static_cast<DWORD>(reinterpret_cast<uintptr_t>(&openParms));
+    MCIERROR openRc = mciSendCommandA(0, MCI_OPEN, MCI_OPEN_TYPE | MCI_OPEN_ELEMENT, openLow);
+    Check(openRc == 0 && openParms.wDeviceID != 0,
+          "MCI_OPEN with a truncated parameter block opens and writes wDeviceID back");
+
+    if (openRc == 0) {
+        MCI_PLAY_PARMS playParms{};
+        playParms.dwCallback = static_cast<DWORD>(reinterpret_cast<uintptr_t>(hwnd));
+        const DWORD_PTR playLow = static_cast<DWORD>(reinterpret_cast<uintptr_t>(&playParms));
+        MCIERROR playRc = mciSendCommandA(openParms.wDeviceID, MCI_PLAY, MCI_NOTIFY, playLow);
+        Check(playRc == 0, "MCI_PLAY with a truncated parameter block succeeds");
+        Check(WaitForMciNotifySuccessful(hwnd, 5000),
+              "MM_MCINOTIFY reaches the window named by a truncated dwCallback");
+        mciSendCommandA(openParms.wDeviceID, MCI_CLOSE, 0, 0);
+    }
+
+    MSG msg{};
+    while (PeekMessageA(&msg, hwnd, 0, 0, PM_REMOVE)) {}
+    remove(path.c_str());
+    DestroyWindow(hwnd);
+}
+
+// blupi_recon's SB2 CSound opens the sequencer by device-type ID
+// (games/sb2/src/sound.cpp:649), stops it with MCI_STOP before closing
+// (790), and asks for CD audio by ID (705), which is declined.
+static void TestOpenByDeviceTypeIdAndStop()
+{
+    const std::string path = "test_mci_type_id_fixture.mid";
+    Check(WriteMinimalMidi(path), "MIDI fixture file is written for the device-type-ID test");
+
+    MCI_OPEN_PARMSA openParms{};
+    openParms.lpstrDeviceType = reinterpret_cast<LPCSTR>(static_cast<uintptr_t>(MCI_DEVTYPE_SEQUENCER));
+    openParms.lpstrElementName = const_cast<LPSTR>(path.c_str());
+    MCIERROR openRc = mciSendCommandA(0, MCI_OPEN, MCI_OPEN_TYPE | MCI_OPEN_TYPE_ID | MCI_OPEN_ELEMENT,
+                                      reinterpret_cast<DWORD_PTR>(&openParms));
+    Check(openRc == 0 && openParms.wDeviceID != 0, "MCI_OPEN with MCI_DEVTYPE_SEQUENCER by ID opens the MIDI file");
+
+    if (openRc == 0) {
+        MCI_PLAY_PARMS playParms{};
+        Check(mciSendCommandA(openParms.wDeviceID, MCI_PLAY, 0, reinterpret_cast<DWORD_PTR>(&playParms)) == 0,
+              "MCI_PLAY succeeds on the device opened by ID");
+        MCI_GENERIC_PARMS genericParms{};
+        Check(mciSendCommandA(openParms.wDeviceID, MCI_STOP, 0, reinterpret_cast<DWORD_PTR>(&genericParms)) == 0,
+              "MCI_STOP succeeds on an open device");
+        Check(mciSendCommandA(openParms.wDeviceID, MCI_CLOSE, 0, 0) == 0, "MCI_CLOSE succeeds after MCI_STOP");
+        Check(mciSendCommandA(openParms.wDeviceID, MCI_STOP, 0, reinterpret_cast<DWORD_PTR>(&genericParms)) ==
+              MCIERR_INVALID_DEVICE_ID, "MCI_STOP on a closed device reports MCIERR_INVALID_DEVICE_ID");
+    }
+
+    MCI_OPEN_PARMSA cdParms{};
+    cdParms.lpstrDeviceType = reinterpret_cast<LPCSTR>(static_cast<uintptr_t>(MCI_DEVTYPE_CD_AUDIO));
+    Check(mciSendCommandA(0, MCI_OPEN, MCI_OPEN_TYPE | MCI_OPEN_TYPE_ID, reinterpret_cast<DWORD_PTR>(&cdParms)) != 0,
+          "MCI_OPEN with MCI_DEVTYPE_CD_AUDIO by ID is declined");
+    Check(MCI_MAKE_TMSF(3, 0, 0, 0) == 3 && MCI_MAKE_TMSF(1, 2, 3, 4) == 0x04030201u,
+          "MCI_MAKE_TMSF packs track, minutes, seconds and frames as on Win32");
+
+    remove(path.c_str());
+}
+
 int main()
 {
     printf("[mci-sequences] Starting\n");
@@ -511,6 +586,8 @@ int main()
     TestMidiOutVolumeIterationSequence();
     TestMciGetDeviceIdaResultSafelyClosable();
     TestMidiOpenFindsUppercaseFixtureViaLowercaseName();
+    TestTruncatedParameterBlockAndCallbackStillWork();
+    TestOpenByDeviceTypeIdAndStop();
 
     // Deliberately not calling SDL_Quit() here: MidiState's static-global
     // destructor (src/MidiMusic.cpp ~MidiState) tears down its SDL audio

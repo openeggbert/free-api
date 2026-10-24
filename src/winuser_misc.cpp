@@ -74,13 +74,19 @@ int WINAPI GetSystemMetrics(int nIndex)
 BOOL WINAPI AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
 {
     (void)dwStyle;
-    (void)bMenu;
 
-    // Intentional identity transform: see the Doxygen comment on this
-    // function's declaration in include/winuser.h for why leaving lpRect
-    // unchanged is the correct behavior given how CreateWindowExA and
-    // GetClientRect define "window size" in this implementation.
-    return lpRect ? TRUE : FALSE;
+    if (!lpRect) {
+        return FALSE;
+    }
+    // Caption and borders: identity, see the Doxygen comment on this
+    // function's declaration in include/winuser.h. A menu bar would take
+    // client height, so bMenu reserves it: the caption height, which the menu
+    // bar had in the 1998 metrics (blupi_recon src/blupi.cpp:708-709 relies on
+    // it, subtracting SM_CYCAPTION again).
+    if (bMenu) {
+        lpRect->top -= GetSystemMetrics(SM_CYCAPTION);
+    }
+    return TRUE;
 }
 
 } // extern "C"

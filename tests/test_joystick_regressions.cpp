@@ -11,6 +11,7 @@
 #include <windows.h>
 #include <SDL3/SDL.h>
 #include <cstdio>
+#include <cstring>
 
 static int g_failures = 0;
 
@@ -137,6 +138,47 @@ static void TestJoyGetPosExRejectsHighBitSetDeviceIndex()
           "joyGetPosEx(UINT_MAX, ...) does not crash and safely reports JOYERR_UNPLUGGED");
 }
 
+// blupi_recon lists the devices' names on its input screen
+// (src/event.cpp:2764-2772): joyGetDevCapsA gives szPname, the axis ranges
+// joyGetPosEx reports and the counts.
+static void TestJoyGetDevCapsDescribesVirtualJoystick()
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = 2;
+    desc.nbuttons = 4;
+    desc.name = "Free API JoyCaps Test";
+
+    SDL_JoystickID instanceId = SDL_AttachVirtualJoystick(&desc);
+    Check(instanceId != 0, "SDL_AttachVirtualJoystick succeeds for the caps test");
+    if (instanceId == 0) return;
+
+    bool found = false;
+    const UINT numDevs = joyGetNumDevs();
+    for (UINT i = 0; i < numDevs && !found; ++i) {
+        JOYCAPS caps;
+        memset(&caps, 0xAB, sizeof(caps));
+        if (joyGetDevCaps(i, &caps, sizeof(JOYCAPS)) != JOYERR_NOERROR) continue;
+        if (strcmp(caps.szPname, "Free API JoyCaps Test") != 0) continue;
+        found = true;
+        Check(caps.wXmin == 0 && caps.wXmax == 65535 && caps.wYmin == 0 && caps.wYmax == 65535,
+              "joyGetDevCaps reports joyGetPosEx's 0..65535 axis ranges");
+        Check(caps.wNumButtons == 4 && caps.wNumAxes == 2, "joyGetDevCaps reports the device's buttons and axes");
+        Check(caps.szRegKey[0] == 0, "fields Free API does not fill are zero");
+    }
+    Check(found, "joyGetDevCaps names the virtual joystick in szPname");
+
+    JOYCAPS caps{};
+    Check(joyGetDevCaps(999, &caps, sizeof(JOYCAPS)) == JOYERR_UNPLUGGED,
+          "joyGetDevCaps reports JOYERR_UNPLUGGED for an out-of-range device index");
+    Check(joyGetDevCaps(0, &caps, sizeof(JOYCAPS) - 1) == JOYERR_PARMS,
+          "joyGetDevCaps rejects a structure size smaller than JOYCAPSA");
+    Check(joyGetDevCaps(0, nullptr, sizeof(JOYCAPS)) == JOYERR_PARMS, "joyGetDevCaps rejects a null pointer");
+
+    SDL_DetachVirtualJoystick(instanceId);
+}
+
 int main()
 {
     printf("[joystick-regressions] Starting\n");
@@ -145,6 +187,7 @@ int main()
     TestJoyGetPosExRejectsNullAndTooSmallStruct();
     TestJoyGetPosExReportsUnpluggedForOutOfRangeIndex();
     TestJoyGetPosExRejectsHighBitSetDeviceIndex();
+    TestJoyGetDevCapsDescribesVirtualJoystick();
 
     if (g_failures > 0) {
         printf("[joystick-regressions] %d FAILURE(S)\n", g_failures);

@@ -173,6 +173,57 @@ typedef HMIDIOUT* LPHMIDIOUT;
 #define JOYERR_NOCANDO  166
 #define JOYERR_UNPLUGGED 167
 
+/**
+ * @brief joyGetPosEx flag: report every field (real Win32 value, the OR of
+ * the JOY_RETURNX..JOY_RETURNBUTTONS bits). joyGetPosEx fills the fields it
+ * supports whatever the flags say. Call site: blupi_recon src/event.cpp:802.
+ * @note Status: IMPLEMENTED
+ */
+#define JOY_RETURNALL 0x000000FFL
+
+/** @brief Length of a WinMM device name, terminator included (real Win32 value). @note Status: IMPLEMENTED */
+#define MAXPNAMELEN 32
+/** @brief Length of JOYCAPSA::szOEMVxD (real Win32 value). @note Status: IMPLEMENTED */
+#define MAX_JOYSTICKOEMVXDNAME 260
+
+/**
+ * @brief Joystick capabilities, in the real WinMM layout.
+ *
+ * joyGetDevCapsA fills `szPname` (the device's name, which blupi_recon lists
+ * on its input-device screen: src/event.cpp:2764-2772), the axis ranges
+ * (0..65535, as joyGetPosEx reports them) and the button and axis counts;
+ * the remaining fields stay zero.
+ * @note Status: PARTIAL
+ */
+typedef struct tagJOYCAPSA {
+    WORD wMid;
+    WORD wPid;
+    CHAR szPname[MAXPNAMELEN];
+    UINT wXmin;
+    UINT wXmax;
+    UINT wYmin;
+    UINT wYmax;
+    UINT wZmin;
+    UINT wZmax;
+    UINT wNumButtons;
+    UINT wPeriodMin;
+    UINT wPeriodMax;
+    UINT wRmin;
+    UINT wRmax;
+    UINT wUmin;
+    UINT wUmax;
+    UINT wVmin;
+    UINT wVmax;
+    UINT wCaps;
+    UINT wMaxAxes;
+    UINT wNumAxes;
+    UINT wMaxButtons;
+    CHAR szRegKey[MAXPNAMELEN];
+    CHAR szOEMVxD[MAX_JOYSTICKOEMVXDNAME];
+} JOYCAPSA, *PJOYCAPSA, *LPJOYCAPSA;
+typedef JOYCAPSA JOYCAPS;
+typedef LPJOYCAPSA LPJOYCAPS;
+
 #define WAVE_FORMAT_PCM 1
 
 // TASK-24H-0105/0905: these 7 constants are also declared identically in
@@ -205,7 +256,30 @@ typedef HMIDIOUT* LPHMIDIOUT;
 #define MCI_SET_TIME_FORMAT 0x00000400L
 #define MCI_FORMAT_TMSF 10
 #define MCI_TRACK 0x00000010L
+// blupi_recon's Speedy Blupi 2 / Speedy Eggbert 2 CSound (games/sb2/src/sound.cpp:
+// 649 opens the sequencer by device-type ID, 705-746 a CD track, 790
+// stops with MCI_STOP). Real Win32 values.
+#define MCI_STOP 0x0808
+#define MCI_FROM 0x00000004L
+#define MCI_TO 0x00000008L
+#define MCI_DEVTYPE_CD_AUDIO 516
+#define MCI_DEVTYPE_SEQUENCER 523
+#define MCI_MAKE_TMSF(t, m, s, f) \
+    ((DWORD)(((BYTE)(t) | ((WORD)(m) << 8)) | (((DWORD)(BYTE)(s) | ((WORD)(f) << 8)) << 16)))
 /** @} */
+
+/**
+ * @brief Parameters of MCI commands without their own block (MCI_STOP, MCI_CLOSE).
+ * Real Win32 declares it in mmsystem.h; blupi_recon's SB2 sound.cpp:777 needs it
+ * there. digitalv.h shares this definition.
+ * @note Status: IMPLEMENTED
+ */
+#ifndef FREE_API_MCI_GENERIC_PARMS_DEFINED
+#define FREE_API_MCI_GENERIC_PARMS_DEFINED
+typedef struct tagMCI_GENERIC_PARMS {
+    DWORD_PTR dwCallback;
+} MCI_GENERIC_PARMS, *LPMCI_GENERIC_PARMS;
+#endif
 
 /**
  * @brief Builds a little-endian FOURCC value.
@@ -261,6 +335,15 @@ MMRESULT WINAPI joyGetPosEx(UINT uJoyID, LPJOYINFOEX pji);
  * @note Status: IMPLEMENTED
  */
 UINT WINAPI joyGetNumDevs(void);
+/**
+ * @brief Describes the `uJoyID`-th connected device (SDL-backed), see JOYCAPSA.
+ * Returns `JOYERR_UNPLUGGED` when there is no such device and `JOYERR_PARMS`
+ * when `cbjc` is smaller than JOYCAPSA. Call site: blupi_recon
+ * src/event.cpp:2769 (CEvent::ChangePhase, the input-device list).
+ * @note Status: PARTIAL
+ */
+MMRESULT WINAPI joyGetDevCapsA(UINT_PTR uJoyID, LPJOYCAPSA pjc, UINT cbjc);
+#define joyGetDevCaps joyGetDevCapsA
 
 /**
  * @brief Returns number of MIDI output devices.

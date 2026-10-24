@@ -139,6 +139,19 @@ static void TestNoExtraArgsProducesNullCmdLine()
     Check(g_receivedLpCmdLineWasNull, "lpCmdLine is NULL (not an empty string) when there are no extra arguments");
 }
 
+#if !defined(_WIN32)
+// Win32's _pgmptr uses backslashes; blupi_recon's GetCurrentDir
+// (src/misc.cpp:129-135) cuts it at the last one.
+static void TestPgmptrUsesBackslashes()
+{
+    ResetCapture();
+    char* argv[] = {const_cast<char*>("./bin/game")};
+    FreeApiRunWinMain(FakeWinMain, 1, argv);
+    Check(_pgmptr != nullptr && strcmp(_pgmptr, ".\\bin\\game") == 0,
+          "_pgmptr is argv[0] with backslashes (\".\\\\bin\\\\game\")");
+}
+#endif
+
 int main()
 {
     printf("[winmain-bridge] Starting\n");
@@ -146,6 +159,9 @@ int main()
     TestNullEntryPointReturnsMinusOneWithoutCalling();
     TestArgvToCmdLineAssemblyAndExitCodePassthrough();
     TestNoExtraArgsProducesNullCmdLine();
+#if !defined(_WIN32)
+    TestPgmptrUsesBackslashes();
+#endif
 
     if (g_failures > 0) {
         printf("[winmain-bridge] %d FAILURE(S)\n", g_failures);

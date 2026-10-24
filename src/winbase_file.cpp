@@ -106,6 +106,23 @@ BOOL WINAPI DeleteFileA(LPCSTR lpFileName)
     return std::remove(path.c_str()) == 0 ? TRUE : FALSE;
 }
 
+UINT WINAPI GetDriveTypeA(LPCSTR lpRootPathName)
+{
+    (void)lpRootPathName;
+    return DRIVE_FIXED;
+}
+
+DWORD WINAPI GetCurrentDirectoryA(DWORD nBufferLength, LPSTR lpBuffer)
+{
+    static const char kRoot[] = "C:\\";
+    const DWORD length = sizeof(kRoot) - 1;
+    if (!lpBuffer || nBufferLength <= length) {
+        return length + 1;
+    }
+    memcpy(lpBuffer, kRoot, sizeof(kRoot));
+    return length;
+}
+
 BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes)
 {
     (void)lpSecurityAttributes;

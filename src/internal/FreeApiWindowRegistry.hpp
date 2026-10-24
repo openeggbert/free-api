@@ -31,5 +31,10 @@ extern HWND                                          g_focusWindow;
 
 HWND FindWindowById(uint32_t windowId);
 HWND GetActiveWindow();
+// The registered window a handle names, also when a 64-bit HWND reached us
+// cast through a 32-bit DWORD (blupi_recon src/sound.cpp:668,
+// `mciPlayParms.dwCallback = (DWORD)hWnd`): matched by its low half.
+// Returns the value unchanged when no registered window matches.
+HWND ResolveWindowHandle(DWORD_PTR value);
 
 } // namespace FreeApi::Internal

@@ -113,8 +113,46 @@ BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurity
 BOOL WINAPI RemoveDirectoryA(LPCSTR lpPathName);
 
 //#5509
-/** @brief Calls remove() directly; no backslash normalization. @note Status: PARTIAL */
+/** @brief Removes a file; the path is normalized like every other Free API path. @note Status: PARTIAL */
 BOOL WINAPI DeleteFileA(LPCSTR lpFileName);
+
+/**
+ * @name Drive types (real Win32 values)
+ * @note Status: IMPLEMENTED
+ */
+/** @{ */
+#define DRIVE_UNKNOWN     0
+#define DRIVE_NO_ROOT_DIR 1
+#define DRIVE_REMOVABLE   2
+#define DRIVE_FIXED       3
+#define DRIVE_REMOTE      4
+#define DRIVE_CDROM       5
+#define DRIVE_RAMDISK     6
+/** @} */
+
+/**
+ * @brief Reports every drive as `DRIVE_FIXED`.
+ *
+ * Free API maps every drive letter onto the working directory (paths lose
+ * their drive, see FreeApiPath.hpp), so there is no CD-ROM drive. A game
+ * that insists on one behaves as the original did without its CD: Speedy
+ * Blupi 1.0 (blupi_recon src/blupi.cpp:145, ReadConfig) then starts only
+ * with its own `-nocd` switch.
+ * @note Status: PARTIAL
+ */
+UINT WINAPI GetDriveTypeA(LPCSTR lpRootPathName);
+
+/**
+ * @brief Returns "C:\" (3 characters).
+ *
+ * The working directory is the root of every drive here, so that is its
+ * name; a path built from it ("C:\..\data\x.blp") normalizes back to one
+ * relative to the working directory. Returns the required size, terminator
+ * included, when `nBufferLength` is too small. Call site: blupi_recon
+ * src/blupi.cpp:110 (ReadConfig, Speedy Eggbert builds).
+ * @note Status: PARTIAL
+ */
+DWORD WINAPI GetCurrentDirectoryA(DWORD nBufferLength, LPSTR lpBuffer);
 
 //#6101
 /** @brief Sets an environment variable. @note Status: PARTIAL */

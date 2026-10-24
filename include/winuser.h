@@ -48,6 +48,8 @@
 #define DeleteFile DeleteFileA
 #define wsprintf wsprintfA
 #define CreateDirectory CreateDirectoryA
+#define GetDriveType GetDriveTypeA
+#define GetCurrentDirectory GetCurrentDirectoryA
 #endif
 
 //#145
@@ -468,7 +470,13 @@ BOOL WINAPI GetClientRect(HWND hWnd, LPRECT lpRect);
  * the rect unchanged is the behavior both games need; inflating it here (to
  * mimic real Win32 caption/border growth) would make the resulting window
  * larger than intended, since nothing downstream subtracts it back out.
- * @note Status: IMPLEMENTED (intentional identity transform; see plan.md TASK-0030/0031)
+ * `bMenu` is the one exception: a menu bar takes client height, so a TRUE
+ * `bMenu` raises `top` by the menu bar's height, which in the 1998 metrics
+ * equals the caption height (`SM_CYCAPTION`). blupi_recon's unchanged source
+ * (src/blupi.cpp:708-709) passes TRUE and then lowers `top` by
+ * `SM_CYCAPTION`, so its client area is the requested 640x480 again; both
+ * other games pass FALSE.
+ * @note Status: IMPLEMENTED (identity for caption and borders; see plan.md TASK-0030/0031)
  */
 BOOL WINAPI AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
 

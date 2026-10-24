@@ -539,6 +539,74 @@ static void TestFreeApiFopenPrefixNormalizationCharacterization()
     rmdir(root.c_str());
 }
 
+#if !defined(_WIN32)
+// blupi_recon (the unchanged Speedy Blupi 1 source) opens "data\\world%.3d.blp"
+// (src/decor.cpp:288) and writes "data\\info%.3d.blp" in an install whose
+// folders are upper case (DATA/WORLD001.BLP): every path component resolves
+// ignoring case, and a file being created lands in the existing folder.
+static void TestCaseInsensitiveFoldersForReadAndWrite()
+{
+    std::string root = MakeTempRoot("folders");
+    Check(!root.empty(), "temp root created for the case-insensitive folder test");
+    if (root.empty()) return;
+
+    const std::string subdir = root + "/DATA";
+    Check(::mkdir(subdir.c_str(), 0755) == 0, "DATA/ subdirectory created");
+    FILE* w = fopen((subdir + "/WORLD001.BLP").c_str(), "wb");
+    Check(w != nullptr, "DATA/WORLD001.BLP fixture file created");
+    if (w) fclose(w);
+
+    char oldCwd[4096];
+    Check(getcwd(oldCwd, sizeof(oldCwd)) != nullptr, "captured current working directory");
+    Check(chdir(root.c_str()) == 0, "chdir into temp root succeeded");
+
+    FILE* r = fopen("data\\world001.blp", "rb");
+    Check(r != nullptr, "fopen(\"data\\\\world001.blp\") opens DATA/WORLD001.BLP");
+    if (r) fclose(r);
+
+    FILE* c = fopen("data\\info001.blp", "wb");
+    Check(c != nullptr, "fopen(\"data\\\\info001.blp\", \"wb\") creates a file in the existing DATA/ folder");
+    if (c) fclose(c);
+    struct stat st{};
+    Check(::stat("DATA/info001.blp", &st) == 0, "the created file is DATA/info001.blp");
+    Check(DeleteFileA("data\\info001.blp") == TRUE, "DeleteFileA(\"data\\\\info001.blp\") removes it");
+
+    chdir(oldCwd);
+    remove((subdir + "/WORLD001.BLP").c_str());
+    rmdir(subdir.c_str());
+    rmdir(root.c_str());
+}
+#endif
+
+// Win32 resolves "." and ".." textually: blupi_recon's AddCDPath builds
+// "<CD path>..\\image16\\x.blp" (src/misc.cpp:163) for a CD folder that need
+// not exist, and a rooted path's ".." stays at the root.
+static void TestDotSegmentsResolveTextually()
+{
+    using FreeApi::Internal::NormalizeFilesystemPath;
+    Check(NormalizeFilesystemPath("E:\\US\\..\\image16\\x.blp") == "image16/x.blp",
+          "\"E:\\\\US\\\\..\\\\image16\\\\x.blp\" normalizes to \"image16/x.blp\"");
+    Check(NormalizeFilesystemPath("C:\\..\\data\\x.blp") == "data/x.blp",
+          "a rooted path's \"..\" at the root stays at the root");
+    Check(NormalizeFilesystemPath(".\\sound\\music000.blp") == "sound/music000.blp",
+          "a leading \".\\\\\" is dropped");
+    Check(NormalizeFilesystemPath("a\\..\\..\\b") == "../b",
+          "a relative path keeps the \"..\" that climbs above it");
+}
+
+// blupi_recon's ReadConfig (src/blupi.cpp:110, 145): drive letters map onto
+// the working directory, which is therefore "C:\\", and no drive is a CD-ROM.
+static void TestDriveTypeAndCurrentDirectory()
+{
+    Check(GetDriveTypeA("E:\\") == DRIVE_FIXED, "GetDriveTypeA reports DRIVE_FIXED");
+    char dir[MAX_PATH] = {0};
+    Check(GetCurrentDirectoryA(MAX_PATH, dir) == 3 && strcmp(dir, "C:\\") == 0,
+          "GetCurrentDirectoryA returns \"C:\\\\\" (3 characters)");
+    char small[3] = {'x', 'x', 'x'};
+    Check(GetCurrentDirectoryA(sizeof(small), small) == 4 && small[0] == 'x',
+          "GetCurrentDirectoryA returns the required size and writes nothing into a too-small buffer");
+}
+
 int main()
 {
     printf("[file-paths] Starting\n");
@@ -553,7 +621,10 @@ int main()
     TestFindFirstFindNextRepeatedDrainWithoutCloseDoesNotLeakSession();
 #if !defined(_WIN32)
     TestFindFirstSkipsUnresolvableSymlinkInsteadOfCrashing();
+    TestCaseInsensitiveFoldersForReadAndWrite();
 #endif
+    TestDotSegmentsResolveTextually();
+    TestDriveTypeAndCurrentDirectory();
 
     if (g_failures > 0) {
         printf("[file-paths] %d FAILURE(S)\n", g_failures);

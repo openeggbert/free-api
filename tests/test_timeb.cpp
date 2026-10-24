@@ -25,6 +25,17 @@ int main()
         return 1;
     }
 
+    // The Microsoft spellings blupi_recon's unchanged source uses
+    // (src/blupi.cpp:593-608, Benchmark).
+    struct _timeb mtb;
+    mtb.millitm = 1000;
+    _ftime(&mtb);
+    if (mtb.millitm >= 1000 || mtb.time <= 0) {
+        std::cerr << "[timeb] _ftime filled time=" << mtb.time << " millitm=" << mtb.millitm << "\n";
+        return 1;
+    }
+    _ftime(nullptr);
+
     std::cout << "[timeb] SUCCESS: time=" << tb.time << " millitm=" << tb.millitm << "\n";
     return 0;
 }

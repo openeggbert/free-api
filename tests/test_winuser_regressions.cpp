@@ -1623,6 +1623,47 @@ static void TestSetWindowTextASetsRealWindowTitle()
     DrainMessages();
 }
 
+// blupi_recon's windowed mode (src/blupi.cpp:706-714) passes bMenu TRUE and
+// then lowers top by SM_CYCAPTION: its client area must stay 640x480.
+static void TestAdjustWindowRectMenuReservesCaptionHeight()
+{
+    RECT rc = {0, 0, 640, 480};
+    Check(AdjustWindowRect(&rc, WS_POPUPWINDOW | WS_CAPTION, TRUE) == TRUE,
+          "AdjustWindowRect(bMenu=TRUE) returns TRUE");
+    rc.top += GetSystemMetrics(SM_CYCAPTION);
+    Check(rc.right - rc.left == 640 && rc.bottom - rc.top == 480,
+          "AdjustWindowRect(bMenu=TRUE) reserves the caption height, which the game takes back");
+    Check(AdjustWindowRect(nullptr, WS_POPUPWINDOW | WS_CAPTION, TRUE) == FALSE,
+          "AdjustWindowRect rejects a null rect");
+}
+
+namespace FreeApi::Internal { HWND ResolveWindowHandle(DWORD_PTR value); }
+
+// blupi_recon passes its window as an MCI callback through a 32-bit DWORD
+// (src/sound.cpp:668): the registered window is found by its low half.
+static void TestResolveWindowHandleRecoversATruncatedHandle()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_ResolveHandle";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+    HWND hwnd = CreateWindowA("RegTest_ResolveHandle", "Test", WS_POPUPWINDOW,
+                              0, 0, 64, 64, HWND_DESKTOP, nullptr, (HINSTANCE)1, nullptr);
+    Check(hwnd != nullptr, "CreateWindowA succeeds for the handle-resolution test");
+    if (!hwnd) return;
+
+    const DWORD_PTR full = reinterpret_cast<DWORD_PTR>(hwnd);
+    const DWORD_PTR truncated = static_cast<DWORD>(full);
+    Check(FreeApi::Internal::ResolveWindowHandle(full) == hwnd, "a full handle resolves to itself");
+    Check(FreeApi::Internal::ResolveWindowHandle(truncated) == hwnd,
+          "a handle cut to its low 32 bits resolves to the registered window");
+    Check(FreeApi::Internal::ResolveWindowHandle(0) == nullptr, "0 stays NULL");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
 int main()
 {
     printf("[winuser-regressions] Starting\n");
@@ -1633,6 +1674,8 @@ int main()
     }
 
     TestAdjustWindowRectPreservesClientSize();
+    TestAdjustWindowRectMenuReservesCaptionHeight();
+    TestResolveWindowHandleRecoversATruncatedHandle();
     TestRegisterClassAWithFullFieldSet();
     TestCreateWindowExAFullscreenPath();
     TestCreateWindowExANeverSetsResizableFlag();

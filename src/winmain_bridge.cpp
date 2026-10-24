@@ -1,6 +1,7 @@
 #include "windows.h"
 #include "internal/FreeApiPath.hpp"
 
+#include <algorithm>
 #include <string>
 #if defined(__ANDROID__)
 #include <SDL3/SDL.h>
@@ -72,8 +73,14 @@ int WINAPI FreeApiRunWinMain(FREE_API_WINMAIN_PROC entryPoint, int argc, char** 
         }
     }
 #else
+    // Win32's _pgmptr spells its directories with backslashes, and the games
+    // find their own folder by the last one (blupi_recon src/misc.cpp:129-135
+    // and planetblupi src/misc.cpp, GetCurrentDir, look only for '\\').
     if (argc > 0 && argv && argv[0]) {
-        _pgmptr = argv[0];
+        static std::string s_pgmptr;
+        s_pgmptr = argv[0];
+        std::replace(s_pgmptr.begin(), s_pgmptr.end(), '/', '\\');
+        _pgmptr = s_pgmptr.data();
     }
 #endif
 

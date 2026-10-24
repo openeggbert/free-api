@@ -304,6 +304,46 @@ UINT WINAPI joyGetNumDevs(void)
     return static_cast<UINT>(count);
 }
 
+MMRESULT WINAPI joyGetDevCapsA(UINT_PTR uJoyID, LPJOYCAPSA pjc, UINT cbjc)
+{
+    if (!pjc || cbjc < sizeof(JOYCAPSA)) {
+        return JOYERR_PARMS;
+    }
+    memset(pjc, 0, sizeof(JOYCAPSA));
+
+    if (!EnsureJoystickSubsystem()) {
+        return JOYERR_UNPLUGGED;
+    }
+    // Reads the current device list (not ResolveJoystick's per-index cache,
+    // which keeps a handle across a replug): the caps describe the device
+    // at that index now.
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    if (!ids) {
+        return JOYERR_UNPLUGGED;
+    }
+    const bool inRange = count > 0 && uJoyID < static_cast<UINT_PTR>(count);
+    const SDL_JoystickID id = inRange ? ids[uJoyID] : 0;
+    SDL_free(ids);
+    if (!inRange) {
+        return JOYERR_UNPLUGGED;
+    }
+
+    const char* name = SDL_GetJoystickNameForID(id);
+    SDL_strlcpy(pjc->szPname, name ? name : "Joystick", MAXPNAMELEN);
+    // The ranges joyGetPosEx reports (SDL's signed axes shifted to 0..65535).
+    pjc->wXmax = pjc->wYmax = pjc->wZmax = 65535;
+    pjc->wRmax = pjc->wUmax = pjc->wVmax = 65535;
+    if (SDL_Joystick* joystick = SDL_OpenJoystick(id)) {
+        const int numAxes = SDL_GetNumJoystickAxes(joystick);
+        const int numButtons = SDL_GetNumJoystickButtons(joystick);
+        pjc->wNumAxes = pjc->wMaxAxes = static_cast<UINT>(numAxes > 0 ? numAxes : 0);
+        pjc->wNumButtons = pjc->wMaxButtons = static_cast<UINT>(numButtons > 0 ? numButtons : 0);
+        SDL_CloseJoystick(joystick);
+    }
+    return JOYERR_NOERROR;
+}
+
 UINT WINAPI midiOutGetNumDevs(void)
 {
     return MidiMusicGetNumDevs();
@@ -330,8 +370,36 @@ MMRESULT WINAPI midiOutClose(HMIDIOUT hmo)
     return MidiMusicOutClose();
 }
 
+namespace {
+
+// 64-bit hosts. Win32 pointers had 32 bits, and the 1998 sources pass an MCI
+// parameter block as (DWORD)(LPVOID)&block, so a 64-bit build hands us only
+// its low half (blupi_recon src/sound.cpp:654 and 672, CSound::PlayMusic).
+// The block is a local of a caller, on this thread's stack above this frame:
+// its upper half is the stack's. A value that does not land within 1 MiB
+// above this frame is not such a pointer and is returned unchanged.
+DWORD_PTR RestoreTruncatedStackPointer(DWORD_PTR value)
+{
+#if UINTPTR_MAX > 0xFFFFFFFFu
+    if (value == 0 || (static_cast<uint64_t>(value) >> 32) != 0) return value;
+    const uintptr_t here = reinterpret_cast<uintptr_t>(&value);
+    const uintptr_t base = here & ~static_cast<uintptr_t>(0xFFFFFFFFu);
+    const uintptr_t candidates[2] = {base | value, (base + (static_cast<uintptr_t>(1) << 32)) | value};
+    for (const uintptr_t candidate : candidates) {
+        if (candidate > here && candidate - here < (static_cast<uintptr_t>(1) << 20)) {
+            return static_cast<DWORD_PTR>(candidate);
+        }
+    }
+#endif
+    return value;
+}
+
+} // namespace
+
 MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwCommand, DWORD_PTR dwParam)
 {
+    dwParam = RestoreTruncatedStackPointer(dwParam);
+
     // MCI_OPEN with MCI_OPEN_TYPE only (no MCI_OPEN_ELEMENT) is an "open
     // device class" call, used by CMovie::initAVI() in both target games
     // for "avivideo". AVI digital-video playback is intentionally not
@@ -356,7 +424,10 @@ MCIERROR WINAPI mciSendCommandA(MCIDEVICEID mciId, UINT uMsg, DWORD_PTR fdwComma
     // before ever reaching mciSendCommandA again. Stays visible by design
     // (informational about a permanent, deliberate decision) -- do not gate.
 
-    if (uMsg == MCI_OPEN && (fdwCommand & MCI_OPEN_TYPE) && !(fdwCommand & MCI_OPEN_ELEMENT)) {
+    // A device type given by ID (MCI_OPEN_TYPE_ID, blupi_recon's SB2 CD audio)
+    // goes to MidiMusicSendCommand, which declines cdaudio itself.
+    if (uMsg == MCI_OPEN && (fdwCommand & MCI_OPEN_TYPE) && !(fdwCommand & MCI_OPEN_ELEMENT) &&
+        !(fdwCommand & MCI_OPEN_TYPE_ID)) {
         SDL_Log("free-api mciSendCommandA: MCI_OPEN device-type-only (avivideo) — "  // sdl-log-gating: intentional (documented, TASK-24H-1111)
                 "video playback not implemented, returning MCIERR_UNSUPPORTED_FUNCTION");
         return MCIERR_UNSUPPORTED_FUNCTION;

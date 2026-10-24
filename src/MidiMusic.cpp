@@ -42,6 +42,7 @@
 #include "mmsystem.h"
 #include "windows.h"
 #include "internal/FreeApiPath.hpp"
+#include "internal/FreeApiWindowRegistry.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -686,10 +687,11 @@ MMRESULT MidiMusicOutClose()
 /**
  * @brief Handles mciSendCommand for MIDI sequencer / CD-audio / generic MCI.
  *
- * Supported commands: MCI_OPEN, MCI_PLAY, MCI_CLOSE, MCI_SET. MCI_STOP is
- * neither defined in include/ nor handled here -- no evidenced call site in
- * either target game; an MCI_STOP call would fall through to the unhandled-
- * message branch below and return MCIERR_UNSUPPORTED_FUNCTION (TASK-24H-0908).
+ * Supported commands: MCI_OPEN, MCI_PLAY, MCI_STOP, MCI_CLOSE, MCI_SET.
+ * MCI_STOP (TASK-24H-0908 left it out for want of a call site) stops a
+ * session's playback; blupi_recon's SB2 SuspendMusic sends it before
+ * MCI_CLOSE. MCI_OPEN takes the device type as a string or, with
+ * MCI_OPEN_TYPE_ID, as MCI_DEVTYPE_SEQUENCER/MCI_DEVTYPE_CD_AUDIO.
  * "cdaudio" device type is gracefully declined with MCIERR_UNSUPPORTED_FUNCTION.
  *
  * @note Status: PARTIAL
@@ -710,6 +712,15 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
         if (!parms) return MCIERR_INTERNAL;
 
         const char* devType = parms->lpstrDeviceType ? parms->lpstrDeviceType : "";
+        if (fdwCommand & MCI_OPEN_TYPE_ID) {
+            /* The device type is a number, not a string (blupi_recon's SB2
+             * sound.cpp:649 and 705). */
+            switch (LOWORD(reinterpret_cast<uintptr_t>(parms->lpstrDeviceType))) {
+                case MCI_DEVTYPE_SEQUENCER: devType = "sequencer"; break;
+                case MCI_DEVTYPE_CD_AUDIO:  devType = "cdaudio";   break;
+                default:                    devType = "";          break;
+            }
+        }
 
         /* Decline CD audio — the game handles this branch already. */
         if (SDL_strcasecmp(devType, "cdaudio") == 0) {
@@ -802,7 +813,7 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
                     s.finished = false;
 
                     if (parms && (fdwCommand & MCI_NOTIFY)) {
-                        s.notifyHwnd = reinterpret_cast<HWND>(parms->dwCallback);
+                        s.notifyHwnd = FreeApi::Internal::ResolveWindowHandle(parms->dwCallback);
                     } else {
                         s.notifyHwnd = nullptr;
                     }
@@ -864,6 +875,23 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
         /* Unknown id on CLOSE is not fatal. */
         MIDI_LOG("MCI_CLOSE: unknown device id=%u (ignored)", (unsigned)mciId);
         return 0;
+    }
+
+    if (uMsg == MCI_STOP) {
+        /* Stops playback; the device stays open (blupi_recon's SB2 sound.cpp:790,
+         * followed there by MCI_CLOSE). */
+        std::lock_guard<std::mutex> lk(GetMidiState().mtx);
+        for (auto& sess : GetMidiState().sessions) {
+            if (sess.id == mciId) {
+                MIDI_LOG("MCI_STOP: device id=%u", (unsigned)mciId);
+                sess.playing = false;
+                if (GetMidiState().soundFont) {
+                    tsf_note_off_all(GetMidiState().soundFont);
+                }
+                return 0;
+            }
+        }
+        return MCIERR_INVALID_DEVICE_ID;
     }
 
     if (uMsg == MCI_SET) {
