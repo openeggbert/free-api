@@ -68,13 +68,13 @@ endif()
 
 # Explicit override for which game is authoritative, on top of the
 # CMAKE_PROJECT_NAME auto-detection below -- see docs/cmake-options.md.
-# Kept intentionally tiny (four fixed values, no further sub-options): this
-# is a targeted override for the two known games plus a forced-off switch,
+# Kept intentionally tiny (five fixed values, no further sub-options): this
+# is a targeted override for the three known games plus a forced-off switch,
 # not a general build-configuration framework.
 set(FREE_API_TARGET_GAME "auto" CACHE STRING
         "Which target game's resources drive LoadStringA's real-text table \
 and fail-loud verification. 'auto' (default) detects via CMAKE_PROJECT_NAME. \
-'free-eggbert'/'planetblupi' force that game (and its REQUIRE_STRINGS/known-ID/ \
+'free-eggbert'/'planetblupi'/'blupi-recon' force that game (and its REQUIRE_STRINGS/known-ID/ \
 used-ID gating) even when CMAKE_PROJECT_NAME doesn't currently say so -- falls \
 back to the ../<game> sibling layout if we are not actually that game's own \
 subdirectory. 'standalone' disables the fail-loud REQUIRE_STRINGS/VERIFY_ID/ \
@@ -83,11 +83,18 @@ otherwise select a game -- it does NOT guarantee an empty/placeholder \
 string table: the same developer-convenience sibling .rc lookup 'auto' \
 uses still opportunistically runs and extracts real text if a sibling \
 game's .rc happens to be present on disk, just unverified (TASK-24H-0008).")
-set_property(CACHE FREE_API_TARGET_GAME PROPERTY STRINGS auto free-eggbert planetblupi standalone)
+set_property(CACHE FREE_API_TARGET_GAME PROPERTY STRINGS auto free-eggbert planetblupi blupi-recon standalone)
 
-if(NOT FREE_API_TARGET_GAME MATCHES "^(auto|free-eggbert|planetblupi|standalone)$")
-    message(FATAL_ERROR "free-api: FREE_API_TARGET_GAME must be one of: auto, free-eggbert, planetblupi, standalone (got '${FREE_API_TARGET_GAME}')")
+if(NOT FREE_API_TARGET_GAME MATCHES "^(auto|free-eggbert|planetblupi|blupi-recon|standalone)$")
+    message(FATAL_ERROR "free-api: FREE_API_TARGET_GAME must be one of: auto, free-eggbert, planetblupi, blupi-recon, standalone (got '${FREE_API_TARGET_GAME}')")
 endif()
+
+# blupi-recon (../blupi_recon, the Speedy Blupi 1 matching reconstruction)
+# keeps one resource script per language edition (src/res/*.rc); the
+# consuming build names the one to extract. Default: the US script.
+set(FREE_API_BLUPI_RECON_RC "" CACHE FILEPATH
+        "blupi-recon only: the .rc file whose STRINGTABLE LoadStringA serves \
+(default: ../blupi_recon/src/res/blupi.rc)")
 
 set(_free_api_string_table_rc "")
 set(_free_api_string_table_encoding "UTF-8")
@@ -122,10 +129,14 @@ elseif(FREE_API_TARGET_GAME STREQUAL "free-eggbert")
     set(_free_api_resolved_game "free-eggbert")
 elseif(FREE_API_TARGET_GAME STREQUAL "planetblupi")
     set(_free_api_resolved_game "planetblupi")
+elseif(FREE_API_TARGET_GAME STREQUAL "blupi-recon")
+    set(_free_api_resolved_game "blupi-recon")
 elseif(CMAKE_PROJECT_NAME STREQUAL "SPEEDY_BLUPI_WINDOWS")
     set(_free_api_resolved_game "free-eggbert")
 elseif(CMAKE_PROJECT_NAME STREQUAL "PLANET_BLUPI_WINDOWS")
     set(_free_api_resolved_game "planetblupi")
+elseif(CMAKE_PROJECT_NAME STREQUAL "BLUPI_RECON_FREEAPI")
+    set(_free_api_resolved_game "blupi-recon")
 else()
     set(_free_api_resolved_game "")
 endif()
@@ -171,6 +182,31 @@ elseif(_free_api_resolved_game STREQUAL "planetblupi")
     set(_free_api_verify_text "Quit BLUPI")
     set(_free_api_used_ids_file "${CMAKE_CURRENT_SOURCE_DIR}/cmake/used-string-ids/planetblupi.txt")
     unset(_free_api_game_root)
+elseif(_free_api_resolved_game STREQUAL "blupi-recon")
+    set(_free_api_target_game "blupi-recon")
+    if(FREE_API_BLUPI_RECON_RC)
+        set(_free_api_string_table_rc "${FREE_API_BLUPI_RECON_RC}")
+    else()
+        set(_free_api_string_table_rc "${CMAKE_CURRENT_SOURCE_DIR}/../blupi_recon/src/res/blupi.rc")
+    endif()
+    # The scripts are cp1252 and name their strings by number (the original
+    # executables' string tables, recovered byte for byte); the headers
+    # (src/resource.h for SB1, games/sb2/src/resource.h for SB2) are passed
+    # only because the extractor requires one.
+    set(_free_api_string_table_encoding "CP1252")
+    get_filename_component(_free_api_rc_dir "${_free_api_string_table_rc}" DIRECTORY)
+    set(_free_api_string_table_headers "${_free_api_rc_dir}/../resource.h;${_free_api_rc_dir}/../src/resource.h")
+    unset(_free_api_rc_dir)
+    # Every SB1 and SB2 script has 100, "training %d, time %d" in English
+    # (blupi.rc, *-en.rc); the other languages translate it.
+    set(_free_api_verify_id "100")
+    get_filename_component(_free_api_rc_name "${_free_api_string_table_rc}" NAME)
+    if(_free_api_rc_name STREQUAL "blupi.rc" OR _free_api_rc_name MATCHES "-en\\.rc$")
+        set(_free_api_verify_text "training %d, time %d")
+    endif()
+    unset(_free_api_rc_name)
+    # No used-ID manifest yet (docs/used-string-ids.md): the table is the
+    # original executable's own, so every ID the game passes is in it.
 else()
     # Standalone free-api build (FREE_API_TARGET_GAME=standalone, or auto
     # with neither game's CMAKE_PROJECT_NAME detected): fall back to a
@@ -198,9 +234,13 @@ if(_free_api_target_game)
     list(APPEND _free_api_extract_extra_args
             -DREQUIRE_STRINGS=ON
             "-DTARGET_GAME_NAME=${_free_api_target_game}"
-            "-DVERIFY_ID=${_free_api_verify_id}"
-            "-DVERIFY_TEXT=${_free_api_verify_text}"
-            "-DUSED_IDS_FILE=${_free_api_used_ids_file}")
+            "-DVERIFY_ID=${_free_api_verify_id}")
+    if(_free_api_verify_text)
+        list(APPEND _free_api_extract_extra_args "-DVERIFY_TEXT=${_free_api_verify_text}")
+    endif()
+    if(_free_api_used_ids_file)
+        list(APPEND _free_api_extract_extra_args "-DUSED_IDS_FILE=${_free_api_used_ids_file}")
+    endif()
 endif()
 
 if(_free_api_string_table_rc)
@@ -491,6 +531,15 @@ if(FREE_API_BUILD_TESTS)
                      -DUSED_IDS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures/used-ids-duplicate.txt
                      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake")
     set_tests_properties(extract_string_table_used_ids_fails_on_duplicate_id PROPERTIES WILL_FAIL TRUE)
+
+    # blupi_recon's resource scripts (src/res/*.rc): numeric STRINGTABLE IDs and
+    # cp1252 text, extracted byte for byte.
+    add_test(NAME extract_string_table_numeric_ids_and_cp1252
+             COMMAND ${CMAKE_COMMAND}
+                     -DEXTRACTOR=${CMAKE_CURRENT_SOURCE_DIR}/cmake/ExtractStringTable.cmake
+                     -DFIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures
+                     -DOUTPUT_CPP=${CMAKE_CURRENT_BINARY_DIR}/test-fixtures-out/numeric-cp1252.cpp
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-fixtures/check-numeric-cp1252.cmake")
 
     add_executable(test_input_pipeline tests/test_input_pipeline.cpp)
     target_link_libraries(test_input_pipeline PRIVATE free-api SDL3::SDL3)

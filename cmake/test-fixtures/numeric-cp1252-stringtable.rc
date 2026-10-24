@@ -1,0 +1,6 @@
+// Numeric IDs and cp1252 text, as in blupi_recon's src/res/*.rc.
+STRINGTABLE DISCARDABLE
+BEGIN
+    7     "Café"
+    8     "a;b"
+END

@@ -3,6 +3,7 @@
 # It only understands lines shaped like:
 #
 #   SYMBOL   "quoted text"
+#   123      "quoted text"     (a numeric ID needs no header)
 #
 # inside STRINGTABLE ... BEGIN ... END blocks, and resolves SYMBOL to a
 # numeric ID via one or more "#define SYMBOL <number>" C/C++ headers.
@@ -16,7 +17,10 @@
 # extract real data; if either is unset/missing, an empty table is written
 # so LoadStringA falls back to its placeholder behavior):
 #   RC_FILE           - path to the .rc file containing STRINGTABLE blocks.
-#   RC_ENCODING       - encoding of RC_FILE: "UTF-8" or "UTF-16LE" (default UTF-8).
+#   RC_ENCODING       - encoding of RC_FILE: "UTF-8", "UTF-16LE" or "CP1252"
+#                       (default UTF-8). CP1252 keeps the script's bytes: the
+#                       generated literals spell bytes >= 0x80 as octal escapes,
+#                       so LoadStringA returns the original code-page text.
 #   RESOURCE_HEADERS  - list of headers with "#define SYMBOL <number>" lines
 #                       resolving RC_FILE's STRINGTABLE symbols.
 #
@@ -86,10 +90,25 @@ if(DEFINED RC_FILE AND DEFINED RESOURCE_HEADERS)
         if(NOT RC_ENCODING)
             set(RC_ENCODING "UTF-8")
         endif()
-        file(STRINGS "${RC_FILE}" rc_lines ENCODING ${RC_ENCODING})
+        if(RC_ENCODING STREQUAL "CP1252")
+            # file(STRINGS) ends a string at the first byte >= 0x80, so read
+            # the raw bytes and split the lines here. ';' would split the list
+            # too: it travels as byte 0x01 and is restored per line below.
+            file(READ "${RC_FILE}" _rc_raw)
+            string(ASCII 1 _rc_semicolon)
+            string(REPLACE ";" "${_rc_semicolon}" _rc_raw "${_rc_raw}")
+            string(REPLACE "\r" "" _rc_raw "${_rc_raw}")
+            string(REPLACE "\n" ";" rc_lines "${_rc_raw}")
+            unset(_rc_raw)
+        else()
+            file(STRINGS "${RC_FILE}" rc_lines ENCODING ${RC_ENCODING})
+        endif()
 
         set(in_table FALSE)
         foreach(rline IN LISTS rc_lines)
+            if(RC_ENCODING STREQUAL "CP1252")
+                string(REPLACE "${_rc_semicolon}" ";" rline "${rline}")
+            endif()
             string(REGEX REPLACE "\t" " " normalized "${rline}")
             string(STRIP "${normalized}" trimmed)
 
@@ -116,7 +135,7 @@ if(DEFINED RC_FILE AND DEFINED RESOURCE_HEADERS)
                 continue()
             endif()
 
-            if(trimmed MATCHES "^([A-Za-z_][A-Za-z0-9_]*) +\"(.*)\"$")
+            if(trimmed MATCHES "^([A-Za-z_][A-Za-z0-9_]*|[0-9]+) +\"(.*)\"$")
                 set(sym "${CMAKE_MATCH_1}")
                 set(text "${CMAKE_MATCH_2}")
 
@@ -128,13 +147,47 @@ if(DEFINED RC_FILE AND DEFINED RESOURCE_HEADERS)
                     message(WARNING "ExtractStringTable.cmake: ${RC_FILE}: STRINGTABLE entry '${sym}' contains an embedded escaped double-quote, which this ANSI-only parser may mis-parse: ${trimmed}")
                 endif()
 
-                list(FIND symbol_names "${sym}" sym_idx)
+                if(sym MATCHES "^[0-9]+$")
+                    set(numeric_id "${sym}")
+                    set(sym_idx 0)
+                else()
+                    list(FIND symbol_names "${sym}" sym_idx)
+                    if(sym_idx GREATER -1)
+                        list(GET symbol_values ${sym_idx} numeric_id)
+                    endif()
+                endif()
                 if(sym_idx GREATER -1)
-                    list(GET symbol_values ${sym_idx} numeric_id)
                     # Escape a literal double-quote; leave existing C-style
                     # escapes (e.g. "\n") untouched so they keep their
                     # meaning in the generated C++ string literal.
                     string(REPLACE "\"" "\\\"" text_escaped "${text}")
+                    if(RC_ENCODING STREQUAL "CP1252")
+                        # Bytes >= 0x80 as three-digit octal escapes (a digit
+                        # that follows cannot extend them).
+                        string(HEX "${text_escaped}" _hex)
+                        if(NOT _hex MATCHES "^([0-7][0-9a-f])*$")
+                            string(LENGTH "${_hex}" _hex_len)
+                            set(_bytes "")
+                            set(_pos 0)
+                            while(_pos LESS _hex_len)
+                                string(SUBSTRING "${_hex}" ${_pos} 2 _pair)
+                                math(EXPR _byte "0x${_pair}")
+                                if(_byte LESS 128)
+                                    string(ASCII ${_byte} _char)
+                                    string(APPEND _bytes "${_char}")
+                                else()
+                                    math(EXPR _o1 "${_byte} / 64")
+                                    math(EXPR _o2 "(${_byte} / 8) % 8")
+                                    math(EXPR _o3 "${_byte} % 8")
+                                    string(APPEND _bytes "\\${_o1}${_o2}${_o3}")
+                                endif()
+                                math(EXPR _pos "${_pos} + 2")
+                            endwhile()
+                            set(text_escaped "${_bytes}")
+                        endif()
+                    endif()
+                    # ';' would split the entries list: spell it as an escape.
+                    string(REPLACE ";" "\\073" text_escaped "${text_escaped}")
                     list(APPEND entries "    {${numeric_id}u, \"${text_escaped}\"},")
                     list(APPEND extracted_ids "${numeric_id}")
 

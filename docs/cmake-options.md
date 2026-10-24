@@ -145,6 +145,12 @@ real-text table (see `cmake/ExtractStringTable.cmake` and
   selects free-eggbert, `PLANET_BLUPI_WINDOWS` selects planetblupi, anything
   else (including Free API's own standalone `project()`) falls back to the
   ungated developer-convenience sibling lookup.
+* `blupi-recon` — `../blupi_recon`'s resource script, cp1252 with numeric
+  IDs: the one in `FREE_API_BLUPI_RECON_RC`, by default
+  `../blupi_recon/src/res/blupi.rc`. Its gating checks ID 100 (and, for an
+  English script, its text "training %d, time %d"); there is no used-ID
+  manifest, because each script is the original executable's own string
+  table. `auto` selects it for the project name `BLUPI_RECON_FREEAPI`.
 * `free-eggbert` / `planetblupi` — force that game's resources and its
   fail-loud `REQUIRE_STRINGS`/known-ID/used-ID gating, even if
   `CMAKE_PROJECT_NAME` doesn't currently say so. If Free API is not actually
