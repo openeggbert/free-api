@@ -3,8 +3,23 @@
 #include "internal/FreeApiMessageQueue.hpp"
 
 #include <SDL3/SDL.h>
+#include <cmath>
 
 using namespace FreeApi::Internal;
+
+namespace {
+// Mouse events already use SDL's logical render coordinates. Coordinate
+// conversions must use the same scale, viewport and letterbox offsets.
+SDL_Renderer* LogicalRenderer(SDL_Window* window)
+{
+    SDL_Renderer* renderer = SDL_GetRenderer(window);
+    int width = 0, height = 0;
+    SDL_RendererLogicalPresentation mode = SDL_LOGICAL_PRESENTATION_DISABLED;
+    if (!renderer || !SDL_GetRenderLogicalPresentation(renderer, &width, &height, &mode) ||
+        mode == SDL_LOGICAL_PRESENTATION_DISABLED) return nullptr;
+    return renderer;
+}
+}
 
 extern "C" {
 
@@ -41,13 +56,22 @@ BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint)
     lpPoint->x -= winX;
     lpPoint->y -= winY;
 
-    // Scale from physical client coordinates to logical client coordinates
+    if (SDL_Renderer* renderer = LogicalRenderer(reinterpret_cast<SDL_Window*>(hWnd))) {
+        float x = 0.0f, y = 0.0f;
+        if (!SDL_RenderCoordinatesFromWindow(renderer, static_cast<float>(lpPoint->x),
+                                             static_cast<float>(lpPoint->y), &x, &y)) return FALSE;
+        lpPoint->x = static_cast<LONG>(std::lround(x));
+        lpPoint->y = static_cast<LONG>(std::lround(y));
+        return TRUE;
+    }
+
+    // Before logical presentation exists, use the tracked client size.
     const auto it = g_freeApiWindowStates.find(hWnd);
     if (it != g_freeApiWindowStates.end()) {
         int pw, ph;
         if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hWnd), &pw, &ph) && pw > 0 && ph > 0) {
-            lpPoint->x = lpPoint->x * it->second.width / pw;
-            lpPoint->y = lpPoint->y * it->second.height / ph;
+            lpPoint->x = static_cast<LONG>(std::lround(static_cast<double>(lpPoint->x) * it->second.width / pw));
+            lpPoint->y = static_cast<LONG>(std::lround(static_cast<double>(lpPoint->y) * it->second.height / ph));
         }
     }
 
@@ -96,24 +120,21 @@ BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint)
     const LONG inX = lpPoint->x;
     const LONG inY = lpPoint->y;
 
-    // Scale from logical client coordinates to physical client coordinates.
-    // TASK-24H-1240: this division's actual denominator is the LOGICAL
-    // width/height (it->second.width/height), unlike ScreenToClient's
-    // mirror-image division above, whose denominator is the physical
-    // pw/ph -- so the pw > 0 && ph > 0 guard alone (kept for the
-    // SDL_GetWindowSize() success check) does not protect THIS division
-    // against a zero logical width/height. Add that guard too, matching
-    // ScreenToClient's fallback: skip the scaling step (leave the point
-    // unscaled) rather than divide by zero, still returning TRUE below.
-    // Currently unreachable -- CreateWindowExA always populates a positive
-    // logical width/height -- but a latent SIGFPE risk if that invariant
-    // is ever broken by a future change.
-    const auto it = g_freeApiWindowStates.find(hWnd);
-    if (it != g_freeApiWindowStates.end() && it->second.width > 0 && it->second.height > 0) {
-        int pw, ph;
-        if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hWnd), &pw, &ph) && pw > 0 && ph > 0) {
-            lpPoint->x = lpPoint->x * pw / it->second.width;
-            lpPoint->y = lpPoint->y * ph / it->second.height;
+    if (SDL_Renderer* renderer = LogicalRenderer(reinterpret_cast<SDL_Window*>(hWnd))) {
+        float x = 0.0f, y = 0.0f;
+        if (!SDL_RenderCoordinatesToWindow(renderer, static_cast<float>(lpPoint->x),
+                                           static_cast<float>(lpPoint->y), &x, &y)) return FALSE;
+        lpPoint->x = static_cast<LONG>(std::lround(x));
+        lpPoint->y = static_cast<LONG>(std::lround(y));
+    } else {
+        // The renderer is not initialized yet (e.g. initial cursor placement).
+        const auto it = g_freeApiWindowStates.find(hWnd);
+        if (it != g_freeApiWindowStates.end() && it->second.width > 0 && it->second.height > 0) {
+            int pw = 0, ph = 0;
+            if (SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hWnd), &pw, &ph) && pw > 0 && ph > 0) {
+                lpPoint->x = static_cast<LONG>(std::lround(static_cast<double>(lpPoint->x) * pw / it->second.width));
+                lpPoint->y = static_cast<LONG>(std::lround(static_cast<double>(lpPoint->y) * ph / it->second.height));
+            }
         }
     }
 
