@@ -205,7 +205,7 @@ The following single-header libraries are vendored under `external/`:
 * Without this implementation, games using `MMTIMER` mode (`timeSetEvent(50ms, TimerStep, …, TIME_PERIODIC)`) never received their tick, so they could not animate, redraw, or process input — even though raw SDL mouse/keyboard events were arriving and being translated correctly.
 
 ### Higher-resolution images
-* `FREE_API_IMAGE_OVERLAY`/`FREE_API_IMAGE_SCALE`: `LoadImageA` takes an image from an overlay folder when it is exactly k times the original's size; `GetObjectA` and GDI coordinates stay logical. Used with Free Direct's `FREE_DIRECT_BACKING_SCALE` ([docs/image-overlay.md](docs/image-overlay.md)).
+* `FREE_API_IMAGE_OVERLAY`/`FREE_API_IMAGE_SCALE`: `LoadImageA` takes an image from an overlay folder when it is exactly k times the original's size, keeping an alpha channel if it has one (`FreeApiGetSurfaceDCAlpha`); `GetObjectA` and GDI coordinates stay logical. Used with Free Direct's `FREE_DIRECT_BACKING_SCALE` ([docs/image-overlay.md](docs/image-overlay.md)).
 
 ### System Utilities
 * Timing (`GetTickCount`, `Sleep`)

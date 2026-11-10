@@ -57,6 +57,16 @@ HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int b
 HDC FreeApiCreateScaledSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel, int scale);
 
 /**
+ * @brief What StretchBlt drew into a surface DC since it was created: 0 no
+ * image, 1 only opaque images, 2 an image with an alpha channel (an overlay
+ * image, docs/image-overlay.md), whose alpha is then in the 4th byte of the
+ * DC's pixels. Free Direct reads it at IDirectDrawSurface::ReleaseDC to keep
+ * or drop the surface's alpha plane. Returns 0 for an invalid handle.
+ * @note Status: IMPLEMENTED
+ */
+int FreeApiGetSurfaceDCAlpha(HDC hdc);
+
+/**
  * @brief Releases a DC created by FreeApiCreateSurfaceDC(). Does not free
  * or otherwise touch the underlying pixel buffer, which the caller still
  * owns. Returns FALSE for a null/invalid handle rather than crashing.

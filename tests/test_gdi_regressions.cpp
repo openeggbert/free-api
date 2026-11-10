@@ -1276,6 +1276,60 @@ static void TestScaledSurfaceDcPixelsUseLogicalCoordinates()
     FreeApiDestroySurfaceDC(dc);
 }
 
+// An overlay image with an alpha channel keeps it: StretchBlt copies it into
+// a surface DC, which then reports FreeApiGetSurfaceDCAlpha() == 2 (an
+// opaque image: 1; no image: 0).
+static void TestImageOverlayKeepsAlphaChannel()
+{
+    WriteSolidBmp("test_overlay_alpha.blp", 2, 1, 255, 0, 0);
+    SDL_Surface* rgba = SDL_CreateSurface(4, 2, SDL_PIXELFORMAT_RGBA32);
+    Check(rgba != nullptr, "RGBA fixture surface created");
+    if (!rgba) return;
+    for (int y = 0; y < 2; ++y) {
+        auto* row = static_cast<uint8_t*>(rgba->pixels) + y * rgba->pitch;
+        for (int x = 0; x < 4; ++x) {
+            const uint8_t pixel[4] = {0, 255, 0, static_cast<uint8_t>(x < 2 ? 0 : 128)};
+            std::memcpy(row + x * 4, pixel, 4);
+        }
+    }
+    std::filesystem::create_directories("test_overlay_pack");
+    Check(SDL_SaveBMP(rgba, "test_overlay_pack/test_overlay_alpha.blp"), "32-bit BMP with alpha written");
+    SDL_DestroySurface(rgba);
+    SetOverlay("test_overlay_pack", "2");
+
+    HANDLE h = LoadImageA(nullptr, "test_overlay_alpha.blp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    Check(h != nullptr, "LoadImageA loads an overlay image with alpha");
+    if (h) {
+        HDC memory = CreateCompatibleDC(nullptr);
+        SelectObject(memory, h);
+        std::vector<uint8_t> pixels(4 * 2 * 4, 0);
+        HDC dc = FreeApiCreateScaledSurfaceDC(pixels.data(), 4, 2, 16, 32, 2);
+        Check(FreeApiGetSurfaceDCAlpha(dc) == 0, "a new surface DC reports no image");
+        StretchBlt(dc, 0, 0, 2, 1, memory, 0, 0, 2, 1, SRCCOPY);
+        Check(FreeApiGetSurfaceDCAlpha(dc) == 2, "an overlay image with alpha is reported");
+        Check(pixels[3] == 0 && pixels[2 * 4 + 3] == 128 && pixels[2 * 4 + 1] == 255,
+              "StretchBlt carries the overlay's alpha into the DC's pixels");
+        FreeApiDestroySurfaceDC(dc);
+        DeleteDC(memory);
+        DeleteObject(h);
+    }
+    SetOverlay(nullptr, nullptr);
+    h = LoadImageA(nullptr, "test_overlay_alpha.blp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    if (h) {
+        HDC memory = CreateCompatibleDC(nullptr);
+        SelectObject(memory, h);
+        std::vector<uint8_t> pixels(2 * 1 * 4, 0);
+        HDC dc = FreeApiCreateSurfaceDC(pixels.data(), 2, 1, 8, 32);
+        StretchBlt(dc, 0, 0, 2, 1, memory, 0, 0, 2, 1, SRCCOPY);
+        Check(FreeApiGetSurfaceDCAlpha(dc) == 1, "an image without alpha is reported as opaque");
+        FreeApiDestroySurfaceDC(dc);
+        DeleteDC(memory);
+        DeleteObject(h);
+    }
+    std::filesystem::remove_all("test_overlay_pack");
+    remove("test_overlay_alpha.blp");
+}
+
 int main()
 {
     printf("[gdi-regressions] Starting\n");
@@ -1314,6 +1368,7 @@ int main()
     TestImageOverlayReplacesOriginalWithLogicalSize();
     TestImageOverlayRejectsWrongSizeAndUsesOtherExtensions();
     TestScaledSurfaceDcPixelsUseLogicalCoordinates();
+    TestImageOverlayKeepsAlphaChannel();
 
     if (g_failures > 0) {
         printf("[gdi-regressions] %d FAILURE(S)\n", g_failures);

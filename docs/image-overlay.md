@@ -13,8 +13,12 @@ rest of Free API's file access, then for the same name with `.png` or `.bmp`.
 The overlay image is used only if it is exactly `FREE_API_IMAGE_SCALE` (1..8, default 2) times as
 wide and as high as the original file, whose header is read for the comparison. Otherwise, or if it
 cannot be decoded, the original loads and the problem is logged once per file. Images are decoded
-by SDL_image (BMP, and PNG where SDL_image has the codec) and made opaque: transparency remains the
-games' colour key, as in the originals.
+by SDL_image: BMP (including 32-bit BMPs with an alpha mask), and PNG where SDL_image has the codec
+(not in blupi_recon's web build).
+
+An alpha channel that is not fully opaque is kept (`CompatBitmap::hasAlpha`). Free Direct then
+blends with it (below); the games' colour key still applies as well. Images without alpha behave as
+before.
 
 The bitmap keeps the scale:
 
@@ -37,6 +41,20 @@ The bridge function `FreeApiCreateScaledSurfaceDC(pixels, width, height, pitch, 
   `DDColorMatch` saves pixel (0,0), writes a colour, reads its raw value through `Lock` and
   restores the saved colour; writing one physical pixel keeps that restore exact.
 
+## Alpha: `FreeApiGetSurfaceDCAlpha`
+
+`StretchBlt` from an image with alpha copies the alpha into the 4th byte of the destination's
+pixels (both the 1:1 and the scaled path) and records it on the surface DC.
+`FreeApiGetSurfaceDCAlpha(hdc)` (`include/free_api_bridge.h`) returns what was drawn since the DC
+was created:
+
+* 0: no image;
+* 1: only opaque images;
+* 2: an image with alpha.
+
+Free Direct's `ReleaseDC` reads it to keep the alpha as the surface's alpha plane (2), drop an
+earlier plane (1), or leave it alone (0, e.g. `DDColorMatch`'s `SetPixel`).
+
 ## Window
 
 * `FREE_API_WINDOW_SCALE=k` (1..4) creates windows `k` times the requested size. The game keeps
@@ -45,5 +63,5 @@ The bridge function `FreeApiCreateScaledSurfaceDC(pixels, width, height, pitch, 
 * `FREE_API_HIGH_PIXEL_DENSITY=1` adds `SDL_WINDOW_HIGH_PIXEL_DENSITY` (a high-DPI display, or the
   browser's `devicePixelRatio` for the web canvas).
 
-Tests: `tests/test_gdi_regressions.cpp` (overlay, scaled DC) and
+Tests: `tests/test_gdi_regressions.cpp` (overlay, alpha, scaled DC) and
 `tests/test_winuser_regressions.cpp` (window scale).

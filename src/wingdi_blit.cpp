@@ -3,6 +3,7 @@
 #include "internal/FreeApiDiagnostics.hpp"
 
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <vector>
 #include <cstring>
 
@@ -58,6 +59,11 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
     if (srcScale != 1) {
         xSrc *= srcScale; ySrc *= srcScale; wSrc *= srcScale; hSrc *= srcScale;
     }
+    // Tell Free Direct whether an image with an alpha channel arrived
+    // (FreeApiGetSurfaceDCAlpha). Only overlay images have one; the 1:1 path
+    // below copies their alpha bytes, the scaled path keeps them too.
+    const bool srcAlpha = srcBitmap->hasAlpha;
+    dst->imageAlpha = std::max(dst->imageAlpha, srcAlpha ? 2 : 1);
 
     // Fast path: 1:1 copy — clip once and copy rows with memcpy.
     // This avoids per-pixel scaling math for the common case.
@@ -154,7 +160,7 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
             dstPixel[0] = srcPixel[0];
             dstPixel[1] = srcPixel[1];
             dstPixel[2] = srcPixel[2];
-            dstPixel[3] = 255;
+            dstPixel[3] = srcAlpha ? srcPixel[3] : 255;
         }
     }
 

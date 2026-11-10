@@ -108,13 +108,15 @@ project is out of this repo's scope; this is a boundary statement only.
 The documented `free-direct`-bridge exception (`plan.md` `TASK-0011`) names
 `FreeApiRunWinMain` and the `include/free_api_bridge.h` functions
 (`FreeApiCreateSurfaceDC`, `FreeApiCreateScaledSurfaceDC`,
-`FreeApiDestroySurfaceDC`, `FreeApiSetWindowFullscreen`) as the symbols
+`FreeApiDestroySurfaceDC`, `FreeApiGetSurfaceDCAlpha`,
+`FreeApiSetWindowFullscreen`) as the symbols
 `free-direct` is allowed to consume without a
 `../free-eggbert`/`../planetblupi` usage citation.
 `FreeApiCreateScaledSurfaceDC` (2026-11-10) is called by
 `../free-direct/src/directdraw/DirectDrawSurface.cpp`'s `GetDC` when
 `FREE_DIRECT_BACKING_SCALE` enlarges its surfaces, for blupi_recon's
-higher-resolution images (`docs/image-overlay.md`). This
+higher-resolution images, and `FreeApiGetSurfaceDCAlpha` by its `ReleaseDC`
+to keep such an image's alpha channel (`docs/image-overlay.md`). This
 session's audit found one more, real, currently-unfixed coupling beyond
 that list: `../free-direct/src/diagnostics/Diagnostics.cpp:18,70-72`
 forward-declares `FreeApi::Platform::ReadRssKB()` raw and calls it

@@ -124,13 +124,18 @@ CompatBitmap* LoadOverlayBitmap(const std::string& normalizedPath)
     CompatBitmap* bitmap = CreateCompatBitmapFromSurface(loaded);
     SDL_DestroySurface(loaded);
     if (!bitmap) return nullptr;
-    // Transparency is the games' colour key, as in the originals; an alpha
-    // channel (PNG, 32-bit BMP) is not used, so the image is made opaque
-    // like every bitmap StretchBlt copies.
-    for (size_t i = 3; i < bitmap->pixels.size(); i += 4) bitmap->pixels[i] = 255;
+    // An alpha channel (PNG, 32-bit BMP) that is not fully opaque is kept:
+    // StretchBlt carries it into the surface and Free Direct blends with it
+    // (docs/image-overlay.md). Images without one keep the colour key alone.
+    for (size_t i = 3; i < bitmap->pixels.size(); i += 4) {
+        if (bitmap->pixels[i] != 255) {
+            bitmap->hasAlpha = true;
+            break;
+        }
+    }
     bitmap->scale = scale;
     if (FreeApiGdiDebugEnabled()) {
-        SDL_Log("free-api LoadImageA: overlay '%s' (%dx%d, scale %d) replaces '%s'", path.c_str(), bitmap->width, bitmap->height, scale, normalizedPath.c_str());
+        SDL_Log("free-api LoadImageA: overlay '%s' (%dx%d, scale %d%s) replaces '%s'", path.c_str(), bitmap->width, bitmap->height, scale, bitmap->hasAlpha ? ", alpha" : "", normalizedPath.c_str());
     }
     return bitmap;
 }

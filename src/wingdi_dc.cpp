@@ -42,6 +42,12 @@ HDC FreeApiCreateScaledSurfaceDC(void* pixels, int width, int height, int pitch,
     return reinterpret_cast<HDC>(dc);
 }
 
+int FreeApiGetSurfaceDCAlpha(HDC hdc)
+{
+    const CompatDC* dc = AsCompatDC(reinterpret_cast<void*>(hdc));
+    return (dc && dc->kind == CompatDcKind::Surface) ? dc->imageAlpha : 0;
+}
+
 BOOL FreeApiDestroySurfaceDC(HDC hdc)
 {
     auto* dc = AsCompatDC(reinterpret_cast<void*>(hdc));

@@ -25,6 +25,10 @@ struct CompatBitmap {
     // image LoadImageA took from the image overlay: GetObjectA then reports width/scale x
     // height/scale and GDI coordinates on it are logical (docs/image-overlay.md).
     int      scale        = 1;
+    // True for an overlay image whose alpha channel is not fully opaque
+    // (PNG or 32-bit BMP): StretchBlt then carries the alpha into surface
+    // DCs, and Free Direct keeps it as the surface's alpha plane.
+    bool     hasAlpha     = false;
     std::vector<uint8_t> pixels;
 };
 
@@ -40,6 +44,9 @@ struct CompatDC {
     // Surface DC from FreeApiCreateScaledSurfaceDC: surfaceWidth/Height are physical, and
     // coordinates passed to GDI on this DC are logical (multiplied by surfaceScale).
     int         surfaceScale       = 1;
+    // What StretchBlt drew into this surface DC: 0 nothing, 1 only opaque
+    // images, 2 an image with an alpha channel (FreeApiGetSurfaceDCAlpha).
+    int         imageAlpha         = 0;
 };
 
 // Physical pixels per logical pixel of what a DC draws into or reads from: the surface's

@@ -67,6 +67,7 @@ FindResourceA
 FreeApiCreateScaledSurfaceDC
 FreeApiCreateSurfaceDC
 FreeApiDestroySurfaceDC
+FreeApiGetSurfaceDCAlpha
 FreeApiRunWinMain
 FreeApiSetWindowFullscreen
 FreeResource
