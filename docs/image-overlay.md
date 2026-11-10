@@ -62,6 +62,17 @@ earlier plane (1), or leave it alone (0, e.g. `DDColorMatch`'s `SetPixel`).
   messages stay in it.
 * `FREE_API_HIGH_PIXEL_DENSITY=1` adds `SDL_WINDOW_HIGH_PIXEL_DENSITY` (a high-DPI display, or the
   browser's `devicePixelRatio` for the web canvas).
+* **The game's own full screen.** This applies when Free Direct calls `FreeApiSetWindowFullscreen`
+  for `DDSCL_FULLSCREEN` or `SetDisplayMode`. The screen is then the game's display mode, as
+  under real DirectDraw:
+  * `ClientToScreen`/`ScreenToClient` leave points unchanged;
+  * `GetCursorPos`/`SetCursorPos` use the game's logical coordinates (`src/winuser_cursor.cpp`).
+
+  Without this, a full-screen game larger than 640×480 drew its frame at window coordinates and
+  squeezed it into part of the screen; blupi_recon's `CPixmap::Display` blits to a primary
+  surface without a clipper at the `ClientToScreen` rectangle. Full screen is the way to show
+  4× images on a screen smaller than 2560×1920.
 
 Tests: `tests/test_gdi_regressions.cpp` (overlay, alpha, scaled DC) and
-`tests/test_winuser_regressions.cpp` (window scale).
+`tests/test_winuser_regressions.cpp` (window scale); the full-screen coordinates are covered by
+blupi_recon's `freeapi/tests/presentation.cpp`.

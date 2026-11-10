@@ -19,6 +19,53 @@ SDL_Renderer* LogicalRenderer(SDL_Window* window)
         mode == SDL_LOGICAL_PRESENTATION_DISABLED) return nullptr;
     return renderer;
 }
+
+// A window the game made full screen (Free Direct's DDSCL_FULLSCREEN and
+// SetDisplayMode call FreeApiSetWindowFullscreen). Under real DirectDraw the
+// screen then is the display mode the game set, e.g. 640x480: screen and
+// client coordinates are the same. The games rely on it: blupi_recon's
+// CPixmap::Display (games/sb2/src/pixmap.cpp:1184-1196) blits to the primary
+// surface, which has no clipper in full screen, at the rectangle
+// ClientToScreen returns. So in full screen ClientToScreen and ScreenToClient
+// leave points unchanged, and GetCursorPos/SetCursorPos use the same
+// (logical) coordinates, whatever the real display's size.
+bool IsGameFullscreen(HWND hwnd)
+{
+    const auto it = g_freeApiWindowStates.find(hwnd);
+    return it != g_freeApiWindowStates.end() && it->second.isFullscreen;
+}
+
+// Window position -> the game's logical coordinates, and back.
+void WindowToLogical(HWND hwnd, float& x, float& y)
+{
+    auto* window = reinterpret_cast<SDL_Window*>(hwnd);
+    if (SDL_Renderer* renderer = LogicalRenderer(window)) {
+        SDL_RenderCoordinatesFromWindow(renderer, x, y, &x, &y);
+        return;
+    }
+    const auto it = g_freeApiWindowStates.find(hwnd);
+    int pw = 0, ph = 0;
+    if (it != g_freeApiWindowStates.end() && SDL_GetWindowSize(window, &pw, &ph) && pw > 0 && ph > 0) {
+        x = x * static_cast<float>(it->second.width) / static_cast<float>(pw);
+        y = y * static_cast<float>(it->second.height) / static_cast<float>(ph);
+    }
+}
+
+void LogicalToWindow(HWND hwnd, float& x, float& y)
+{
+    auto* window = reinterpret_cast<SDL_Window*>(hwnd);
+    if (SDL_Renderer* renderer = LogicalRenderer(window)) {
+        SDL_RenderCoordinatesToWindow(renderer, x, y, &x, &y);
+        return;
+    }
+    const auto it = g_freeApiWindowStates.find(hwnd);
+    int pw = 0, ph = 0;
+    if (it != g_freeApiWindowStates.end() && it->second.width > 0 && it->second.height > 0 &&
+        SDL_GetWindowSize(window, &pw, &ph)) {
+        x = x * static_cast<float>(pw) / static_cast<float>(it->second.width);
+        y = y * static_cast<float>(ph) / static_cast<float>(it->second.height);
+    }
+}
 }
 
 extern "C" {
@@ -31,6 +78,15 @@ BOOL WINAPI GetCursorPos(LPPOINT lpPoint)
 
     float x = 0.0f;
     float y = 0.0f;
+    if (g_focusWindow && IsGameFullscreen(g_focusWindow)) {
+        // Full screen: the screen is the game's display mode (see IsGameFullscreen).
+        SDL_GetMouseState(&x, &y);
+        WindowToLogical(g_focusWindow, x, y);
+        lpPoint->x = static_cast<LONG>(std::lround(x));
+        lpPoint->y = static_cast<LONG>(std::lround(y));
+        InputLog("GetCursorPos (full screen) -> (%d,%d)", (int)lpPoint->x, (int)lpPoint->y);
+        return TRUE;
+    }
     SDL_GetGlobalMouseState(&x, &y);
     lpPoint->x = static_cast<LONG>(x);
     lpPoint->y = static_cast<LONG>(y);
@@ -42,6 +98,9 @@ BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint)
 {
     if (!hWnd || !lpPoint) {
         return FALSE;
+    }
+    if (IsGameFullscreen(hWnd)) {
+        return TRUE;  // screen == client in the game's full screen (IsGameFullscreen)
     }
 
     int winX = 0;
@@ -116,6 +175,9 @@ BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint)
     if (!hWnd || !lpPoint) {
         return FALSE;
     }
+    if (IsGameFullscreen(hWnd)) {
+        return TRUE;  // screen == client in the game's full screen (IsGameFullscreen)
+    }
 
     const LONG inX = lpPoint->x;
     const LONG inY = lpPoint->y;
@@ -153,6 +215,12 @@ BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint)
 
 BOOL WINAPI SetCursorPos(int X, int Y)
 {
+    if (g_focusWindow && IsGameFullscreen(g_focusWindow)) {
+        float x = static_cast<float>(X), y = static_cast<float>(Y);
+        LogicalToWindow(g_focusWindow, x, y);
+        SDL_WarpMouseInWindow(reinterpret_cast<SDL_Window*>(g_focusWindow), x, y);
+        return TRUE;
+    }
     return SDL_WarpMouseGlobal(static_cast<float>(X), static_cast<float>(Y));
 }
 

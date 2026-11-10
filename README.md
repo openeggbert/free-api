@@ -61,6 +61,7 @@ for the full usage audit.
 
 ### Windowing
 * Window creation (`CreateWindowEx`); `FREE_API_WINDOW_SCALE`/`FREE_API_HIGH_PIXEL_DENSITY` enlarge the window while the game keeps its client size ([docs/image-overlay.md](docs/image-overlay.md))
+* In the game's own full screen, screen coordinates are the game's display mode, as under real DirectDraw (`ClientToScreen`/`ScreenToClient` unchanged, `GetCursorPos`/`SetCursorPos` logical)
 * Message loop (`PeekMessage`, `DispatchMessage`)
 * Window procedures (`WNDPROC`)
 
