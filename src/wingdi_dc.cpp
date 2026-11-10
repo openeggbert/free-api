@@ -12,7 +12,12 @@ extern "C" {
 
 HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel)
 {
-    if (!pixels || width <= 0 || height <= 0 || pitch <= 0 || bitsPerPixel != 32) {
+    return FreeApiCreateScaledSurfaceDC(pixels, width, height, pitch, bitsPerPixel, 1);
+}
+
+HDC FreeApiCreateScaledSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel, int scale)
+{
+    if (!pixels || width <= 0 || height <= 0 || pitch <= 0 || bitsPerPixel != 32 || scale <= 0) {
         return NULL;
     }
 
@@ -33,6 +38,7 @@ HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int b
     dc->surfaceHeight      = height;
     dc->surfacePitch       = pitch;
     dc->surfaceBitsPerPixel = bitsPerPixel;
+    dc->surfaceScale       = scale;
     return reinterpret_cast<HDC>(dc);
 }
 

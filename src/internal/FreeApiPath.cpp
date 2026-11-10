@@ -99,6 +99,43 @@ std::string ResolveCaseInsensitive(const std::string& path)
 
 } // namespace
 
+std::string FindFileUnderRoot(const std::string& root, const std::string& relative)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (root.empty() || relative.empty()) return {};
+
+    fs::path current(root);
+    size_t start = 0;
+    while (start < relative.size()) {
+        size_t end = relative.find('/', start);
+        if (end == std::string::npos) end = relative.size();
+        const std::string part = relative.substr(start, end - start);
+        start = end + 1;
+        if (part.empty() || part == ".") continue;
+        if (part == "..") return {};
+        fs::path candidate = current / part;
+        if (!fs::exists(candidate, ec)) {
+#if !defined(_WIN32)
+            bool found = false;
+            for (fs::directory_iterator it(current, ec), last; !ec && it != last; it.increment(ec)) {
+                if (EqualsIgnoringAsciiCase(it->path().filename().string(), part)) {
+                    candidate = it->path();
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return {};
+#else
+            return {};
+#endif
+        }
+        current = candidate;
+    }
+    if (!fs::is_regular_file(current, ec)) return {};
+    return current.string();
+}
+
 std::string NormalizeFilesystemPath(const char* path)
 {
     if (!path) {

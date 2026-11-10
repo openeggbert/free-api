@@ -23,6 +23,8 @@
 #include <cstdio>
 #include <cstring>
 #include <atomic>
+#include <filesystem>
+#include <string>
 #include <vector>
 
 // Test-local forward declarations of internal diagnostic counters (defined
@@ -1130,6 +1132,150 @@ static void TestDoubleDeleteIsRejectedNotDoubleFreed()
     }
 }
 
+// ===== Image overlay and scaled surface DCs (docs/image-overlay.md) =====
+
+// A solid-colour 24-bit BMP of the given size.
+static void WriteSolidBmp(const std::string& path, int width, int height, uint8_t r, uint8_t g, uint8_t b)
+{
+    std::vector<uint8_t> bmp = MakeMinimalBmp(width, height);
+    const int rowBytes = ((width * 3 + 3) / 4) * 4;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const size_t off = 54 + static_cast<size_t>(y) * rowBytes + static_cast<size_t>(x) * 3;
+            bmp[off + 0] = b; bmp[off + 1] = g; bmp[off + 2] = r;
+        }
+    }
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path().empty()
+                                            ? std::filesystem::path(".") : std::filesystem::path(path).parent_path());
+    FILE* f = fopen(path.c_str(), "wb");
+    if (f) {
+        fwrite(bmp.data(), 1, bmp.size(), f);
+        fclose(f);
+    }
+}
+
+static void SetOverlay(const char* root, const char* scale)
+{
+    SDL_Environment* env = SDL_GetEnvironment();
+    if (root) SDL_SetEnvironmentVariable(env, "FREE_API_IMAGE_OVERLAY", root, 1);
+    else SDL_UnsetEnvironmentVariable(env, "FREE_API_IMAGE_OVERLAY");
+    if (scale) SDL_SetEnvironmentVariable(env, "FREE_API_IMAGE_SCALE", scale, 1);
+    else SDL_UnsetEnvironmentVariable(env, "FREE_API_IMAGE_SCALE");
+}
+
+static bool AllPixels(const std::vector<uint8_t>& rgba, uint8_t r, uint8_t g, uint8_t b)
+{
+    for (size_t i = 0; i < rgba.size(); i += 4) {
+        if (rgba[i] != r || rgba[i + 1] != g || rgba[i + 2] != b) return false;
+    }
+    return true;
+}
+
+// An overlay image exactly FREE_API_IMAGE_SCALE times the original replaces
+// it: GetObjectA reports the original's (logical) size, StretchBlt into a
+// surface DC of the same scale copies it 1:1, into an unscaled DC it shrinks.
+static void TestImageOverlayReplacesOriginalWithLogicalSize()
+{
+    WriteSolidBmp("test_overlay_original.blp", 3, 2, 255, 0, 0);
+    WriteSolidBmp("test_overlay_pack/TEST_OVERLAY_ORIGINAL.BLP", 6, 4, 0, 255, 0);
+    SetOverlay("test_overlay_pack", nullptr);  // default scale 2, name matched ignoring case
+
+    HANDLE h = LoadImageA(nullptr, "test_overlay_original.blp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    Check(h != nullptr, "LoadImageA loads an overlay replacement");
+    if (h) {
+        BITMAP bm{};
+        GetObjectA(h, sizeof(bm), &bm);
+        Check(bm.bmWidth == 3 && bm.bmHeight == 2, "GetObjectA reports the original's logical size for a 2x overlay image");
+
+        HDC memory = CreateCompatibleDC(nullptr);
+        SelectObject(memory, h);
+        std::vector<uint8_t> scaled(6 * 4 * 4, 0);
+        HDC scaledDc = FreeApiCreateScaledSurfaceDC(scaled.data(), 6, 4, 6 * 4, 32, 2);
+        Check(scaledDc != nullptr, "FreeApiCreateScaledSurfaceDC accepts a 2x buffer");
+        Check(StretchBlt(scaledDc, 0, 0, 3, 2, memory, 0, 0, 3, 2, SRCCOPY) == TRUE, "StretchBlt with logical rectangles into a 2x DC");
+        Check(AllPixels(scaled, 0, 255, 0), "the 2x DC receives every overlay pixel");
+        Check(GetPixel(memory, 2, 1) == RGB(0, 255, 0), "GetPixel on the overlay bitmap takes logical coordinates");
+        FreeApiDestroySurfaceDC(scaledDc);
+
+        std::vector<uint8_t> plain(3 * 2 * 4, 0);
+        HDC plainDc = FreeApiCreateSurfaceDC(plain.data(), 3, 2, 3 * 4, 32);
+        Check(StretchBlt(plainDc, 0, 0, 3, 2, memory, 0, 0, 3, 2, SRCCOPY) == TRUE, "StretchBlt from a 2x bitmap into an unscaled DC");
+        Check(AllPixels(plain, 0, 255, 0), "an unscaled DC receives the overlay image reduced to the logical size");
+        FreeApiDestroySurfaceDC(plainDc);
+        DeleteDC(memory);
+        DeleteObject(h);
+    }
+
+    SetOverlay(nullptr, nullptr);
+    h = LoadImageA(nullptr, "test_overlay_original.blp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    if (h) {
+        HDC memory = CreateCompatibleDC(nullptr);
+        SelectObject(memory, h);
+        Check(GetPixel(memory, 0, 0) == RGB(255, 0, 0), "without FREE_API_IMAGE_OVERLAY the original loads");
+        DeleteDC(memory);
+        DeleteObject(h);
+    }
+    std::filesystem::remove_all("test_overlay_pack");
+    remove("test_overlay_original.blp");
+}
+
+// A wrongly sized overlay image (here 2x wide but not 2x high, or the wrong
+// scale) is ignored: the original loads.
+static void TestImageOverlayRejectsWrongSizeAndUsesOtherExtensions()
+{
+    WriteSolidBmp("test_overlay_size.blp", 3, 2, 255, 0, 0);
+    WriteSolidBmp("test_overlay_pack/test_overlay_size.blp", 6, 3, 0, 255, 0);
+    WriteSolidBmp("test_overlay_alt.blp", 2, 2, 255, 0, 0);
+    WriteSolidBmp("test_overlay_pack/test_overlay_alt.bmp", 6, 6, 0, 0, 255);
+    SetOverlay("test_overlay_pack", "3");
+
+    HANDLE h = LoadImageA(nullptr, "test_overlay_size.blp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    if (h) {
+        BITMAP bm{};
+        GetObjectA(h, sizeof(bm), &bm);
+        HDC memory = CreateCompatibleDC(nullptr);
+        SelectObject(memory, h);
+        Check(bm.bmWidth == 3 && bm.bmHeight == 2 && GetPixel(memory, 0, 0) == RGB(255, 0, 0),
+              "an overlay image of the wrong size is ignored");
+        DeleteDC(memory);
+        DeleteObject(h);
+    }
+    h = LoadImageA(nullptr, "test_overlay_alt.blp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    if (h) {
+        BITMAP bm{};
+        GetObjectA(h, sizeof(bm), &bm);
+        HDC memory = CreateCompatibleDC(nullptr);
+        SelectObject(memory, h);
+        Check(bm.bmWidth == 2 && bm.bmHeight == 2 && GetPixel(memory, 1, 1) == RGB(0, 0, 255),
+              "a .bmp overlay image replaces a .blp original at FREE_API_IMAGE_SCALE=3");
+        DeleteDC(memory);
+        DeleteObject(h);
+    }
+    SetOverlay(nullptr, nullptr);
+    std::filesystem::remove_all("test_overlay_pack");
+    remove("test_overlay_size.blp");
+    remove("test_overlay_alt.blp");
+}
+
+// SetPixel on a scaled surface DC writes one physical pixel (the top-left
+// one of the logical pixel), so DDColorMatch's save/write/restore is exact.
+static void TestScaledSurfaceDcPixelsUseLogicalCoordinates()
+{
+    std::vector<uint8_t> pixels(4 * 4 * 4, 0);
+    HDC dc = FreeApiCreateScaledSurfaceDC(pixels.data(), 4, 4, 16, 32, 2);
+    Check(dc != nullptr, "FreeApiCreateScaledSurfaceDC creates a DC");
+    Check(FreeApiCreateScaledSurfaceDC(pixels.data(), 4, 4, 16, 32, 0) == nullptr, "FreeApiCreateScaledSurfaceDC rejects scale 0");
+    SetPixel(dc, 1, 1, RGB(10, 20, 30));
+    Check(GetPixel(dc, 1, 1) == RGB(10, 20, 30), "GetPixel reads back the logical pixel SetPixel wrote");
+    const size_t written = (2 * 4 + 2) * 4;
+    Check(pixels[written] == 10 && pixels[written + 1] == 20 && pixels[written + 2] == 30, "SetPixel(1,1) writes physical (2,2)");
+    int changed = 0;
+    for (size_t i = 0; i < pixels.size(); i += 4) changed += pixels[i] != 0;
+    Check(changed == 1, "SetPixel on a 2x DC writes a single physical pixel");
+    Check(GetPixel(dc, 2, 0) == CLR_INVALID, "GetPixel outside the logical size is invalid");
+    FreeApiDestroySurfaceDC(dc);
+}
+
 int main()
 {
     printf("[gdi-regressions] Starting\n");
@@ -1165,6 +1311,9 @@ int main()
 #else
     TestDoubleDeleteIsRejectedNotDoubleFreed();
 #endif
+    TestImageOverlayReplacesOriginalWithLogicalSize();
+    TestImageOverlayRejectsWrongSizeAndUsesOtherExtensions();
+    TestScaledSurfaceDcPixelsUseLogicalCoordinates();
 
     if (g_failures > 0) {
         printf("[gdi-regressions] %d FAILURE(S)\n", g_failures);

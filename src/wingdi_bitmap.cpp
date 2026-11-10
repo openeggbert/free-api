@@ -4,9 +4,138 @@
 #include "internal/FreeApiPath.hpp"
 
 #include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
+#include <cstdarg>
 #include <cstring>
+#include <mutex>
+#include <set>
+#include <string>
 
 using namespace FreeApi::Internal;
+
+namespace {
+
+// Image overlay (docs/image-overlay.md): FREE_API_IMAGE_OVERLAY names a
+// folder laid out like the game's own (e.g. IMAGE08/OBJECT.BLP). An image
+// found there replaces the one the game asked for when it is exactly
+// FREE_API_IMAGE_SCALE (default 2) times as wide and as high as the
+// original. The bitmap then carries that scale: GetObjectA reports the
+// original's size and GDI coordinates stay the game's, while Free Direct's
+// enlarged surfaces (FREE_DIRECT_BACKING_SCALE) keep the extra detail.
+// Read at every call, so the variables may change at run time (tests do).
+constexpr int kMaxOverlayScale = 8;
+
+bool ReadOverlayConfig(std::string& root, int& scale)
+{
+    const char* rootEnv = SDL_getenv("FREE_API_IMAGE_OVERLAY");
+    if (!rootEnv || !*rootEnv) return false;
+    root = rootEnv;
+    scale = 2;
+    const char* scaleEnv = SDL_getenv("FREE_API_IMAGE_SCALE");
+    if (scaleEnv && *scaleEnv) {
+        const long value = SDL_strtol(scaleEnv, nullptr, 10);
+        if (value < 1 || value > kMaxOverlayScale) return false;
+        scale = static_cast<int>(value);
+    }
+    return true;
+}
+
+// Logs a problem with one overlay file once, not on every reload of it
+// (the games reload their images on palette changes).
+void WarnOverlayOnce(const std::string& path, const char* format, ...)
+{
+    static std::mutex mutex;
+    static std::set<std::string> warned;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!warned.insert(path).second) return;
+    }
+    char message[1024];
+    va_list args;
+    va_start(args, format);
+    SDL_vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    SDL_Log("free-api image overlay: %s", message);  // sdl-log-gating: intentional (overlay file rejected)
+}
+
+// A BMP's width and height from its header, without decoding the pixels.
+bool ReadBmpSize(const std::string& path, int& width, int& height)
+{
+    SDL_IOStream* io = SDL_IOFromFile(path.c_str(), "rb");
+    if (!io) return false;
+    uint8_t header[26] = {};
+    const size_t got = SDL_ReadIO(io, header, sizeof(header));
+    SDL_CloseIO(io);
+    if (got < sizeof(header) || header[0] != 'B' || header[1] != 'M') return false;
+    const auto le32 = [&header](int offset) {
+        return static_cast<uint32_t>(header[offset]) | (static_cast<uint32_t>(header[offset + 1]) << 8) |
+               (static_cast<uint32_t>(header[offset + 2]) << 16) | (static_cast<uint32_t>(header[offset + 3]) << 24);
+    };
+    if (le32(14) == 12) {  // BITMAPCOREHEADER: 16-bit dimensions
+        width = header[18] | (header[19] << 8);
+        height = header[20] | (header[21] << 8);
+    } else {
+        width = static_cast<int32_t>(le32(18));
+        height = static_cast<int32_t>(le32(22));
+        if (height < 0) height = -height;  // top-down DIB
+    }
+    return width > 0 && height > 0;
+}
+
+// The overlay replacement for normalizedPath (the original, relative to the
+// working directory), or null to load the original.
+CompatBitmap* LoadOverlayBitmap(const std::string& normalizedPath)
+{
+    std::string root;
+    int scale = 1;
+    if (!ReadOverlayConfig(root, scale)) return nullptr;
+
+    // The original's own name first; then the same name as .png or .bmp.
+    std::string path = FindFileUnderRoot(root, normalizedPath);
+    const size_t slash = normalizedPath.find_last_of('/');
+    const size_t dot = normalizedPath.find_last_of('.');
+    const std::string stem = (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+                                 ? normalizedPath.substr(0, dot) : normalizedPath;
+    for (const char* extension : {".png", ".bmp"}) {
+        if (!path.empty()) break;
+        path = FindFileUnderRoot(root, stem + extension);
+    }
+    if (path.empty()) return nullptr;
+
+    int originalWidth = 0, originalHeight = 0;
+    if (!ReadBmpSize(normalizedPath, originalWidth, originalHeight)) {
+        WarnOverlayOnce(path, "'%s' ignored: the original '%s' is not a readable BMP", path.c_str(), normalizedPath.c_str());
+        return nullptr;
+    }
+    // SDL_image decodes by content (BMP, and PNG where it has the codec).
+    SDL_Surface* loaded = IMG_Load(path.c_str());
+    if (!loaded) loaded = SDL_LoadBMP(path.c_str());
+    if (!loaded) {
+        WarnOverlayOnce(path, "'%s' ignored: cannot decode it: %s", path.c_str(), SDL_GetError());
+        return nullptr;
+    }
+    if (loaded->w != originalWidth * scale || loaded->h != originalHeight * scale) {
+        WarnOverlayOnce(path, "'%s' ignored: it is %dx%d, expected %dx%d (%dx '%s', %dx%d)", path.c_str(),
+                        loaded->w, loaded->h, originalWidth * scale, originalHeight * scale, scale,
+                        normalizedPath.c_str(), originalWidth, originalHeight);
+        SDL_DestroySurface(loaded);
+        return nullptr;
+    }
+    CompatBitmap* bitmap = CreateCompatBitmapFromSurface(loaded);
+    SDL_DestroySurface(loaded);
+    if (!bitmap) return nullptr;
+    // Transparency is the games' colour key, as in the originals; an alpha
+    // channel (PNG, 32-bit BMP) is not used, so the image is made opaque
+    // like every bitmap StretchBlt copies.
+    for (size_t i = 3; i < bitmap->pixels.size(); i += 4) bitmap->pixels[i] = 255;
+    bitmap->scale = scale;
+    if (FreeApiGdiDebugEnabled()) {
+        SDL_Log("free-api LoadImageA: overlay '%s' (%dx%d, scale %d) replaces '%s'", path.c_str(), bitmap->width, bitmap->height, scale, normalizedPath.c_str());
+    }
+    return bitmap;
+}
+
+} // namespace
 
 extern "C" {
 
@@ -30,6 +159,11 @@ HANDLE WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy
     // slashes so a Windows-style rooted path (e.g. "\User\foo.bmp") is
     // treated as relative rather than escaping to the real filesystem root.
     std::string normalizedPath = NormalizeFilesystemPath(name);
+    if (cx <= 0 && cy <= 0) {
+        if (CompatBitmap* overlay = LoadOverlayBitmap(normalizedPath)) {
+            return reinterpret_cast<HANDLE>(overlay);
+        }
+    }
     SDL_Surface* loaded = SDL_LoadBMP(normalizedPath.c_str());
     if (!loaded) {
         SDL_Log("free-api LoadImageA: SDL_LoadBMP failed for '%s': %s", normalizedPath.c_str(), SDL_GetError());  // sdl-log-gating: intentional (failure)
@@ -69,8 +203,11 @@ int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv)
 
     BITMAP info{};
     info.bmType       = 0;
-    info.bmWidth      = bitmap->width;
-    info.bmHeight     = bitmap->height;
+    // Logical size: an overlay image (scale > 1) reports the size of the
+    // original it replaces, which is what blupi_recon's DDLoadBitmap
+    // creates its DirectDraw surface from (src/ddutil.cpp:104-118).
+    info.bmWidth      = bitmap->width / bitmap->scale;
+    info.bmHeight     = bitmap->height / bitmap->scale;
     info.bmWidthBytes = bitmap->pitch;
     info.bmPlanes     = 1;
     info.bmBitsPixel  = static_cast<WORD>(bitmap->bitsPerPixel);

@@ -17,6 +17,17 @@ namespace FreeApi::Internal {
  */
 std::string NormalizeFilesystemPath(const char* path);
 
+/**
+ * @brief Finds an existing regular file at `relative` under the directory
+ * `root`, matching each path component ignoring ASCII case on non-Windows
+ * hosts (as NormalizeFilesystemPath does for the working directory).
+ *
+ * `relative` uses forward slashes, as NormalizeFilesystemPath returns it; a
+ * ".." component never leaves `root` (no match). Returns the file's path, or
+ * an empty string. Used by LoadImageA's image overlay (docs/image-overlay.md).
+ */
+std::string FindFileUnderRoot(const std::string& root, const std::string& relative);
+
 std::string BuildCommandLine(int argc, char** argv);
 
 } // namespace FreeApi::Internal

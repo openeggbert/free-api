@@ -60,7 +60,7 @@ for the full usage audit.
 * `WinMain` abstraction (mapping to `main`)
 
 ### Windowing
-* Window creation (`CreateWindowEx`)
+* Window creation (`CreateWindowEx`); `FREE_API_WINDOW_SCALE`/`FREE_API_HIGH_PIXEL_DENSITY` enlarge the window while the game keeps its client size ([docs/image-overlay.md](docs/image-overlay.md))
 * Message loop (`PeekMessage`, `DispatchMessage`)
 * Window procedures (`WNDPROC`)
 
@@ -203,6 +203,9 @@ The following single-header libraries are vendored under `external/`:
 * `timeSetEvent` / `timeKillEvent` — implemented with `SDL_AddTimer` / `SDL_RemoveTimer`. The user-supplied `LPTIMECALLBACK` fires periodically on a private SDL timer thread.
 * The internal WinAPI message queue (`g_messageQueue`) is mutex-protected because the timer thread is allowed to call `PostMessage` (e.g. legacy games posting `WM_TIMER`/`WM_UPDATE` from `TimerStep`).
 * Without this implementation, games using `MMTIMER` mode (`timeSetEvent(50ms, TimerStep, …, TIME_PERIODIC)`) never received their tick, so they could not animate, redraw, or process input — even though raw SDL mouse/keyboard events were arriving and being translated correctly.
+
+### Higher-resolution images
+* `FREE_API_IMAGE_OVERLAY`/`FREE_API_IMAGE_SCALE`: `LoadImageA` takes an image from an overlay folder when it is exactly k times the original's size; `GetObjectA` and GDI coordinates stay logical. Used with Free Direct's `FREE_DIRECT_BACKING_SCALE` ([docs/image-overlay.md](docs/image-overlay.md)).
 
 ### System Utilities
 * Timing (`GetTickCount`, `Sleep`)

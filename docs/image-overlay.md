@@ -1,0 +1,49 @@
+# Image overlay and scaled surface DCs (2026-11-10)
+
+For blupi_recon's higher-resolution images. Off unless the environment asks for it; without the
+variables below nothing changes.
+
+## `LoadImageA` image overlay
+
+`FREE_API_IMAGE_OVERLAY=<dir>` names a folder laid out like the game's own (for example
+`<dir>/IMAGE08/OBJECT.BLP`). When a game loads an image from a file (`LR_LOADFROMFILE`, `cx` and
+`cy` 0), `LoadImageA` looks for the same relative path under `<dir>` first, ignoring case like the
+rest of Free API's file access, then for the same name with `.png` or `.bmp`.
+
+The overlay image is used only if it is exactly `FREE_API_IMAGE_SCALE` (1..8, default 2) times as
+wide and as high as the original file, whose header is read for the comparison. Otherwise, or if it
+cannot be decoded, the original loads and the problem is logged once per file. Images are decoded
+by SDL_image (BMP, and PNG where SDL_image has the codec) and made opaque: transparency remains the
+games' colour key, as in the originals.
+
+The bitmap keeps the scale:
+
+* `GetObjectA` reports the original's size (physical size divided by the scale), which is what
+  `DDLoadBitmap` sizes its DirectDraw surface from (`../blupi_recon/src/ddutil.cpp:104-118`);
+* GDI coordinates on a memory DC holding it (`StretchBlt`, `GetPixel`, `SetPixel`) are logical.
+
+## `FreeApiCreateScaledSurfaceDC`
+
+The bridge function `FreeApiCreateScaledSurfaceDC(pixels, width, height, pitch, 32, scale)`
+(`include/free_api_bridge.h`) wraps a physical buffer whose logical size is `width/scale` x
+`height/scale`. Free Direct uses it for `IDirectDrawSurface::GetDC` when
+`FREE_DIRECT_BACKING_SCALE` enlarges its surfaces.
+
+* `StretchBlt` multiplies the destination rectangle by the DC's scale and the source rectangle by
+  the source bitmap's scale: an overlay image into a surface of the same scale copies 1:1, an
+  original image into a scaled surface is enlarged (nearest neighbour), and an overlay image into
+  an unscaled surface is reduced.
+* `SetPixel`/`GetPixel` address the top-left physical pixel of the logical one. blupi_recon's
+  `DDColorMatch` saves pixel (0,0), writes a colour, reads its raw value through `Lock` and
+  restores the saved colour; writing one physical pixel keeps that restore exact.
+
+## Window
+
+* `FREE_API_WINDOW_SCALE=k` (1..4) creates windows `k` times the requested size. The game keeps
+  the requested client size: `GetClientRect`, `ClientToScreen`/`ScreenToClient` and mouse
+  messages stay in it.
+* `FREE_API_HIGH_PIXEL_DENSITY=1` adds `SDL_WINDOW_HIGH_PIXEL_DENSITY` (a high-DPI display, or the
+  browser's `devicePixelRatio` for the web canvas).
+
+Tests: `tests/test_gdi_regressions.cpp` (overlay, scaled DC) and
+`tests/test_winuser_regressions.cpp` (window scale).

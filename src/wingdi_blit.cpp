@@ -45,6 +45,20 @@ BOOL WINAPI StretchBlt(HDC hdcDest,
     CompatBitmap* srcBitmap = src->selectedBitmap;
     const uint8_t* srcPixels = srcBitmap->pixels.data();
 
+    // Both rectangles are logical. A surface DC with a backing scale
+    // (FreeApiCreateScaledSurfaceDC) and an overlay bitmap with its own scale
+    // (LoadImageA) address their physical pixels: an overlay image as large as
+    // the surface's backing copies 1:1, an original image into a scaled surface
+    // is enlarged by the scaled path below (nearest neighbour).
+    const int dstScale = dst->surfaceScale;
+    const int srcScale = srcBitmap->scale;
+    if (dstScale != 1) {
+        xDest *= dstScale; yDest *= dstScale; wDest *= dstScale; hDest *= dstScale;
+    }
+    if (srcScale != 1) {
+        xSrc *= srcScale; ySrc *= srcScale; wSrc *= srcScale; hSrc *= srcScale;
+    }
+
     // Fast path: 1:1 copy — clip once and copy rows with memcpy.
     // This avoids per-pixel scaling math for the common case.
     if (wDest == wSrc && hDest == hSrc) {
@@ -157,6 +171,10 @@ COLORREF WINAPI GetPixel(HDC hdc, int x, int y)
     if (!dc) {
         return CLR_INVALID;
     }
+    // Logical coordinates: the top-left physical pixel of the logical one.
+    const int scale = CompatDcScale(*dc);
+    x *= scale;
+    y *= scale;
 
     const uint8_t* pixel = nullptr;
     if (dc->kind == CompatDcKind::Surface) {
@@ -184,6 +202,15 @@ COLORREF WINAPI SetPixel(HDC hdc, int x, int y, COLORREF color)
     if (!dc) {
         return CLR_INVALID;
     }
+    // Logical coordinates, writing only the top-left physical pixel of the
+    // logical one. blupi_recon's DDColorMatch (src/ddutil.cpp:358-384) saves
+    // pixel (0,0) with GetPixel, writes a colour, reads its raw value back
+    // through Lock (the first physical pixel) and restores the saved colour:
+    // writing just that one pixel keeps the restore exact, where filling the
+    // whole scale x scale block would overwrite its neighbours.
+    const int scale = CompatDcScale(*dc);
+    x *= scale;
+    y *= scale;
 
     uint8_t* pixel = nullptr;
     if (dc->kind == CompatDcKind::Surface) {

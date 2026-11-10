@@ -90,6 +90,22 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
         flags |= SDL_WINDOW_BORDERLESS;
     }
 
+    // For higher-resolution images (Free Direct's FREE_DIRECT_BACKING_SCALE,
+    // docs/image-overlay.md): FREE_API_WINDOW_SCALE=k opens the window k times
+    // the requested size, and FREE_API_HIGH_PIXEL_DENSITY=1 asks for the
+    // display's full pixel density (a high-DPI screen, a browser's
+    // devicePixelRatio). The game keeps the size it asked for: GetClientRect,
+    // ClientToScreen/ScreenToClient and mouse messages stay in it (the window
+    // state below, and Free Direct's logical presentation once it presents).
+    int windowScale = 1;
+    if (const char* scaleEnv = SDL_getenv("FREE_API_WINDOW_SCALE"); scaleEnv && *scaleEnv) {
+        const long value = SDL_strtol(scaleEnv, nullptr, 10);
+        if (value >= 1 && value <= 4) windowScale = static_cast<int>(value);
+    }
+    if (const char* densityEnv = SDL_getenv("FREE_API_HIGH_PIXEL_DENSITY"); densityEnv && SDL_strcmp(densityEnv, "1") == 0) {
+        flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    }
+
     if (FreeApiDiagnosticsEnabled()) {
         SDL_Log("free-api SDL_CreateWindow: title=%s width=%d height=%d flags=0x%08x",
                 lpWindowName ? lpWindowName : lpClassName,
@@ -97,7 +113,7 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
                 height,
                 static_cast<unsigned>(flags));
     }
-    auto* sdlWindow = SDL_CreateWindow(lpWindowName ? lpWindowName : lpClassName, width, height, flags);
+    auto* sdlWindow = SDL_CreateWindow(lpWindowName ? lpWindowName : lpClassName, width * windowScale, height * windowScale, flags);
     if (!sdlWindow) {
         if (FreeApiDiagnosticsEnabled()) {
             SDL_Log("free-api SDL_CreateWindow failed: %s", SDL_GetError());

@@ -64,6 +64,7 @@ F_OK
 FillMemory
 FindResource
 FindResourceA
+FreeApiCreateScaledSurfaceDC
 FreeApiCreateSurfaceDC
 FreeApiDestroySurfaceDC
 FreeApiRunWinMain

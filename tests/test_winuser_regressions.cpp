@@ -243,6 +243,42 @@ static void TestCreateWindowExANeverSetsResizableFlag()
     DrainMessages();
 }
 
+// FREE_API_WINDOW_SCALE (docs/image-overlay.md): the SDL window opens k times
+// the requested size, while the game keeps its logical client size and
+// coordinates.
+static void TestCreateWindowExAWindowScaleKeepsLogicalClientSize()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_WindowScale";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    SDL_SetEnvironmentVariable(SDL_GetEnvironment(), "FREE_API_WINDOW_SCALE", "2", 1);
+    HWND hwnd = CreateWindowExA(0, "RegTest_WindowScale", "Test",
+                                 WS_POPUPWINDOW | WS_CAPTION,
+                                 0, 0, 640, 480,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), "FREE_API_WINDOW_SCALE");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds with FREE_API_WINDOW_SCALE=2");
+    if (!hwnd) return;
+    DrainMessages();
+
+    int w = 0, h = 0;
+    SDL_GetWindowSize(reinterpret_cast<SDL_Window*>(hwnd), &w, &h);
+    Check(w == 1280 && h == 960, "FREE_API_WINDOW_SCALE=2 opens a 1280x960 window for a 640x480 request");
+    RECT client{};
+    Check(GetClientRect(hwnd, &client) && client.right == 640 && client.bottom == 480,
+          "GetClientRect keeps the requested 640x480 under FREE_API_WINDOW_SCALE");
+    POINT corner{640, 480};
+    ClientToScreen(hwnd, &corner);
+    ScreenToClient(hwnd, &corner);
+    Check(corner.x == 640 && corner.y == 480, "ClientToScreen/ScreenToClient round-trip logical coordinates of a scaled window");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
 // TASK-24H-0308: GetSystemMetrics only ever implements three real indices
 // (SM_CXSCREEN/SM_CYSCREEN/SM_CYCAPTION); everything else falls through to
 // a hardcoded 0 return. SM_CYCAPTION itself previously had zero direct
@@ -1679,6 +1715,7 @@ int main()
     TestRegisterClassAWithFullFieldSet();
     TestCreateWindowExAFullscreenPath();
     TestCreateWindowExANeverSetsResizableFlag();
+    TestCreateWindowExAWindowScaleKeepsLogicalClientSize();
     TestGetSystemMetricsCyCaptionAndUnqueriedIndexFallback();
     TestGlobalMemoryStatusPopulatesPlausibleValues();
     TestGetActiveWindowFallsBackBeforeFocusIsSet();

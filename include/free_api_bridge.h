@@ -2,7 +2,7 @@
  * @file free_api_bridge.h
  * @brief The documented free-direct-bridge exception's public surface.
  *
- * These three functions are NOT part of the Win32/WinAPI compatibility
+ * These functions are NOT part of the Win32/WinAPI compatibility
  * surface (they use no WINAPI calling convention, no Hungarian-notation
  * Win32 signature shape) -- they exist solely so `../free-direct` (a
  * sibling project implementing the DirectDraw/DirectSound/DirectPlay
@@ -40,6 +40,21 @@ extern "C" {
  * @note Status: IMPLEMENTED
  */
 HDC FreeApiCreateSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel);
+
+/**
+ * @brief FreeApiCreateSurfaceDC() for a pixel buffer with a backing scale:
+ * `width`/`height`/`pitch` describe the physical buffer, and GDI calls on
+ * the returned DC take logical coordinates (multiplied by `scale`). Used by
+ * free-direct's IDirectDrawSurface::GetDC when FREE_DIRECT_BACKING_SCALE
+ * enlarges its surfaces, so DDCopyBitmap's StretchBlt and DDColorMatch's
+ * SetPixel/GetPixel keep working in the game's coordinates.
+ *
+ * Returns NULL under the same conditions as FreeApiCreateSurfaceDC(), or if
+ * `scale` is not positive. A scale of 1 is FreeApiCreateSurfaceDC().
+ * Released with FreeApiDestroySurfaceDC().
+ * @note Status: IMPLEMENTED
+ */
+HDC FreeApiCreateScaledSurfaceDC(void* pixels, int width, int height, int pitch, int bitsPerPixel, int scale);
 
 /**
  * @brief Releases a DC created by FreeApiCreateSurfaceDC(). Does not free
