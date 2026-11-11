@@ -109,14 +109,20 @@ The documented `free-direct`-bridge exception (`plan.md` `TASK-0011`) names
 `FreeApiRunWinMain` and the `include/free_api_bridge.h` functions
 (`FreeApiCreateSurfaceDC`, `FreeApiCreateScaledSurfaceDC`,
 `FreeApiDestroySurfaceDC`, `FreeApiGetSurfaceDCAlpha`,
-`FreeApiSetWindowFullscreen`) as the symbols
+`FreeApiSetWindowFullscreen`, `FreeApiPromptServerConnection`,
+`FreeApiShowRoomCreated`, with the `FreeApiServerConnection` struct) as the symbols
 `free-direct` is allowed to consume without a
 `../free-eggbert`/`../planetblupi` usage citation.
 `FreeApiCreateScaledSurfaceDC` (2026-11-10) is called by
 `../free-direct/src/directdraw/DirectDrawSurface.cpp`'s `GetDC` when
 `FREE_DIRECT_BACKING_SCALE` enlarges its surfaces, for blupi_recon's
 higher-resolution images, and `FreeApiGetSurfaceDCAlpha` by its `ReleaseDC`
-to keep such an image's alpha channel (`docs/image-overlay.md`). This
+to keep such an image's alpha channel (`docs/image-overlay.md`).
+`FreeApiPromptServerConnection` and `FreeApiShowRoomCreated` (2026-11-11) are
+called by `../free-direct/src/directplay/DirectPlayRelay.cpp` when a game
+chooses Free Direct's "FreeDirect server" provider for Internet play: the
+connection dialog (server, port, password, room) and the new room's ID
+(`docs/net-prompt.md`). This
 session's audit found one more, real, currently-unfixed coupling beyond
 that list: `../free-direct/src/diagnostics/Diagnostics.cpp:18,70-72`
 forward-declares `FreeApi::Platform::ReadRssKB()` raw and calls it

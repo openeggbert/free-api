@@ -342,6 +342,7 @@ target_sources(free-api PRIVATE
         src/winuser_cursor.cpp
         src/winuser_timer.cpp
         src/winuser_misc.cpp
+        src/winuser_netprompt.cpp
 
         src/wingdi_bitmap.cpp
         src/wingdi_dc.cpp
@@ -544,6 +545,12 @@ if(FREE_API_BUILD_TESTS)
     add_executable(test_input_pipeline tests/test_input_pipeline.cpp)
     target_link_libraries(test_input_pipeline PRIVATE free-api SDL3::SDL3)
     add_test(NAME test_input_pipeline COMMAND test_input_pipeline)
+
+    # Free Direct's server connection dialog (free_api_bridge.h), driven with SDL events.
+    add_executable(test_net_prompt tests/test_net_prompt.cpp)
+    target_link_libraries(test_net_prompt PRIVATE free-api SDL3::SDL3)
+    add_test(NAME test_net_prompt COMMAND test_net_prompt)
+    set_tests_properties(test_net_prompt PROPERTIES LABELS "winuser" ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 
     add_executable(test_header_compile tests/test_header_compile.cpp)
     target_link_libraries(test_header_compile PRIVATE freeapi_compat_headers)

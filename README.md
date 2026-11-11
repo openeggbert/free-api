@@ -74,7 +74,7 @@ for the full usage audit.
   * Navigation: `VK_LEFT/RIGHT/UP/DOWN`, `VK_HOME`, `VK_END`, `VK_PRIOR`, `VK_NEXT`, `VK_INSERT`, `VK_DELETE`
   * Control: `VK_RETURN`, `VK_ESCAPE`, `VK_SPACE`, `VK_TAB`, `VK_BACK`, `VK_SHIFT`, `VK_CONTROL`, `VK_MENU`, `VK_PAUSE`
   * Function keys: `VK_F1`–`VK_F12` (F10 uses `WM_SYSKEYDOWN`/`WM_SYSKEYUP` matching Windows behavior)
-* **Text input** — `SDL_EVENT_TEXT_INPUT` → `WM_CHAR` (for name entry screens)
+* **Text input** — `TranslateMessage` turns a typing key-down into `WM_CHAR`, as on Win32 (name entry screens); `SDL_EVENT_TEXT_INPUT` → `WM_CHAR` when SDL's text input is on
 * **Window focus** — `SDL_EVENT_WINDOW_FOCUS_GAINED` → `WM_ACTIVATEAPP(1)`; `SDL_EVENT_WINDOW_FOCUS_LOST` is suppressed (not translated to `WM_ACTIVATEAPP(0)`) to prevent games from entering inactive/suspended state due to spurious desktop focus changes
 * **Debug logging** — set env `FREE_API_DEBUG_INPUT=1` (aliases: `FREE_API_DEBUG_MOUSE=1`, `FREE_API_DEBUG_REAL_INPUT=1`) at runtime to log all translated messages, ENQUEUE/DISPATCH events, per-event SDL `windowID` and resolved `HWND`, GetCursorPos and ScreenToClient calls.
 

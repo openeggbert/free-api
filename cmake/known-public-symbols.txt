@@ -68,8 +68,11 @@ FreeApiCreateScaledSurfaceDC
 FreeApiCreateSurfaceDC
 FreeApiDestroySurfaceDC
 FreeApiGetSurfaceDCAlpha
+FreeApiPromptServerConnection
 FreeApiRunWinMain
+FreeApiServerConnection
 FreeApiSetWindowFullscreen
+FreeApiShowRoomCreated
 FreeResource
 GUID
 GetClientRect

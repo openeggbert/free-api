@@ -37,6 +37,11 @@ void InputLog(const char* fmt, ...);
 void PushMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 void PumpSdlEvents();
 
+// The character each virtual key typed at its last key-down (0: none), with the shift, caps-lock
+// and control state of that moment. TranslateMessage turns a WM_KEYDOWN into the WM_CHAR of
+// this table, as Win32's TranslateMessage does from the keyboard layout. Main thread only.
+extern unsigned char g_keyDownChars[256];
+
 // TASK-24H-0404: shared MK_SHIFT/MK_CONTROL modifier-flag helper, extracted
 // from what used to be duplicated inline logic in the mouse-motion and
 // mouse-button SDL event handlers. `keys` is an SDL keyboard-state array as

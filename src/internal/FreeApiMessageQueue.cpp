@@ -225,6 +225,36 @@ static WPARAM SdlScancodeToVK(SDL_Scancode sc)
     }
 }
 
+unsigned char g_keyDownChars[256] = {};
+
+namespace {
+// What Win32's TranslateMessage would make of this key-down: the ASCII character of the key
+// for the current layout and shift/caps-lock state, control characters for Ctrl+letter,
+// Backspace, Tab, Enter and Escape; 0 for keys that type nothing (arrows, F-keys, Alt chords).
+unsigned char KeyDownChar(const SDL_KeyboardEvent& key)
+{
+    if (key.mod & SDL_KMOD_ALT) return 0;
+    switch (key.scancode) {
+        case SDL_SCANCODE_BACKSPACE: return 0x08;
+        case SDL_SCANCODE_TAB: return 0x09;
+        case SDL_SCANCODE_RETURN:
+        case SDL_SCANCODE_KP_ENTER: return 0x0D;
+        case SDL_SCANCODE_ESCAPE: return 0x1B;
+        default: break;
+    }
+    SDL_Keycode code = SDL_GetKeyFromScancode(key.scancode, key.mod, false);
+    if (code < 0x20 || code > 0x7E) return 0;
+    if (code >= 'a' && code <= 'z') {
+        if (key.mod & SDL_KMOD_CTRL) return static_cast<unsigned char>(code - 'a' + 1);
+        // Not every keymap applies the modifiers itself.
+        const bool upper = ((key.mod & SDL_KMOD_SHIFT) != 0) != ((key.mod & SDL_KMOD_CAPS) != 0);
+        if (upper) code -= 'a' - 'A';
+    }
+    if (key.mod & SDL_KMOD_CTRL) return 0;
+    return static_cast<unsigned char>(code);
+}
+} // namespace
+
 void PumpSdlEvents()
 {
     // Make sure SDL has consumed pending OS events before we poll.
@@ -341,6 +371,9 @@ void PumpSdlEvents()
                 InputLog("%s vk=0x%02X hwnd=%p -> msg=0x%04X",
                     event.type == SDL_EVENT_KEY_DOWN ? "KEY_DOWN" : "KEY_UP",
                     (unsigned)vk, (void*)hwnd, msg);
+                if (event.type == SDL_EVENT_KEY_DOWN) {
+                    g_keyDownChars[vk & 0xFF] = KeyDownChar(event.key);
+                }
                 PushMessage(hwnd, msg, vk, lp);
                 break;
             }

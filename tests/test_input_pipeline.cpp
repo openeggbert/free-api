@@ -494,6 +494,48 @@ int main()
         }
     }
 
+    g_received.clear();
+
+    // --- Test 13: TranslateMessage turns a key-down that types a character into WM_CHAR, as
+    // on Win32 (blupi_recon's session and player names: src/event.cpp TreatTextInput). SDL's
+    // text input stays off, as in every game, so SDL_EVENT_TEXT_INPUT does not arrive.
+    {
+        struct CharCase { SDL_Scancode scancode; SDL_Keymod mod; WPARAM expected; const char* name; };
+        const CharCase cases[] = {
+            {SDL_SCANCODE_R, SDL_KMOD_NONE, 'r', "R"},
+            {SDL_SCANCODE_R, SDL_KMOD_LSHIFT, 'R', "Shift+R"},
+            {SDL_SCANCODE_7, SDL_KMOD_NONE, '7', "7"},
+            {SDL_SCANCODE_SPACE, SDL_KMOD_NONE, ' ', "Space"},
+            {SDL_SCANCODE_BACKSPACE, SDL_KMOD_NONE, 0x08, "Backspace"},
+            {SDL_SCANCODE_LEFT, SDL_KMOD_NONE, 0, "Left (types nothing)"},
+            {SDL_SCANCODE_F5, SDL_KMOD_NONE, 0, "F5 (types nothing)"},
+        };
+        SDL_StopTextInput(sdlWin);
+        for (const auto& c : cases) {
+            g_received.clear();
+            SDL_Event ev{};
+            ev.type = SDL_EVENT_KEY_DOWN;
+            ev.key.windowID = SDL_GetWindowID(sdlWin);
+            ev.key.scancode = c.scancode;
+            ev.key.mod = c.mod;
+            ev.key.key = SDL_GetKeyFromScancode(c.scancode, c.mod, true);
+            SDL_PushEvent(&ev);
+            DrainMessages();
+            std::vector<WPARAM> chars;
+            for (auto& m : g_received) {
+                if (m.msg == WM_CHAR) chars.push_back(m.wParam);
+            }
+            const bool ok = c.expected == 0 ? chars.empty() : (chars.size() == 1 && chars[0] == c.expected);
+            if (!ok) {
+                printf("[input-pipeline-test] FAIL: TranslateMessage for %s: expected %s0x%02X, got %zu WM_CHAR\n",
+                       c.name, c.expected ? "" : "none, not ", (unsigned)c.expected, chars.size());
+                SDL_Quit();
+                return 1;
+            }
+            printf("[input-pipeline-test] PASS: TranslateMessage for %s\n", c.name);
+        }
+    }
+
     printf("[input-pipeline-test] ALL TESTS PASSED\n");
     SDL_Quit();
     return 0;

@@ -174,7 +174,20 @@ BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFil
 
 BOOL WINAPI TranslateMessage(const MSG* lpMsg)
 {
-    return lpMsg ? TRUE : FALSE;
+    if (!lpMsg) return FALSE;
+    // As on Win32: a key-down that types a character posts its WM_CHAR, which the games read
+    // in their name and session-name entry (blupi_recon src/event.cpp TreatTextInput). Only
+    // while SDL's own text input is off: when it is on, SDL_EVENT_TEXT_INPUT already becomes
+    // WM_CHAR (FreeApiMessageQueue.cpp) and a second copy would type every character twice.
+    if (lpMsg->message == WM_KEYDOWN && lpMsg->wParam < 256) {
+        const unsigned char ch = FreeApi::Internal::g_keyDownChars[lpMsg->wParam];
+        SDL_Window* window = SDL_GetWindowFromID(SDL_GetWindowID(reinterpret_cast<SDL_Window*>(lpMsg->hwnd)));
+        if (ch != 0 && !(window && SDL_TextInputActive(window))) {
+            FreeApi::Internal::PushMessage(lpMsg->hwnd, WM_CHAR, ch, lpMsg->lParam);
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
 LRESULT WINAPI DispatchMessageA(const MSG* lpMsg)

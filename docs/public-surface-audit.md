@@ -191,6 +191,7 @@ row are given fresh evidence.
 | Symbol | Classification | Evidence |
 |---|---|---|
 | `FreeApiCreateSurfaceDC`, `FreeApiDestroySurfaceDC`, `FreeApiSetWindowFullscreen` | free-direct-bridge | `docs/scope.md`'s "The actual bridge-exception surface" — the three named, documented bridge functions. |
+| `FreeApiPromptServerConnection`, `FreeApiShowRoomCreated`, `FreeApiServerConnection` | free-direct-bridge | `docs/scope.md`'s bridge surface; called by `../free-direct/src/directplay/DirectPlayRelay.cpp` (2026-11-11, `docs/net-prompt.md`). |
 
 ## `include/windows.h`
 
