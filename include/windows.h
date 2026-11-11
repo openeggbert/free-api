@@ -36,6 +36,7 @@
 #include <minwindef.h>
 #include <windef.h>
 #include <winnt.h>
+#include <free_api_win32_host.h> /* Windows hosts only: names the SDK's Winsock headers use */
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>

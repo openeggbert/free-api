@@ -1,6 +1,7 @@
 #include "windows.h"
 #include "io.h"
 #include "internal/FreeApiPath.hpp"
+#include "direct.h"
 
 #include <SDL3/SDL.h>
 
@@ -114,6 +115,19 @@ UINT WINAPI GetDriveTypeA(LPCSTR lpRootPathName)
 
 DWORD WINAPI GetCurrentDirectoryA(DWORD nBufferLength, LPSTR lpBuffer)
 {
+#if defined(_WIN32)
+    // A Windows host: the real working directory, whose paths NormalizeFilesystemPath keeps.
+    char current[4 * MAX_PATH];
+    if (!_getcwd(current, static_cast<int>(sizeof(current)))) {
+        return 0;
+    }
+    const DWORD length = static_cast<DWORD>(strlen(current));
+    if (!lpBuffer || nBufferLength <= length) {
+        return length + 1;
+    }
+    memcpy(lpBuffer, current, length + 1);
+    return length;
+#else
     static const char kRoot[] = "C:\\";
     const DWORD length = sizeof(kRoot) - 1;
     if (!lpBuffer || nBufferLength <= length) {
@@ -121,6 +135,7 @@ DWORD WINAPI GetCurrentDirectoryA(DWORD nBufferLength, LPSTR lpBuffer)
     }
     memcpy(lpBuffer, kRoot, sizeof(kRoot));
     return length;
+#endif
 }
 
 BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes)

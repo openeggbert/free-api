@@ -59,7 +59,8 @@ earlier plane (1), or leave it alone (0, e.g. `DDColorMatch`'s `SetPixel`).
 
 * `FREE_API_WINDOW_SCALE=k` (1..4) creates windows `k` times the requested size. The game keeps
   the requested client size: `GetClientRect`, `ClientToScreen`/`ScreenToClient` and mouse
-  messages stay in it.
+  messages stay in it. A scaled window is centred on the display: the games compute their
+  position for the unscaled size, which could put a larger window partly off the screen.
 * `FREE_API_HIGH_PIXEL_DENSITY=1` adds `SDL_WINDOW_HIGH_PIXEL_DENSITY` (a high-DPI display, or the
   browser's `devicePixelRatio` for the web canvas).
 * **The game's own full screen.** This applies when Free Direct calls `FreeApiSetWindowFullscreen`

@@ -125,8 +125,11 @@ HWND WINAPI CreateWindowExA(const DWORD dwExStyle,
         SDL_Log("free-api SDL_CreateWindow result: window=%p id=%u", static_cast<void*>(sdlWindow), static_cast<unsigned>(SDL_GetWindowID(sdlWindow)));
     }
 
-    const int posX = (X < 0) ? SDL_WINDOWPOS_CENTERED : X;
-    const int posY = (Y < 0) ? SDL_WINDOWPOS_CENTERED : Y;
+    // A scaled window is centred: the games compute their position from their own (unscaled)
+    // size to centre it (blupi_recon src/blupi.cpp, InitApp), and a larger window at that
+    // position can leave the screen.
+    const int posX = (X < 0 || windowScale > 1) ? SDL_WINDOWPOS_CENTERED : X;
+    const int posY = (Y < 0 || windowScale > 1) ? SDL_WINDOWPOS_CENTERED : Y;
     SDL_SetWindowPosition(sdlWindow, posX, posY);
     if (FreeApiDiagnosticsEnabled()) {
         SDL_Log("free-api SDL_SetWindowPosition: window=%p x=%d y=%d", static_cast<void*>(sdlWindow), posX, posY);

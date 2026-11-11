@@ -144,10 +144,17 @@ std::string NormalizeFilesystemPath(const char* path)
 
     std::string result(path);
     bool rooted = false;
+    // On a Windows host, drive letters and rooted paths are the real file system's (the games
+    // build absolute paths from _pgmptr and GetCurrentDirectoryA, which are real there too):
+    // keep them. Elsewhere they are stripped, so a path stays inside the working directory.
+    std::string root;
 
     if (result.size() >= 2 &&
         std::isalpha(static_cast<unsigned char>(result[0])) &&
         result[1] == ':') {
+#if defined(_WIN32)
+        root = result.substr(0, 2);
+#endif
         result.erase(0, 2);
         rooted = true;
     }
@@ -159,6 +166,9 @@ std::string NormalizeFilesystemPath(const char* path)
     }
 
     while (!result.empty() && result.front() == '/') {
+#if defined(_WIN32)
+        root += '/';
+#endif
         result.erase(result.begin());
         rooted = true;
     }
@@ -172,7 +182,7 @@ std::string NormalizeFilesystemPath(const char* path)
     result = ResolveCaseInsensitive(result);
 #endif
 
-    return result;
+    return root + result;
 }
 
 std::string BuildCommandLine(const int argc, char** argv)

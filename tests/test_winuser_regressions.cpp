@@ -246,6 +246,38 @@ static void TestCreateWindowExANeverSetsResizableFlag()
 // FREE_API_WINDOW_SCALE (docs/image-overlay.md): the SDL window opens k times
 // the requested size, while the game keeps its logical client size and
 // coordinates.
+// A scaled window is centred on its display: blupi_recon computes the position that centres its
+// unscaled 640x480 window (src/blupi.cpp, InitApp), which would put a larger one partly off-screen.
+static void TestCreateWindowExAScaledWindowIsCentred()
+{
+    WNDCLASSA wc{};
+    wc.lpfnWndProc   = RegTestWndProc;
+    wc.lpszClassName = "RegTest_WindowScaleCentre";
+    wc.hInstance     = (HINSTANCE)1;
+    RegisterClassA(&wc);
+
+    SDL_SetEnvironmentVariable(SDL_GetEnvironment(), "FREE_API_WINDOW_SCALE", "2", 1);
+    HWND hwnd = CreateWindowExA(0, "RegTest_WindowScaleCentre", "Test",
+                                 WS_POPUPWINDOW | WS_CAPTION,
+                                 192, 144, 640, 480,
+                                 nullptr, nullptr, (HINSTANCE)1, nullptr);
+    SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), "FREE_API_WINDOW_SCALE");
+    Check(hwnd != nullptr, "CreateWindowExA succeeds with FREE_API_WINDOW_SCALE=2 at (192,144)");
+    if (!hwnd) return;
+    DrainMessages();
+
+    SDL_Window* window = reinterpret_cast<SDL_Window*>(hwnd);
+    SDL_Rect bounds{};
+    SDL_GetDisplayBounds(SDL_GetDisplayForWindow(window), &bounds);
+    int x = 0, y = 0;
+    SDL_GetWindowPosition(window, &x, &y);
+    Check(x == bounds.x + (bounds.w - 1280) / 2 && y == bounds.y + (bounds.h - 960) / 2,
+          "FREE_API_WINDOW_SCALE=2 centres the window instead of using the unscaled position");
+
+    DestroyWindow(hwnd);
+    DrainMessages();
+}
+
 static void TestCreateWindowExAWindowScaleKeepsLogicalClientSize()
 {
     WNDCLASSA wc{};
@@ -1716,6 +1748,7 @@ int main()
     TestCreateWindowExAFullscreenPath();
     TestCreateWindowExANeverSetsResizableFlag();
     TestCreateWindowExAWindowScaleKeepsLogicalClientSize();
+    TestCreateWindowExAScaledWindowIsCentred();
     TestGetSystemMetricsCyCaptionAndUnqueriedIndexFallback();
     TestGlobalMemoryStatusPopulatesPlausibleValues();
     TestGetActiveWindowFallsBackBeforeFocusIsSet();

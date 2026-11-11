@@ -6389,7 +6389,8 @@ Evidence: blupi_recon src/blupi.cpp:145-146 (ReadConfig).
 Tests: test_file_paths `TestDriveTypeAndCurrentDirectory`.
 
 ### TASK-BR-09: GetCurrentDirectoryA returns "C:\"
-Status: DONE -- the working directory is the root of every drive here.
+Status: DONE -- the working directory is the root of every drive here (not on
+Windows hosts since TASK-BR-18).
 Area: File
 Evidence: blupi_recon src/blupi.cpp:110 (Eggbert builds),
 games/sb2/src/blupi.cpp (ReadConfig).
@@ -6446,6 +6447,43 @@ Status: DONE (TASK-24H-0908 had left it out for want of a call site).
 Area: WinMM
 Evidence: blupi_recon games/sb2/src/sound.cpp:790 (SuspendMusic).
 Tests: test_mci_sequences `TestOpenByDeviceTypeIdAndStop`.
+
+### TASK-BR-17: Windows hosts: the SDK's Winsock headers next to Free API's windows.h
+Status: DONE (2026-11-11) -- `include/free_api_win32_host.h`, included by windows.h only
+when `_WIN32` is defined: INT8..UINT64, LONG64, ULONG64, DWORD64 and their pointers,
+WINBOOL, PHANDLE/LPHANDLE, FARPROC, OVERLAPPED, DECLSPEC_IMPORT, NTSYSAPI, NTAPI,
+C_ASSERT, and GUID_DEFINED/_GUIDDEF_H_ so the SDK's guiddef.h keeps Free API's GUID
+(its REFIID would be a C++ reference). Nothing is implemented; the names only match the
+SDK's so that its declarations compile.
+Area: Headers (Windows hosts)
+Evidence: blupi_recon's Windows builds (`freeapi/tools/build_windows.sh`, MinGW-w64):
+Free Direct's networking includes the system's Winsock through ENet
+(`include/enet/win32.h:24`, from free-direct src/directplay/EnetDirectPlayTransport.hpp:63
+and DirectPlayDiscovery.hpp:33) and IXWebSocket (`ixwebsocket/IXNetSystem.h:21-22`, from
+free-direct src/directplay/RelaySocketIx.cpp:12). Without these names five Free Direct
+TUs failed to compile.
+Tests: the blupi_recon Windows builds compile and play multiplayer under Wine (its
+freeapi/README.md, "Windows"); Linux, Android and the web do not see the header.
+
+### TASK-BR-18: Windows hosts keep real paths and the real working directory
+Status: DONE (2026-11-11) -- on `_WIN32`, NormalizeFilesystemPath keeps a drive letter and
+leading slashes (it still turns backslashes into slashes and collapses "." and ".."), and
+GetCurrentDirectoryA returns `_getcwd`. Elsewhere both behave as before (TASK-BR-05/09).
+Area: File (Windows hosts)
+Evidence: blupi_recon src/sound.cpp:643 (PlayMusic: GetCurrentDir, from the real
+`_pgmptr`, plus "sound\\music%.3d.blp"): with the drive letter stripped the absolute path
+became relative and no music loaded. src/blupi.cpp:110 and games/sb2/src/blupi.cpp:116
+(ReadConfig, the Eggbert editions' CD path from GetCurrentDirectory).
+Tests: blupi_recon Speedy Eggbert 1 for Windows under Wine loads `sound\music003.blp`
+(its freeapi/README.md, "Windows").
+
+### TASK-BR-19: A scaled window is centred
+Status: DONE (2026-11-11) -- with FREE_API_WINDOW_SCALE > 1, CreateWindowExA centres the
+window on its display instead of using the requested position.
+Area: WinUser
+Evidence: blupi_recon src/blupi.cpp:708-719 (InitApp): the position centres a 640x480
+window; a 1280x960 window there reached past the bottom of a 1080-line display.
+Tests: test_winuser_regressions `TestCreateWindowExAScaledWindowIsCentred`.
 
 Not done (noted while testing): `test_midi_backend_failure` segfaults when
 `SDL_AUDIO_DRIVER=dummy` is set in the environment (it overrides the test's
