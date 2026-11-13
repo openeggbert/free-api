@@ -57,17 +57,29 @@ BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFi
     // avoids the previous behaviour where SDL was pumped on every Peek even
     // while the queue still had unprocessed messages, which both wasted CPU
     // and could starve queued messages by reordering work.
+    //
+    // But never longer than kMaxPumpGapMs: a queue that never runs empty (a
+    // message that keeps posting the next one, such as music restarted on
+    // every MM_MCINOTIFY) must not starve SDL's events -- keys, the mouse,
+    // window close and SIGINT's quit would otherwise never be read -- nor the
+    // WinAPI timers below.
+    constexpr uint64_t kMaxPumpGapMs = 4;
+    thread_local uint64_t lastPumpTick = 0;
     bool needPump = false;
     {
         std::lock_guard<std::mutex> lock(g_messageQueueMutex);
         needPump = g_messageQueue.empty();
     }
+    if (!needPump && SDL_GetTicks() - lastPumpTick >= kMaxPumpGapMs) {
+        needPump = true;
+    }
 
     if (needPump) {
+        lastPumpTick = SDL_GetTicks();
         PumpSdlEvents();
 
         // Generate WM_TIMER messages for elapsed WinAPI timers (also only
-        // when the queue was empty — pending timer messages would be coalesced
+        // when SDL is pumped — pending timer messages would be coalesced
         // anyway, but doing this only when needed avoids redundant work).
         //
         // TASK-24H-1236: thread_local + clear() (not a fresh local vector)

@@ -206,20 +206,15 @@ static void TestSequencerOpenPlayNotifyCloseSequence()
     DestroyWindow(hwnd);
 }
 
-// TASK-24H-0903: when no SoundFont is found, EnsureMidiBackend() still
-// returns success but never starts real audio rendering, and
-// MidiMusicSendCommand's MCI_PLAY handler detects !g_midi.soundFont, marks
-// the session finished, and immediately posts MM_MCINOTIFY itself -- a
-// deliberate "degrade to silent success" behavior guarding against the
-// game's notify-driven replay loop (see the stress test above/TASK-0090)
-// stalling forever waiting for a notification that would otherwise never
-// arrive. This session's evidence read confirmed neither free-api,
-// free-eggbert, nor planetblupi ships any .sf2 file, and FREE_API_SOUNDFONT
-// is unset by default -- so this exact no-soundfont path is what every
-// other test in this file already runs under in this environment; this
-// test makes that deliberate and explicit rather than an unlabeled
-// coincidence, and would fail if the graceful-degradation behavior ever
-// regressed into a hard failure or a stalled notification.
+// TASK-24H-0903, revised 2026-11-13: when no SoundFont is found, MCI_OPEN and
+// MCI_PLAY still succeed and the song plays silently: the mixer thread advances
+// it at the real rate and posts MM_MCINOTIFY at its end, as with a SoundFont.
+// So the game's notify-driven replay loop neither stalls (the notification
+// comes) nor spins: the earlier "notify at once" made Speedy Blupi 1, which
+// restarts its music on every MM_MCINOTIFY, post tens of thousands of them a
+// second and starve its input (tests/test_input_pipeline.cpp). Neither
+// free-api nor the games ship a .sf2 and FREE_API_SOUNDFONT is unset by
+// default, so this is the path most runs take.
 static void TestMissingSoundFontStillSucceedsAndNotifiesPromptly()
 {
     HWND hwnd = MakeTestWindow("RegTest_MciNoSoundFont");
@@ -237,13 +232,15 @@ static void TestMissingSoundFontStillSucceedsAndNotifiesPromptly()
         MCIERROR playRc = PlayWithNotify(id, hwnd);
         Check(playRc == 0, "MCI_PLAY still succeeds with no SoundFont available (silent-success degradation, not a hard failure)");
 
-        // The no-soundfont path posts MM_MCINOTIFY immediately (it doesn't
-        // wait for real audio rendering to finish), so this should resolve
-        // much faster than the real-audio TestSequencerOpenPlayNotifyCloseSequence
-        // case above -- but use the same generous bound to avoid flakiness.
+        // The fixture lasts 500 ms (96 ticks at 96 per quarter, 120 bpm): the
+        // notification comes when it would have ended, not at once.
+        const Uint64 played = SDL_GetTicks();
         bool notified = WaitForMciNotifySuccessful(hwnd, 3000);
-        Check(notified, "MM_MCINOTIFY with MCI_NOTIFY_SUCCESSFUL is still posted promptly with no SoundFont available "
+        const Uint64 took = SDL_GetTicks() - played;
+        Check(notified, "MM_MCINOTIFY with MCI_NOTIFY_SUCCESSFUL is still posted with no SoundFont available "
                         "(the game's notify-driven replay loop does not stall)");
+        Check(!notified || took >= 300, "with or without a SoundFont, MM_MCINOTIFY waits for the song's length "
+                                        "(no instant notify for a replay loop to spin on)");
 
         MCIERROR closeRc = mciSendCommandA(id, MCI_CLOSE, 0, 0);
         Check(closeRc == 0, "MCI_CLOSE still succeeds after the no-SoundFont session finishes");

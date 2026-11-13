@@ -26,7 +26,10 @@
  *   1. FREE_API_SOUNDFONT environment variable (CWD-relative only, or absolute)
  *   2. assets/soundfont/default.sf2
  *   3. soundfont/default.sf2
- *   If none found, MCI_OPEN succeeds but playback is silent with a debug warning.
+ *   If none found, MCI_OPEN succeeds and the song plays silently: the mixer thread still advances
+ *   its time at the real rate (it feeds silence to the stream), so MM_MCINOTIFY arrives when the song
+ *   would have ended, as with a SoundFont. Notifying at once instead made a game that restarts its
+ *   music on MM_MCINOTIFY (both games do) loop without pause and flood the message queue.
  *
  * Debug logging: set FREE_API_DEBUG_MIDI=1 in the environment.
  *
@@ -55,6 +58,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <algorithm>
 #include <vector>
 
 /* -------------------------------------------------------------------------- */
@@ -448,9 +452,14 @@ static void MixerThread()
                 const double blockMs = (kBlockFrames * 1000.0) / kMixSpec.freq;
 
                 /* Process MIDI events up to the end of this block. */
+                tsf* sf = GetMidiState().soundFont;   // null: the song plays silently
                 while (active->cursor &&
                        active->cursor->time <= active->timeMs + blockMs)
                 {
+                    if (!sf) {
+                        active->cursor = active->cursor->next;
+                        continue;
+                    }
                     tsf_channel_set_pan(GetMidiState().soundFont,
                                         active->cursor->channel, 0.5f);
 
@@ -495,10 +504,14 @@ static void MixerThread()
                 }
                 active->timeMs += blockMs;
 
-                /* Render audio. */
-                tsf_set_output(GetMidiState().soundFont, TSF_STEREO_INTERLEAVED,
-                               kMixSpec.freq, 0.0f);
-                tsf_render_float(GetMidiState().soundFont, pcm.data(), kBlockFrames, 0);
+                /* Render audio (silence without a SoundFont, which keeps the song's real duration
+                 * through the stream's backpressure above). */
+                if (sf) {
+                    tsf_set_output(sf, TSF_STEREO_INTERLEAVED, kMixSpec.freq, 0.0f);
+                    tsf_render_float(sf, pcm.data(), kBlockFrames, 0);
+                } else {
+                    std::fill(pcm.begin(), pcm.end(), 0.0f);
+                }
 
                 /* Apply volume. */
                 const float vol = GetMidiState().volume;
@@ -601,8 +614,7 @@ static bool EnsureMidiBackend()
                        kMixSpec.freq, 0.0f);
         tsf_set_volume(GetMidiState().soundFont, 1.0f);
     } else {
-        MIDI_LOG("audio backend started without SoundFont; music will stay silent");
-        return true;
+        MIDI_LOG("audio backend started without SoundFont; songs play silently at their real length");
     }
 
     /* Start mixer thread. */
@@ -779,14 +791,8 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
     if (uMsg == MCI_PLAY) {
         auto* parms = reinterpret_cast<MCI_PLAY_PARMS*>(dwParam);
 
-        // TASK-24H-1245: notify data captured while GetMidiState().mtx is
-        // held, acted on (PostMessageA) only after the lock below is
-        // released -- see the lock-order comment on GetMidiState().mtx's
-        // declaration and MixerThread's matching capture-then-post pattern
-        // (this is the second call site TASK-24H-1233 left untouched).
-        bool needsNotify = false;
-        HWND notifyTarget = nullptr;
-        MCIDEVICEID notifyId = 0;
+        // MM_MCINOTIFY is posted by MixerThread when the song ends, with or without a SoundFont
+        // (it used to be posted here at once without one, see the file comment).
         bool sessionFound = false;
         bool silentSuccess = false;
 
@@ -818,33 +824,19 @@ MCIERROR MidiMusicSendCommand(MCIDEVICEID mciId, UINT uMsg,
                         s.notifyHwnd = nullptr;
                     }
 
-                    if (!GetMidiState().soundFont) {
-                        s.playing = false;
-                        s.finished = true;
-                        silentSuccess = true;
-                        if (s.notifyHwnd) {
-                            needsNotify  = true;
-                            notifyTarget = s.notifyHwnd;
-                            notifyId     = s.id;
-                        }
-                    } else {
-                        MIDI_LOG("MCI_PLAY: device id=%u notifyHwnd=%p",
-                                 (unsigned)mciId, static_cast<void*>(s.notifyHwnd));
-                    }
+                    // Without a SoundFont the mixer thread plays the song silently and notifies
+                    // at its end, as it does with one.
+                    silentSuccess = GetMidiState().soundFont == nullptr;
+                    MIDI_LOG("MCI_PLAY: device id=%u notifyHwnd=%p",
+                             (unsigned)mciId, static_cast<void*>(s.notifyHwnd));
                     break;
                 }
             }
         }
 
-        if (needsNotify) {
-            PostMessageA(notifyTarget, MM_MCINOTIFY,
-                         MCI_NOTIFY_SUCCESSFUL,
-                         static_cast<LPARAM>(notifyId));
-        }
-
         if (sessionFound) {
             if (silentSuccess) {
-                MIDI_LOG("MCI_PLAY: no SoundFont loaded; treating device id=%u as silent success",
+                MIDI_LOG("MCI_PLAY: no SoundFont loaded; device id=%u plays silently",
                          (unsigned)mciId);
             }
             return 0;

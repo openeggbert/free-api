@@ -536,6 +536,34 @@ int main()
         }
     }
 
+    // --- A queue that never runs empty (2026-11-13): a message that posts the next one, as
+    // Speedy Blupi 1 restarting its music on every MM_MCINOTIFY did without a SoundFont, must not
+    // starve SDL's events. Before, PeekMessageA pumped SDL only when its queue was empty, so the
+    // game never saw a key again (Escape, the arrows) and could not be quit.
+    {
+        g_received.clear();
+        const UINT kSelfRepost = WM_USER + 0x77;
+        PostMessageA(g_testHwnd, kSelfRepost, 0, 0);
+        InjectKeyEvent(sdlWin, true, SDL_SCANCODE_ESCAPE);
+        bool gotKey = false;
+        const Uint64 start = SDL_GetTicks();
+        MSG wmsg{};
+        while (!gotKey && SDL_GetTicks() - start < 500) {
+            if (!PeekMessageA(&wmsg, nullptr, 0, 0, PM_REMOVE)) continue;
+            if (wmsg.message == kSelfRepost) PostMessageA(g_testHwnd, kSelfRepost, wmsg.wParam + 1, 0);
+            if (wmsg.message == WM_KEYDOWN && wmsg.wParam == VK_ESCAPE) gotKey = true;
+            DispatchMessageA(&wmsg);
+        }
+        InjectKeyEvent(sdlWin, false, SDL_SCANCODE_ESCAPE);
+        DrainMessages();
+        if (!gotKey) {
+            printf("[input-pipeline-test] FAIL: WM_KEYDOWN(VK_ESCAPE) not delivered while the queue never ran empty\n");
+            SDL_Quit();
+            return 1;
+        }
+        printf("[input-pipeline-test] PASS: SDL keys still arrive while a message keeps the queue busy\n");
+    }
+
     printf("[input-pipeline-test] ALL TESTS PASSED\n");
     SDL_Quit();
     return 0;
