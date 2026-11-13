@@ -76,8 +76,14 @@ int main()
     // Force a real, persistent SDL_InitSubSystem(SDL_INIT_AUDIO) failure --
     // must be set before SDL touches the audio subsystem at all. Video is
     // unaffected (independent subsystem), matching every other test's
-    // SDL_Init(SDL_INIT_VIDEO) usage.
-    SDL_setenv_unsafe("SDL_AUDIODRIVER", "totally_bogus_driver_for_task_24h_1109_test", 1);
+    // SDL_Init(SDL_INIT_VIDEO) usage. An override hint, not the environment:
+    // SDL_AUDIO_DRIVER in the caller's environment (for example
+    // SDL_AUDIO_DRIVER=dummy for a headless run) took precedence over the
+    // legacy SDL_AUDIODRIVER this test used to set, so the backend opened,
+    // the test's checks failed, and the SDL_Quit() below then left
+    // ~MidiState a destroyed stream.
+    SDL_SetHintWithPriority(SDL_HINT_AUDIO_DRIVER, "totally_bogus_driver_for_task_24h_1109_test",
+                            SDL_HINT_OVERRIDE);
 
     SDL_SetLogOutputFunction(CountBackendFailureLogs, nullptr);
 

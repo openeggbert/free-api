@@ -243,12 +243,16 @@ struct MidiState {
             soundFont = nullptr;
         }
 
-        /* Release SDL audio stream and device. */
-        if (stream) {
+        /* Release SDL audio stream and device. If the host program already
+         * shut SDL's audio down (SDL_Quit() before exit), SDL destroyed every
+         * stream then, and destroying this one again would touch freed memory
+         * (SEGV in SDL_DestroyAudioQueue). Neither game calls SDL_Quit(); the
+         * mixer thread still assumes it does not (test_mci_sequences.cpp). */
+        if (stream && SDL_WasInit(SDL_INIT_AUDIO) != 0) {
             SDL_DestroyAudioStream(stream);
-            stream = nullptr;
-            device = 0;
         }
+        stream = nullptr;
+        device = 0;
     }
 };
 
